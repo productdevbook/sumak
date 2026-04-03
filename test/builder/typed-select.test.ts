@@ -32,7 +32,7 @@ type DB = {
   posts: InferTable<typeof posts>;
 };
 
-const db = new Lale<DB>({ dialect: pgDialect() });
+const db = new Lale<DB>(pgDialect());
 const printer = db.printer();
 
 describe("TypedSelectBuilder", () => {
@@ -113,7 +113,7 @@ describe("TypedSelectBuilder", () => {
   });
 
   it("works with MySQL dialect", () => {
-    const mysqlDb = new Lale<DB>({ dialect: mysqlDialect() });
+    const mysqlDb = new Lale<DB>(mysqlDialect());
     const q = mysqlDb.selectFrom("users").select("id");
     const result = q.compile(mysqlDb.printer());
     expect(result.sql).toContain("`id`");

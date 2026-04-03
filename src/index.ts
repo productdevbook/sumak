@@ -191,7 +191,7 @@ export type {
 } from "./schema/index.ts";
 
 // Typed builders
-export { Lale } from "./lale.ts";
+export { lale, Lale } from "./lale.ts";
 export type { LaleConfig } from "./lale.ts";
 export { TypedSelectBuilder } from "./builder/typed-select.ts";
 export { TypedInsertBuilder, TypedInsertReturningBuilder } from "./builder/typed-insert.ts";
@@ -204,6 +204,10 @@ export { PluginManager } from "./plugin/plugin-manager.ts";
 export { WithSchemaPlugin } from "./plugin/with-schema.ts";
 export { SoftDeletePlugin } from "./plugin/soft-delete.ts";
 export { CamelCasePlugin } from "./plugin/camel-case.ts";
+
+// Hooks
+export { Hookable } from "./plugin/hooks.ts";
+export type { HookContext, HookName, LaleHooks } from "./plugin/hooks.ts";
 
 // Errors
 export {

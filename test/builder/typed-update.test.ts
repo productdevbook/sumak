@@ -15,7 +15,7 @@ const users = defineTable("users", {
 
 type DB = { users: InferTable<typeof users> };
 
-const db = new Lale<DB>({ dialect: pgDialect() });
+const db = new Lale<DB>(pgDialect());
 const printer = db.printer();
 
 describe("TypedUpdateBuilder", () => {
