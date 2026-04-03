@@ -15,7 +15,8 @@ export class UpdateBuilder {
   }
 
   table(table: string | TableRefNode): UpdateBuilder {
-    const ref: TableRefNode = typeof table === "string" ? { name: table } : table;
+    const ref: TableRefNode =
+      typeof table === "string" ? { type: "table_ref", name: table } : table;
     return new UpdateBuilder({ ...this.node, table: ref });
   }
 
@@ -31,7 +32,8 @@ export class UpdateBuilder {
   }
 
   from(table: string | TableRefNode): UpdateBuilder {
-    const ref: TableRefNode = typeof table === "string" ? { name: table } : table;
+    const ref: TableRefNode =
+      typeof table === "string" ? { type: "table_ref", name: table } : table;
     return new UpdateBuilder({ ...this.node, from: ref });
   }
 

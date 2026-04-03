@@ -17,7 +17,10 @@ export type ExpressionNode =
   | CaseNode
   | CastNode
   | ExistsNode
-  | StarNode;
+  | StarNode
+  | JsonAccessNode
+  | ArrayExprNode
+  | WindowFunctionNode;
 
 export interface ColumnRefNode {
   type: "column_ref";
@@ -116,15 +119,53 @@ export interface StarNode {
 }
 
 export interface TableRefNode {
+  type: "table_ref";
   name: string;
   alias?: string;
   schema?: string;
 }
 
 export interface JoinNode {
+  type: "join";
   joinType: JoinType;
   table: TableRefNode | SubqueryNode;
   on?: ExpressionNode;
+}
+
+export interface JsonAccessNode {
+  type: "json_access";
+  expr: ExpressionNode;
+  path: string;
+  operator: "->" | "->>" | "#>" | "#>>";
+  alias?: string;
+}
+
+export interface ArrayExprNode {
+  type: "array_expr";
+  elements: ExpressionNode[];
+}
+
+export type FrameKind = "ROWS" | "RANGE" | "GROUPS";
+export type FrameBound =
+  | { type: "unbounded_preceding" }
+  | { type: "preceding"; value: number }
+  | { type: "current_row" }
+  | { type: "following"; value: number }
+  | { type: "unbounded_following" };
+
+export interface FrameSpec {
+  kind: FrameKind;
+  start: FrameBound;
+  end?: FrameBound;
+}
+
+export interface WindowFunctionNode {
+  type: "window_function";
+  fn: FunctionCallNode;
+  partitionBy: ExpressionNode[];
+  orderBy: OrderByNode[];
+  frame?: FrameSpec;
+  alias?: string;
 }
 
 export interface OrderByNode {
@@ -195,45 +236,49 @@ export interface DeleteNode {
   ctes: CTENode[];
 }
 
+export function tableRef(name: string, alias?: string, schema?: string): TableRefNode {
+  return Object.freeze({ type: "table_ref" as const, name, alias, schema });
+}
+
 export function createSelectNode(): SelectNode {
-  return {
-    type: "select",
+  return Object.freeze({
+    type: "select" as const,
     distinct: false,
-    columns: [],
-    joins: [],
-    groupBy: [],
-    orderBy: [],
-    ctes: [],
+    columns: Object.freeze([]) as ExpressionNode[],
+    joins: Object.freeze([]) as JoinNode[],
+    groupBy: Object.freeze([]) as ExpressionNode[],
+    orderBy: Object.freeze([]) as OrderByNode[],
+    ctes: Object.freeze([]) as CTENode[],
     forUpdate: false,
-  };
+  }) as SelectNode;
 }
 
 export function createInsertNode(table: TableRefNode): InsertNode {
-  return {
-    type: "insert",
+  return Object.freeze({
+    type: "insert" as const,
     table,
-    columns: [],
-    values: [],
-    returning: [],
-    ctes: [],
-  };
+    columns: Object.freeze([]) as string[],
+    values: Object.freeze([]) as ExpressionNode[][],
+    returning: Object.freeze([]) as ExpressionNode[],
+    ctes: Object.freeze([]) as CTENode[],
+  }) as InsertNode;
 }
 
 export function createUpdateNode(table: TableRefNode): UpdateNode {
-  return {
-    type: "update",
+  return Object.freeze({
+    type: "update" as const,
     table,
-    set: [],
-    returning: [],
-    ctes: [],
-  };
+    set: Object.freeze([]) as { column: string; value: ExpressionNode }[],
+    returning: Object.freeze([]) as ExpressionNode[],
+    ctes: Object.freeze([]) as CTENode[],
+  }) as UpdateNode;
 }
 
 export function createDeleteNode(table: TableRefNode): DeleteNode {
-  return {
-    type: "delete",
+  return Object.freeze({
+    type: "delete" as const,
     table,
-    returning: [],
-    ctes: [],
-  };
+    returning: Object.freeze([]) as ExpressionNode[],
+    ctes: Object.freeze([]) as CTENode[],
+  }) as DeleteNode;
 }

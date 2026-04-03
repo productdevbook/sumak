@@ -33,7 +33,7 @@ export class SelectBuilder {
 
   from(table: string | TableRefNode | SubqueryNode, alias?: string): SelectBuilder {
     if (typeof table === "string") {
-      const ref: TableRefNode = { name: table, alias };
+      const ref: TableRefNode = { type: "table_ref", name: table, alias };
       return new SelectBuilder({ ...this.node, from: ref });
     }
     if (alias && table.type !== "subquery") {
@@ -53,8 +53,8 @@ export class SelectBuilder {
     alias?: string,
   ): SelectBuilder {
     const tableRef: TableRefNode | SubqueryNode =
-      typeof table === "string" ? { name: table, alias } : table;
-    const join: JoinNode = { joinType: type, table: tableRef, on };
+      typeof table === "string" ? { type: "table_ref", name: table, alias } : table;
+    const join: JoinNode = { type: "join", joinType: type, table: tableRef, on };
     return new SelectBuilder({ ...this.node, joins: [...this.node.joins, join] });
   }
 

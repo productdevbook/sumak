@@ -23,9 +23,11 @@ import { PgPrinter } from "../../src/printer/pg.ts";
 const pg = new PgPrinter();
 
 function printExpr(expr: import("../../src/ast/nodes.ts").ExpressionNode): string {
-  const node = createSelectNode();
-  node.columns = [expr];
-  node.from = { name: "dual" };
+  const node = {
+    ...createSelectNode(),
+    columns: [expr],
+    from: { type: "table_ref" as const, name: "dual" },
+  };
   return pg.print(node).sql;
 }
 
@@ -117,9 +119,11 @@ describe("Expression builders", () => {
   });
 
   it("exists creates EXISTS", () => {
-    const subq = createSelectNode();
-    subq.columns = [lit(1)];
-    subq.from = { name: "users" };
+    const subq = {
+      ...createSelectNode(),
+      columns: [lit(1)],
+      from: { type: "table_ref" as const, name: "users" },
+    };
     const sql = printExpr(exists(subq));
     expect(sql).toContain("EXISTS");
   });

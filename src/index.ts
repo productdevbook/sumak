@@ -1,5 +1,6 @@
 // AST
 export type {
+  ArrayExprNode,
   ASTNode,
   BetweenNode,
   BinaryOpNode,
@@ -10,11 +11,15 @@ export type {
   DeleteNode,
   ExistsNode,
   ExpressionNode,
+  FrameBound,
+  FrameKind,
+  FrameSpec,
   FunctionCallNode,
   InNode,
   InsertNode,
   IsNullNode,
   JoinNode,
+  JsonAccessNode,
   LiteralNode,
   OnConflictNode,
   OrderByNode,
@@ -26,7 +31,7 @@ export type {
   TableRefNode,
   UnaryOpNode,
   UpdateNode,
-  WindowNode,
+  WindowFunctionNode,
 } from "./ast/nodes.ts";
 
 export {
@@ -34,6 +39,7 @@ export {
   createInsertNode,
   createSelectNode,
   createUpdateNode,
+  tableRef,
 } from "./ast/nodes.ts";
 
 export {
@@ -67,6 +73,31 @@ export {
 export { ASTTransformer } from "./ast/transformer.ts";
 export { visitNode } from "./ast/visitor.ts";
 export type { ASTVisitor } from "./ast/visitor.ts";
+export type { Expression } from "./ast/typed-expression.ts";
+export {
+  typedAdd,
+  typedAnd,
+  typedBetween,
+  typedCol,
+  typedDiv,
+  typedEq,
+  typedGt,
+  typedGte,
+  typedIn,
+  typedIsNotNull,
+  typedIsNull,
+  typedLike,
+  typedLit,
+  typedLt,
+  typedLte,
+  typedMul,
+  typedNeq,
+  typedNot,
+  typedOr,
+  typedParam,
+  typedSub,
+  unwrap,
+} from "./ast/typed-expression.ts";
 
 // Builders
 export { select, SelectBuilder } from "./builder/select.ts";
@@ -82,7 +113,19 @@ export { MysqlPrinter } from "./printer/mysql.ts";
 export { SqlitePrinter } from "./printer/sqlite.ts";
 export { formatSQL } from "./printer/formatter.ts";
 export type { FormatOptions } from "./printer/formatter.ts";
-export type { Printer, PrinterOptions } from "./printer/types.ts";
+export type { Printer, PrinterOptions, PrintMode } from "./printer/types.ts";
+export {
+  concat,
+  empty,
+  group,
+  join,
+  line,
+  nest,
+  render,
+  text,
+  textLine,
+} from "./printer/document.ts";
+export type { Doc } from "./printer/document.ts";
 
 // Dialects
 export { pgDialect } from "./dialect/pg.ts";
@@ -104,6 +147,63 @@ export type {
   SetOperator,
   SQLDialect,
 } from "./types.ts";
+
+// Schema
+export {
+  bigint,
+  bigserial,
+  boolean,
+  bytea,
+  char,
+  ColumnBuilder,
+  date,
+  defineTable,
+  doublePrecision,
+  enumType,
+  integer,
+  json,
+  jsonb,
+  numeric,
+  real,
+  serial,
+  smallint,
+  text,
+  time,
+  timestamp,
+  timestamptz,
+  uuid,
+  varchar,
+} from "./schema/index.ts";
+export type {
+  ColumnDef,
+  ColumnType,
+  Generated,
+  GeneratedAlways,
+  InferTable,
+  Insertable,
+  InsertType,
+  Nullable,
+  Selectable,
+  SelectType,
+  TableDefinition,
+  Updateable,
+  UpdateType,
+} from "./schema/index.ts";
+
+// Typed builders
+export { Lale } from "./lale.ts";
+export type { LaleConfig } from "./lale.ts";
+export { TypedSelectBuilder } from "./builder/typed-select.ts";
+export { TypedInsertBuilder, TypedInsertReturningBuilder } from "./builder/typed-insert.ts";
+export { TypedUpdateBuilder, TypedUpdateReturningBuilder } from "./builder/typed-update.ts";
+export { TypedDeleteBuilder, TypedDeleteReturningBuilder } from "./builder/typed-delete.ts";
+
+// Plugins
+export type { LalePlugin } from "./plugin/types.ts";
+export { PluginManager } from "./plugin/plugin-manager.ts";
+export { WithSchemaPlugin } from "./plugin/with-schema.ts";
+export { SoftDeletePlugin } from "./plugin/soft-delete.ts";
+export { CamelCasePlugin } from "./plugin/camel-case.ts";
 
 // Errors
 export {

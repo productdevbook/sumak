@@ -16,8 +16,7 @@ class UpperCaseColumnTransformer extends ASTTransformer {
 describe("ASTTransformer", () => {
   it("transforms select columns", () => {
     const transformer = new UpperCaseColumnTransformer();
-    const node = createSelectNode();
-    node.columns = [col("name"), col("email")];
+    const node = { ...createSelectNode(), columns: [col("name"), col("email")] };
 
     const result = transformer.transformSelect(node);
     expect((result.columns[0] as ColumnRefNode).column).toBe("NAME");
@@ -26,8 +25,7 @@ describe("ASTTransformer", () => {
 
   it("transforms where clause", () => {
     const transformer = new UpperCaseColumnTransformer();
-    const node = createSelectNode();
-    node.where = eq(col("id"), lit(1));
+    const node = { ...createSelectNode(), where: eq(col("id"), lit(1)) };
 
     const result = transformer.transformSelect(node);
     expect(result.where).toBeDefined();
@@ -38,8 +36,7 @@ describe("ASTTransformer", () => {
 
   it("returns node unchanged with base transformer", () => {
     const transformer = new ASTTransformer();
-    const node = createSelectNode();
-    node.columns = [col("name")];
+    const node = { ...createSelectNode(), columns: [col("name")] };
 
     const result = transformer.transformSelect(node);
     expect((result.columns[0] as ColumnRefNode).column).toBe("name");
@@ -49,7 +46,7 @@ describe("ASTTransformer", () => {
     const transformer = new UpperCaseColumnTransformer();
     const result = transformer.transformInsert({
       type: "insert",
-      table: { name: "users" },
+      table: { type: "table_ref", name: "users" },
       columns: ["name"],
       values: [[col("other_col")]],
       returning: [],
@@ -62,7 +59,7 @@ describe("ASTTransformer", () => {
     const transformer = new UpperCaseColumnTransformer();
     const result = transformer.transformUpdate({
       type: "update",
-      table: { name: "users" },
+      table: { type: "table_ref", name: "users" },
       set: [{ column: "name", value: col("old_name") }],
       returning: [],
       ctes: [],
@@ -74,7 +71,7 @@ describe("ASTTransformer", () => {
     const transformer = new UpperCaseColumnTransformer();
     const result = transformer.transformDelete({
       type: "delete",
-      table: { name: "users" },
+      table: { type: "table_ref", name: "users" },
       where: col("status"),
       returning: [],
       ctes: [],

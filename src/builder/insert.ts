@@ -19,7 +19,8 @@ export class InsertBuilder {
   }
 
   into(table: string | TableRefNode): InsertBuilder {
-    const ref: TableRefNode = typeof table === "string" ? { name: table } : table;
+    const ref: TableRefNode =
+      typeof table === "string" ? { type: "table_ref", name: table } : table;
     return new InsertBuilder({ ...this.node, table: ref }, this.paramIndex);
   }
 

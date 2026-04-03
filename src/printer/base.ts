@@ -1,19 +1,25 @@
 import type {
+  ArrayExprNode,
   ASTNode,
   BetweenNode,
   BinaryOpNode,
+  CaseNode,
   CastNode,
   ColumnRefNode,
   CTENode,
   DeleteNode,
   ExistsNode,
   ExpressionNode,
+  FrameBound,
+  FrameSpec,
   FunctionCallNode,
   InNode,
   InsertNode,
   IsNullNode,
   JoinNode,
+  JsonAccessNode,
   LiteralNode,
+  OnConflictNode,
   OrderByNode,
   ParamNode,
   RawNode,
@@ -23,6 +29,7 @@ import type {
   TableRefNode,
   UnaryOpNode,
   UpdateNode,
+  WindowFunctionNode,
 } from "../ast/nodes.ts";
 import type { CompiledQuery, SQLDialect } from "../types.ts";
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts";
@@ -155,7 +162,7 @@ export class BasePrinter implements Printer {
     return parts.join(" ");
   }
 
-  protected printOnConflict(node: import("../ast/nodes.ts").OnConflictNode): string {
+  protected printOnConflict(node: OnConflictNode): string {
     const parts: string[] = ["ON CONFLICT"];
 
     if (node.columns.length > 0) {
@@ -260,6 +267,12 @@ export class BasePrinter implements Printer {
         return this.printStar(node);
       case "case":
         return this.printCase(node);
+      case "json_access":
+        return this.printJsonAccess(node);
+      case "array_expr":
+        return this.printArrayExpr(node);
+      case "window_function":
+        return this.printWindowFunction(node);
     }
   }
 
@@ -336,7 +349,7 @@ export class BasePrinter implements Printer {
     return `(${this.printExpression(node.expr)} IS${neg} NULL)`;
   }
 
-  protected printCase(node: import("../ast/nodes.ts").CaseNode): string {
+  protected printCase(node: CaseNode): string {
     const parts: string[] = ["CASE"];
     if (node.operand) {
       parts.push(this.printExpression(node.operand));
@@ -409,5 +422,66 @@ export class BasePrinter implements Printer {
       (c) => `${quoteIdentifier(c.name, this.dialect)} AS (${this.printSelect(c.query)})`,
     );
     return `${prefix} ${cteParts.join(", ")}`;
+  }
+
+  protected printJsonAccess(node: JsonAccessNode): string {
+    let result = `${this.printExpression(node.expr)}${node.operator}${this.printLiteral({ type: "literal", value: node.path })}`;
+    if (node.alias) {
+      result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`;
+    }
+    return result;
+  }
+
+  protected printArrayExpr(node: ArrayExprNode): string {
+    return `ARRAY[${node.elements.map((e) => this.printExpression(e)).join(", ")}]`;
+  }
+
+  protected printWindowFunction(node: WindowFunctionNode): string {
+    const parts: string[] = [];
+    parts.push(this.printFunctionCall(node.fn));
+    parts.push("OVER");
+
+    const overParts: string[] = [];
+    if (node.partitionBy.length > 0) {
+      overParts.push(
+        `PARTITION BY ${node.partitionBy.map((p) => this.printExpression(p)).join(", ")}`,
+      );
+    }
+    if (node.orderBy.length > 0) {
+      overParts.push(`ORDER BY ${node.orderBy.map((o) => this.printOrderBy(o)).join(", ")}`);
+    }
+    if (node.frame) {
+      overParts.push(this.printFrameSpec(node.frame));
+    }
+
+    parts.push(`(${overParts.join(" ")})`);
+
+    if (node.alias) {
+      parts.push("AS", quoteIdentifier(node.alias, this.dialect));
+    }
+    return parts.join(" ");
+  }
+
+  protected printFrameSpec(frame: FrameSpec): string {
+    const start = this.printFrameBound(frame.start);
+    if (frame.end) {
+      return `${frame.kind} BETWEEN ${start} AND ${this.printFrameBound(frame.end)}`;
+    }
+    return `${frame.kind} ${start}`;
+  }
+
+  protected printFrameBound(bound: FrameBound): string {
+    switch (bound.type) {
+      case "unbounded_preceding":
+        return "UNBOUNDED PRECEDING";
+      case "preceding":
+        return `${bound.value} PRECEDING`;
+      case "current_row":
+        return "CURRENT ROW";
+      case "following":
+        return `${bound.value} FOLLOWING`;
+      case "unbounded_following":
+        return "UNBOUNDED FOLLOWING";
+    }
   }
 }

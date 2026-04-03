@@ -108,6 +108,26 @@ export class ASTTransformer {
           ...node,
           expr: this.transformExpression(node.expr),
         };
+      case "json_access":
+        return {
+          ...node,
+          expr: this.transformExpression(node.expr),
+        };
+      case "array_expr":
+        return {
+          ...node,
+          elements: node.elements.map((e) => this.transformExpression(e)),
+        };
+      case "window_function":
+        return {
+          ...node,
+          fn: this.transformExpression(node.fn) as import("./nodes.ts").FunctionCallNode,
+          partitionBy: node.partitionBy.map((p) => this.transformExpression(p)),
+          orderBy: node.orderBy.map((o) => ({
+            ...o,
+            expr: this.transformExpression(o.expr),
+          })),
+        };
       default:
         return node;
     }

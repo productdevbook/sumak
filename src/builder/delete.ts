@@ -15,7 +15,8 @@ export class DeleteBuilder {
   }
 
   from(table: string | TableRefNode): DeleteBuilder {
-    const ref: TableRefNode = typeof table === "string" ? { name: table } : table;
+    const ref: TableRefNode =
+      typeof table === "string" ? { type: "table_ref", name: table } : table;
     return new DeleteBuilder({ ...this.node, table: ref });
   }
 

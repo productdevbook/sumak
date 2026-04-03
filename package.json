@@ -49,6 +49,10 @@
     "./sqlite": {
       "types": "./dist/sqlite.d.mts",
       "default": "./dist/sqlite.mjs"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.mts",
+      "default": "./dist/schema.mjs"
     }
   },
   "scripts": {
