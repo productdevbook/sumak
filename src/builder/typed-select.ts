@@ -197,6 +197,17 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.join("CROSS", table), this._table)
   }
 
+  /** Conditionally apply a transformation. */
+  $if<O2>(
+    condition: boolean,
+    fn: (qb: TypedSelectBuilder<DB, TB, O>) => TypedSelectBuilder<DB, TB, O2>,
+  ): TypedSelectBuilder<DB, TB, O | O2> {
+    if (condition) {
+      return fn(this) as any
+    }
+    return this as any
+  }
+
   /** Build the AST node. */
   build(): SelectNode {
     return this._builder.build()

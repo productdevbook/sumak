@@ -106,6 +106,17 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     return this._with(this._builder.with(name, query, recursive), this._paramIdx)
   }
 
+  /** Conditionally apply a transformation. */
+  $if(
+    condition: boolean,
+    fn: (qb: TypedUpdateBuilder<DB, TB>) => TypedUpdateBuilder<DB, TB>,
+  ): TypedUpdateBuilder<DB, TB> {
+    if (condition) {
+      return fn(this)
+    }
+    return this
+  }
+
   build() {
     return this._builder.build()
   }

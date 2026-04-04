@@ -107,6 +107,17 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     return this._withBuilder(this._builder.with(name, query, recursive), this._paramIdx)
   }
 
+  /** Conditionally apply a transformation. */
+  $if(
+    condition: boolean,
+    fn: (qb: TypedInsertBuilder<DB, TB>) => TypedInsertBuilder<DB, TB>,
+  ): TypedInsertBuilder<DB, TB> {
+    if (condition) {
+      return fn(this)
+    }
+    return this
+  }
+
   build() {
     return this._builder.build()
   }

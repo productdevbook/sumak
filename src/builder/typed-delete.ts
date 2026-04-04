@@ -73,6 +73,17 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
     return this._with(this._builder.with(name, query, recursive))
   }
 
+  /** Conditionally apply a transformation. */
+  $if(
+    condition: boolean,
+    fn: (qb: TypedDeleteBuilder<DB, TB>) => TypedDeleteBuilder<DB, TB>,
+  ): TypedDeleteBuilder<DB, TB> {
+    if (condition) {
+      return fn(this)
+    }
+    return this
+  }
+
   build() {
     return this._builder.build()
   }
