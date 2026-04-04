@@ -120,9 +120,10 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.rightJoin(table, unwrap(on)), this._table)
   }
 
-  /** GROUP BY */
-  groupBy(...cols: (keyof O & string)[]): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.groupBy(...cols), this._table)
+  /** GROUP BY — accepts column names or expressions */
+  groupBy(...cols: ((keyof O & string) | Expression<any>)[]): TypedSelectBuilder<DB, TB, O> {
+    const resolved = cols.map((c) => (typeof c === "string" ? c : unwrap(c)))
+    return new TypedSelectBuilder(this._builder.groupBy(...resolved), this._table)
   }
 
   /** HAVING */
@@ -138,13 +139,14 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.having(unwrap(exprOrCallback)), this._table)
   }
 
-  /** ORDER BY */
+  /** ORDER BY — accepts column name or expression */
   orderBy(
-    col: keyof O & string,
+    col: (keyof O & string) | Expression<any>,
     direction: OrderDirection = "ASC",
     nulls?: "FIRST" | "LAST",
   ): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.orderBy(col, direction, nulls), this._table)
+    const expr = typeof col === "string" ? col : unwrap(col)
+    return new TypedSelectBuilder(this._builder.orderBy(expr, direction, nulls), this._table)
   }
 
   /** LIMIT */
