@@ -19,7 +19,7 @@ import {
 } from "./src/index.ts";
 
 // ─────────────────────────────────────────────
-// 1. Schema — tek adımda, tip otomatik infer
+// 1. Schema
 // ─────────────────────────────────────────────
 
 const db = lale({
@@ -55,68 +55,73 @@ const db = lale({
 const p = db.printer();
 
 console.log("═══════════════════════════════════════");
-console.log("  lale playground — clean API");
+console.log("  lale playground");
 console.log("═══════════════════════════════════════\n");
 
 // ─────────────────────────────────────────────
-// 2. SELECT — callback where
+// 2. SELECT
 // ─────────────────────────────────────────────
 
 console.log("── SELECT ──\n");
 
-// Basit
-console.log(db.selectFrom("users").select("id", "name").compile(p).sql);
+const q1 = db.selectFrom("users").select("id", "name");
 
-// Where callback — kolonda tip otomatik
-const q1 = db.selectFrom("users").where(({ id }) => id.eq(42));
-console.log(q1.compile(p).sql, " params:", q1.compile(p).params);
+console.log(q1.compile(p).sql);
 
-// And/Or combinatorleri
-const q2 = db
+const q2 = db.selectFrom("users").where(({ id }) => id.eq(42));
+
+const r2 = q2.compile(p);
+console.log(r2.sql);
+console.log("params:", r2.params);
+
+const q3 = db
   .selectFrom("users")
   .select("id", "name", "email")
   .where(({ age, active }) => and(age.gte(18), active.eq(true)))
   .orderBy("name")
   .limit(10);
-console.log(q2.compile(p).sql);
 
-// Like
-const q3 = db.selectFrom("users").where(({ name }) => name.like("%ali%"));
 console.log(q3.compile(p).sql);
 
-// In list
-const q4 = db.selectFrom("users").where(({ id }) => id.in([1, 2, 3]));
+const q4 = db.selectFrom("users").where(({ name }) => name.like("%ali%"));
+
 console.log(q4.compile(p).sql);
 
-// Between
-const q5 = db.selectFrom("users").where(({ age }) => age.between(18, 65));
+const q5 = db.selectFrom("users").where(({ id }) => id.in([1, 2, 3]));
+
 console.log(q5.compile(p).sql);
 
-// IsNull / IsNotNull
-const q6 = db.selectFrom("users").where(({ bio }) => bio.isNull());
+const q6 = db.selectFrom("users").where(({ age }) => age.between(18, 65));
+
 console.log(q6.compile(p).sql);
 
-// Or
-const q7 = db
-  .selectFrom("users")
-  .where(({ name, email }) => or(name.like("%test%"), email.like("%test%")));
+const q7 = db.selectFrom("users").where(({ bio }) => bio.isNull());
+
 console.log(q7.compile(p).sql);
 
+const q8 = db
+  .selectFrom("users")
+  .where(({ name, email }) => or(name.like("%test%"), email.like("%test%")));
+
+console.log(q8.compile(p).sql);
+
 // ─────────────────────────────────────────────
-// 3. JOIN — table-qualified callback
+// 3. JOIN
 // ─────────────────────────────────────────────
 
 console.log("\n── JOIN ──\n");
 
-const q8 = db
-  .selectFrom("users")
-  .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
-console.log(q8.compile(p).sql);
-
 const q9 = db
   .selectFrom("users")
-  .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
+  .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
+
 console.log(q9.compile(p).sql);
+
+const q10 = db
+  .selectFrom("users")
+  .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
+
+console.log(q10.compile(p).sql);
 
 // ─────────────────────────────────────────────
 // 4. INSERT
@@ -124,73 +129,98 @@ console.log(q9.compile(p).sql);
 
 console.log("\n── INSERT ──\n");
 
-const q10 = db.insertInto("users").values({ name: "Alice", email: "alice@example.com" });
-const r10 = q10.compile(p);
-console.log(r10.sql, " params:", r10.params);
+const q11 = db.insertInto("users").values({
+  name: "Alice",
+  email: "alice@example.com",
+});
 
-const q11 = db.insertInto("posts").values({ title: "Hello World", userId: 1 }).returningAll();
-console.log(q11.compile(p).sql);
+const r11 = q11.compile(p);
+console.log(r11.sql);
+console.log("params:", r11.params);
+
+const q12 = db
+  .insertInto("posts")
+  .values({
+    title: "Hello World",
+    userId: 1,
+  })
+  .returningAll();
+
+console.log(q12.compile(p).sql);
 
 // ─────────────────────────────────────────────
-// 5. UPDATE — callback where
+// 5. UPDATE
 // ─────────────────────────────────────────────
 
 console.log("\n── UPDATE ──\n");
 
-const q12 = db
+const q13 = db
   .update("users")
-  .set({ name: "Bob", active: false })
+  .set({
+    name: "Bob",
+    active: false,
+  })
   .where(({ id }) => id.eq(1));
-console.log(q12.compile(p).sql);
+
+console.log(q13.compile(p).sql);
 
 // ─────────────────────────────────────────────
-// 6. DELETE — callback where
+// 6. DELETE
 // ─────────────────────────────────────────────
 
 console.log("\n── DELETE ──\n");
 
-const q13 = db.deleteFrom("comments").where(({ postId }) => postId.eq(99));
-console.log(q13.compile(p).sql);
+const q14 = db.deleteFrom("comments").where(({ postId }) => postId.eq(99));
+
+console.log(q14.compile(p).sql);
 
 // ─────────────────────────────────────────────
-// 7. Dialect karşılaştırma
+// 7. Dialects
 // ─────────────────────────────────────────────
 
 console.log("\n── DIALECTS ──\n");
 
 const mysqlDb = lale({
   dialect: mysqlDialect(),
-  tables: { users: { id: serial(), name: text().notNull() } },
+  tables: {
+    users: {
+      id: serial(),
+      name: text().notNull(),
+    },
+  },
 });
+
 const sqliteDb = lale({
   dialect: sqliteDialect(),
-  tables: { users: { id: serial(), name: text().notNull() } },
+  tables: {
+    users: {
+      id: serial(),
+      name: text().notNull(),
+    },
+  },
 });
 
-console.log(
-  "PG:    ",
-  db
-    .selectFrom("users")
-    .where(({ id }) => id.eq(1))
-    .compile(p).sql,
-);
-console.log(
-  "MySQL: ",
-  mysqlDb
-    .selectFrom("users")
-    .where(({ id }) => id.eq(1))
-    .compile(mysqlDb.printer()).sql,
-);
-console.log(
-  "SQLite:",
-  sqliteDb
-    .selectFrom("users")
-    .where(({ id }) => id.eq(1))
-    .compile(sqliteDb.printer()).sql,
-);
+const pgResult = db
+  .selectFrom("users")
+  .where(({ id }) => id.eq(1))
+  .compile(p);
+
+const mysqlResult = mysqlDb
+  .selectFrom("users")
+  .where(({ id }) => id.eq(1))
+  .compile(mysqlDb.printer());
+
+const sqliteResult = sqliteDb
+  .selectFrom("users")
+  .where(({ id }) => id.eq(1))
+  .compile(sqliteDb.printer());
+
+console.log("PG:    ", pgResult.sql);
+console.log("MySQL: ", mysqlResult.sql);
+console.log("SQLite:", sqliteResult.sql);
 
 // ─────────────────────────────────────────────
-// 8. Plugin'ler
+// 8. Plugins
 // ─────────────────────────────────────────────
 
 console.log("\n── PLUGINS ──\n");
@@ -198,12 +228,26 @@ console.log("\n── PLUGINS ──\n");
 const dbPlugins = lale({
   dialect: pgDialect(),
   plugins: [new WithSchemaPlugin("app"), new SoftDeletePlugin({ tables: ["users"] })],
-  tables: { users: { id: serial(), name: text().notNull() } },
+  tables: {
+    users: {
+      id: serial(),
+      name: text().notNull(),
+    },
+  },
 });
-console.log(dbPlugins.compile(dbPlugins.selectFrom("users").build()).sql);
+
+const pluginNode = dbPlugins.selectFrom("users").build();
+
+console.log(dbPlugins.compile(pluginNode).sql);
 
 const camel = new CamelCasePlugin();
-console.log(camel.transformResult!([{ first_name: "Alice", created_at: "2026-01-01" }])[0]);
+const rows = camel.transformResult!([
+  {
+    first_name: "Alice",
+    created_at: "2026-01-01",
+  },
+]);
+console.log(rows[0]);
 
 // ─────────────────────────────────────────────
 // 9. Hooks
@@ -211,22 +255,24 @@ console.log(camel.transformResult!([{ first_name: "Alice", created_at: "2026-01-
 
 console.log("\n── HOOKS ──\n");
 
-const dbH = lale({ dialect: pgDialect(), tables: { users: { id: serial() } } });
+const dbH = lale({
+  dialect: pgDialect(),
+  tables: {
+    users: {
+      id: serial(),
+    },
+  },
+});
+
 dbH.hook("query:after", (ctx) => {
   console.log(`[LOG] ${ctx.query.sql}`);
-  return { ...ctx.query, sql: `${ctx.query.sql} /* traced */` };
+  return {
+    ...ctx.query,
+    sql: `${ctx.query.sql} /* traced */`,
+  };
 });
-console.log("Result:", dbH.compile(dbH.selectFrom("users").build()).sql);
 
-console.log("\n═══════════════════════════════════════");
-console.log("  ESKİ API vs YENİ API");
-console.log("═══════════════════════════════════════\n");
+const hookNode = dbH.selectFrom("users").build();
 
-console.log("ESKİ: typedEq(typedCol<number>('id'), typedParam(0, 42))");
-console.log("YENİ: ({ id }) => id.eq(42)");
-console.log("\nESKİ: typedAnd(typedGt(typedCol<number>('age'), typedLit(18)), typedEq(...))");
-console.log("YENİ: ({ age, active }) => and(age.gte(18), active.eq(true))");
-console.log(
-  "\nESKİ: innerJoin('posts', typedEq(typedCol<number>('users.id'), typedCol<number>('posts.userId')))",
-);
-console.log("YENİ: innerJoin('posts', ({ users, posts }) => users.id.eqCol(posts.userId))");
+const hookResult = dbH.compile(hookNode);
+console.log("Result:", hookResult.sql);
