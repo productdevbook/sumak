@@ -227,10 +227,24 @@ db.selectFrom("users").crossJoin("posts").compile(db.printer())
 )
 ```
 
+### Null-Safe Comparisons
+
+```ts
+// IS DISTINCT FROM — null-safe inequality
+.where(({ age }) =>
+  age.isDistinctFrom(null),
+)
+
+// IS NOT DISTINCT FROM — null-safe equality
+.where(({ age }) =>
+  age.isNotDistinctFrom(25),
+)
+```
+
 ### Aggregates
 
 ```ts
-import { count, countDistinct, sum, avg, min, max, coalesce } from "sumak"
+import { count, countDistinct, sumDistinct, avgDistinct, sum, avg, min, max, coalesce } from "sumak"
 
 db.selectFrom("users").selectExpr(count(), "total").compile(db.printer())
 
@@ -243,6 +257,50 @@ db.selectFrom("orders").selectExpr(avg(col.amount), "avgAmount").compile(db.prin
 
 db.selectFrom("orders")
   .selectExpr(coalesce(col.discount, val(0)), "safeDiscount")
+  .compile(db.printer())
+
+// SUM(DISTINCT), AVG(DISTINCT)
+db.selectFrom("orders").selectExpr(sumDistinct(col.amount), "uniqueSum").compile(db.printer())
+db.selectFrom("orders").selectExpr(avgDistinct(col.amount), "uniqueAvg").compile(db.printer())
+
+// COALESCE with multiple fallbacks
+db.selectFrom("users")
+  .selectExpr(coalesce(col.nick, col.name, val("Anonymous")), "displayName")
+  .compile(db.printer())
+```
+
+### String & JSON Aggregates
+
+```ts
+import { stringAgg, arrayAgg, jsonAgg, jsonBuildObject } from "sumak"
+
+// STRING_AGG with ORDER BY
+db.selectFrom("users")
+  .selectExpr(stringAgg(col.name, ", ", [{ expr: col.name, direction: "ASC" }]), "names")
+  .compile(db.printer())
+// STRING_AGG("name", ', ' ORDER BY "name" ASC)
+
+// ARRAY_AGG
+db.selectFrom("users").selectExpr(arrayAgg(col.id), "ids").compile(db.printer())
+
+// JSON_AGG / JSON_BUILD_OBJECT
+db.selectFrom("users").selectExpr(jsonAgg(col.name), "namesJson").compile(db.printer())
+
+db.selectFrom("users")
+  .selectExpr(jsonBuildObject(["name", col.name], ["age", col.age]), "obj")
+  .compile(db.printer())
+```
+
+### Arithmetic
+
+```ts
+import { add, sub, mul, div, mod, neg } from "sumak"
+
+db.selectFrom("orders").selectExpr(mul(col.price, col.qty), "total").compile(db.printer())
+// ("price" * "qty") AS "total"
+
+db.selectFrom("orders")
+  .selectExpr(add(col.price, val(10)), "adjusted")
   .compile(db.printer())
 ```
 
@@ -525,6 +583,28 @@ db.selectFrom("users")
   .where(({ active }) => active.eq(true))
   .compile(db.printer())
 // WHERE ("age" > $1) AND ("active" = $2)
+```
+
+## Reusable Query Fragments
+
+```ts
+// $call — pipe builder through a function
+const withPagination = (qb) => qb.limit(10).offset(20)
+const withActiveFilter = (qb) => qb.where(({ active }) => active.eq(true))
+
+db.selectFrom("users")
+  .select("id", "name")
+  .$call(withActiveFilter)
+  .$call(withPagination)
+  .compile(db.printer())
+
+// selectExprs — multiple aliased expressions at once
+db.selectFrom("users")
+  .selectExprs({
+    total: count(),
+    greeting: val("hello"),
+  })
+  .compile(db.printer())
 ```
 
 ## INSERT Advanced
