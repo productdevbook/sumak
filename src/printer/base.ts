@@ -29,6 +29,7 @@ import type {
   StarNode,
   SubqueryNode,
   TableRefNode,
+  TupleNode,
   UnaryOpNode,
   UpdateNode,
   WindowFunctionNode,
@@ -317,6 +318,8 @@ export class BasePrinter implements Printer {
         return this.printAliasedExpr(node)
       case "full_text_search":
         return this.printFullTextSearch(node)
+      case "tuple":
+        return this.printTuple(node)
     }
   }
 
@@ -612,6 +615,10 @@ export class BasePrinter implements Printer {
 
   protected printAliasedExpr(node: AliasedExprNode): string {
     return `${this.printExpression(node.expr)} AS ${quoteIdentifier(node.alias, this.dialect)}`
+  }
+
+  protected printTuple(node: TupleNode): string {
+    return `(${node.elements.map((e) => this.printExpression(e)).join(", ")})`
   }
 
   protected printExplain(node: ExplainNode): string {

@@ -37,6 +37,7 @@ export type ExpressionNode =
   | WindowFunctionNode
   | AliasedExprNode
   | FullTextSearchNode
+  | TupleNode
 
 export interface ColumnRefNode {
   type: "column_ref"
@@ -145,6 +146,11 @@ export interface FullTextSearchNode {
   mode?: FullTextSearchMode
   language?: string
   alias?: string
+}
+
+export interface TupleNode {
+  type: "tuple"
+  elements: ExpressionNode[]
 }
 
 export interface AliasedExprNode {

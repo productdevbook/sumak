@@ -22,6 +22,7 @@ import type {
   JsonAccessNode,
   OrderByNode,
   SelectNode,
+  TupleNode,
   WindowFunctionNode,
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
@@ -616,6 +617,22 @@ export function ceil(expr: Expression<number>): Expression<number> {
 /** FLOOR(expr) */
 export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
+}
+
+/**
+ * Row-value tuple for comparisons.
+ *
+ * ```ts
+ * // (a, b) = (1, 2)
+ * tuple(cols.a.toExpr(), cols.b.toExpr())
+ * ```
+ */
+export function tuple(...exprs: Expression<any>[]): Expression<any> {
+  const node: TupleNode = {
+    type: "tuple",
+    elements: exprs.map((e) => (e as any).node),
+  }
+  return wrap(node)
 }
 
 /**
