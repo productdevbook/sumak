@@ -1,16 +1,16 @@
-import type { ASTNode, DeleteNode, InsertNode, SelectNode, UpdateNode } from "../ast/nodes.ts";
-import type { CompiledQuery } from "../types.ts";
+import type { ASTNode, DeleteNode, InsertNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
+import type { CompiledQuery } from "../types.ts"
 
 /**
  * Hook context passed to hook handlers.
  */
 export interface HookContext<T extends ASTNode = ASTNode> {
   /** The AST node being processed */
-  node: T;
+  node: T
   /** Table name (if applicable) */
-  table?: string;
+  table?: string
   /** Compiled query (only in after hooks) */
-  query?: CompiledQuery;
+  query?: CompiledQuery
 }
 
 /**
@@ -18,24 +18,24 @@ export interface HookContext<T extends ASTNode = ASTNode> {
  */
 export interface SumakHooks {
   /** Fires before any query is compiled. Can modify the AST. */
-  "query:before": (ctx: HookContext) => ASTNode | void;
+  "query:before": (ctx: HookContext) => ASTNode | void
   /** Fires after a query is compiled to SQL. Can modify the compiled query. */
-  "query:after": (ctx: HookContext & { query: CompiledQuery }) => CompiledQuery | void;
+  "query:after": (ctx: HookContext & { query: CompiledQuery }) => CompiledQuery | void
 
   /** Fires before SELECT compilation. Can modify the SelectNode. */
-  "select:before": (ctx: HookContext<SelectNode>) => SelectNode | void;
+  "select:before": (ctx: HookContext<SelectNode>) => SelectNode | void
   /** Fires before INSERT compilation. Can modify the InsertNode. */
-  "insert:before": (ctx: HookContext<InsertNode>) => InsertNode | void;
+  "insert:before": (ctx: HookContext<InsertNode>) => InsertNode | void
   /** Fires before UPDATE compilation. Can modify the UpdateNode. */
-  "update:before": (ctx: HookContext<UpdateNode>) => UpdateNode | void;
+  "update:before": (ctx: HookContext<UpdateNode>) => UpdateNode | void
   /** Fires before DELETE compilation. Can modify the DeleteNode. */
-  "delete:before": (ctx: HookContext<DeleteNode>) => DeleteNode | void;
+  "delete:before": (ctx: HookContext<DeleteNode>) => DeleteNode | void
 
   /** Transform result rows. */
-  "result:transform": (rows: Record<string, unknown>[]) => Record<string, unknown>[];
+  "result:transform": (rows: Record<string, unknown>[]) => Record<string, unknown>[]
 }
 
-export type HookName = keyof SumakHooks;
+export type HookName = keyof SumakHooks
 
 /**
  * Hookable system — register and execute hooks.
@@ -49,7 +49,7 @@ export type HookName = keyof SumakHooks;
  * ```
  */
 export class Hookable {
-  private _hooks: Map<string, Function[]> = new Map();
+  private _hooks: Map<string, Function[]> = new Map()
 
   /**
    * Register a hook handler.
@@ -57,17 +57,17 @@ export class Hookable {
    */
   hook<K extends HookName>(name: K, handler: SumakHooks[K]): () => void {
     if (!this._hooks.has(name)) {
-      this._hooks.set(name, []);
+      this._hooks.set(name, [])
     }
-    this._hooks.get(name)!.push(handler);
+    this._hooks.get(name)!.push(handler)
 
     return () => {
-      const handlers = this._hooks.get(name);
+      const handlers = this._hooks.get(name)
       if (handlers) {
-        const idx = handlers.indexOf(handler);
-        if (idx !== -1) handlers.splice(idx, 1);
+        const idx = handlers.indexOf(handler)
+        if (idx !== -1) handlers.splice(idx, 1)
       }
-    };
+    }
   }
 
   /**
@@ -79,14 +79,14 @@ export class Hookable {
     name: K,
     ...args: Parameters<SumakHooks[K]>
   ): ReturnType<SumakHooks[K]> | undefined {
-    const handlers = this._hooks.get(name);
-    if (!handlers || handlers.length === 0) return undefined;
+    const handlers = this._hooks.get(name)
+    if (!handlers || handlers.length === 0) return undefined
 
-    let result: any = undefined;
+    let result: any = undefined
     for (const handler of handlers) {
-      const ret = handler(...args);
+      const ret = handler(...args)
       if (ret !== undefined) {
-        result = ret;
+        result = ret
         // For AST hooks, update the context for next handler
         if (
           name !== "result:transform" &&
@@ -94,32 +94,32 @@ export class Hookable {
           typeof args[0] === "object" &&
           "node" in args[0]
         ) {
-          (args[0] as any).node = ret;
+          ;(args[0] as any).node = ret
         }
       }
     }
-    return result;
+    return result
   }
 
   /**
    * Check if any handlers are registered for a hook.
    */
   hasHook(name: HookName): boolean {
-    const handlers = this._hooks.get(name);
-    return handlers !== undefined && handlers.length > 0;
+    const handlers = this._hooks.get(name)
+    return handlers !== undefined && handlers.length > 0
   }
 
   /**
    * Remove all handlers for a hook.
    */
   removeHook(name: HookName): void {
-    this._hooks.delete(name);
+    this._hooks.delete(name)
   }
 
   /**
    * Remove all hooks.
    */
   removeAllHooks(): void {
-    this._hooks.clear();
+    this._hooks.clear()
   }
 }

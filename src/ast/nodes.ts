@@ -1,6 +1,6 @@
-import type { JoinType, OrderDirection, SetOperator } from "../types.ts";
+import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
 
-export type ASTNode = SelectNode | InsertNode | UpdateNode | DeleteNode | ExpressionNode;
+export type ASTNode = SelectNode | InsertNode | UpdateNode | DeleteNode | ExpressionNode
 
 export type ExpressionNode =
   | ColumnRefNode
@@ -20,224 +20,224 @@ export type ExpressionNode =
   | StarNode
   | JsonAccessNode
   | ArrayExprNode
-  | WindowFunctionNode;
+  | WindowFunctionNode
 
 export interface ColumnRefNode {
-  type: "column_ref";
-  table?: string;
-  column: string;
-  alias?: string;
+  type: "column_ref"
+  table?: string
+  column: string
+  alias?: string
 }
 
 export interface LiteralNode {
-  type: "literal";
-  value: string | number | boolean | null;
+  type: "literal"
+  value: string | number | boolean | null
 }
 
 export interface BinaryOpNode {
-  type: "binary_op";
-  op: string;
-  left: ExpressionNode;
-  right: ExpressionNode;
+  type: "binary_op"
+  op: string
+  left: ExpressionNode
+  right: ExpressionNode
 }
 
 export interface UnaryOpNode {
-  type: "unary_op";
-  op: string;
-  operand: ExpressionNode;
-  position: "prefix" | "postfix";
+  type: "unary_op"
+  op: string
+  operand: ExpressionNode
+  position: "prefix" | "postfix"
 }
 
 export interface FunctionCallNode {
-  type: "function_call";
-  name: string;
-  args: ExpressionNode[];
-  alias?: string;
+  type: "function_call"
+  name: string
+  args: ExpressionNode[]
+  alias?: string
 }
 
 export interface ParamNode {
-  type: "param";
-  index: number;
-  value: unknown;
+  type: "param"
+  index: number
+  value: unknown
 }
 
 export interface RawNode {
-  type: "raw";
-  sql: string;
-  params: unknown[];
+  type: "raw"
+  sql: string
+  params: unknown[]
 }
 
 export interface SubqueryNode {
-  type: "subquery";
-  query: SelectNode;
-  alias?: string;
+  type: "subquery"
+  query: SelectNode
+  alias?: string
 }
 
 export interface BetweenNode {
-  type: "between";
-  expr: ExpressionNode;
-  low: ExpressionNode;
-  high: ExpressionNode;
-  negated: boolean;
+  type: "between"
+  expr: ExpressionNode
+  low: ExpressionNode
+  high: ExpressionNode
+  negated: boolean
 }
 
 export interface InNode {
-  type: "in";
-  expr: ExpressionNode;
-  values: ExpressionNode[] | SelectNode;
-  negated: boolean;
+  type: "in"
+  expr: ExpressionNode
+  values: ExpressionNode[] | SelectNode
+  negated: boolean
 }
 
 export interface IsNullNode {
-  type: "is_null";
-  expr: ExpressionNode;
-  negated: boolean;
+  type: "is_null"
+  expr: ExpressionNode
+  negated: boolean
 }
 
 export interface CaseNode {
-  type: "case";
-  operand?: ExpressionNode;
-  whens: { condition: ExpressionNode; result: ExpressionNode }[];
-  else_?: ExpressionNode;
+  type: "case"
+  operand?: ExpressionNode
+  whens: { condition: ExpressionNode; result: ExpressionNode }[]
+  else_?: ExpressionNode
 }
 
 export interface CastNode {
-  type: "cast";
-  expr: ExpressionNode;
-  dataType: string;
+  type: "cast"
+  expr: ExpressionNode
+  dataType: string
 }
 
 export interface ExistsNode {
-  type: "exists";
-  query: SelectNode;
-  negated: boolean;
+  type: "exists"
+  query: SelectNode
+  negated: boolean
 }
 
 export interface StarNode {
-  type: "star";
-  table?: string;
+  type: "star"
+  table?: string
 }
 
 export interface TableRefNode {
-  type: "table_ref";
-  name: string;
-  alias?: string;
-  schema?: string;
+  type: "table_ref"
+  name: string
+  alias?: string
+  schema?: string
 }
 
 export interface JoinNode {
-  type: "join";
-  joinType: JoinType;
-  table: TableRefNode | SubqueryNode;
-  on?: ExpressionNode;
+  type: "join"
+  joinType: JoinType
+  table: TableRefNode | SubqueryNode
+  on?: ExpressionNode
 }
 
 export interface JsonAccessNode {
-  type: "json_access";
-  expr: ExpressionNode;
-  path: string;
-  operator: "->" | "->>" | "#>" | "#>>";
-  alias?: string;
+  type: "json_access"
+  expr: ExpressionNode
+  path: string
+  operator: "->" | "->>" | "#>" | "#>>"
+  alias?: string
 }
 
 export interface ArrayExprNode {
-  type: "array_expr";
-  elements: ExpressionNode[];
+  type: "array_expr"
+  elements: ExpressionNode[]
 }
 
-export type FrameKind = "ROWS" | "RANGE" | "GROUPS";
+export type FrameKind = "ROWS" | "RANGE" | "GROUPS"
 export type FrameBound =
   | { type: "unbounded_preceding" }
   | { type: "preceding"; value: number }
   | { type: "current_row" }
   | { type: "following"; value: number }
-  | { type: "unbounded_following" };
+  | { type: "unbounded_following" }
 
 export interface FrameSpec {
-  kind: FrameKind;
-  start: FrameBound;
-  end?: FrameBound;
+  kind: FrameKind
+  start: FrameBound
+  end?: FrameBound
 }
 
 export interface WindowFunctionNode {
-  type: "window_function";
-  fn: FunctionCallNode;
-  partitionBy: ExpressionNode[];
-  orderBy: OrderByNode[];
-  frame?: FrameSpec;
-  alias?: string;
+  type: "window_function"
+  fn: FunctionCallNode
+  partitionBy: ExpressionNode[]
+  orderBy: OrderByNode[]
+  frame?: FrameSpec
+  alias?: string
 }
 
 export interface OrderByNode {
-  expr: ExpressionNode;
-  direction: OrderDirection;
-  nulls?: "FIRST" | "LAST";
+  expr: ExpressionNode
+  direction: OrderDirection
+  nulls?: "FIRST" | "LAST"
 }
 
 export interface CTENode {
-  name: string;
-  query: SelectNode;
-  recursive: boolean;
+  name: string
+  query: SelectNode
+  recursive: boolean
 }
 
 export interface WindowNode {
-  partitionBy: ExpressionNode[];
-  orderBy: OrderByNode[];
+  partitionBy: ExpressionNode[]
+  orderBy: OrderByNode[]
 }
 
 export interface SelectNode {
-  type: "select";
-  distinct: boolean;
-  columns: ExpressionNode[];
-  from?: TableRefNode | SubqueryNode;
-  joins: JoinNode[];
-  where?: ExpressionNode;
-  groupBy: ExpressionNode[];
-  having?: ExpressionNode;
-  orderBy: OrderByNode[];
-  limit?: ExpressionNode;
-  offset?: ExpressionNode;
-  ctes: CTENode[];
-  setOp?: { op: SetOperator; query: SelectNode };
-  forUpdate: boolean;
+  type: "select"
+  distinct: boolean
+  columns: ExpressionNode[]
+  from?: TableRefNode | SubqueryNode
+  joins: JoinNode[]
+  where?: ExpressionNode
+  groupBy: ExpressionNode[]
+  having?: ExpressionNode
+  orderBy: OrderByNode[]
+  limit?: ExpressionNode
+  offset?: ExpressionNode
+  ctes: CTENode[]
+  setOp?: { op: SetOperator; query: SelectNode }
+  forUpdate: boolean
 }
 
 export interface InsertNode {
-  type: "insert";
-  table: TableRefNode;
-  columns: string[];
-  values: ExpressionNode[][];
-  returning: ExpressionNode[];
-  onConflict?: OnConflictNode;
-  ctes: CTENode[];
+  type: "insert"
+  table: TableRefNode
+  columns: string[]
+  values: ExpressionNode[][]
+  returning: ExpressionNode[]
+  onConflict?: OnConflictNode
+  ctes: CTENode[]
 }
 
 export interface OnConflictNode {
-  columns: string[];
-  action: "nothing" | { set: { column: string; value: ExpressionNode }[] };
-  where?: ExpressionNode;
+  columns: string[]
+  action: "nothing" | { set: { column: string; value: ExpressionNode }[] }
+  where?: ExpressionNode
 }
 
 export interface UpdateNode {
-  type: "update";
-  table: TableRefNode;
-  set: { column: string; value: ExpressionNode }[];
-  where?: ExpressionNode;
-  returning: ExpressionNode[];
-  from?: TableRefNode;
-  ctes: CTENode[];
+  type: "update"
+  table: TableRefNode
+  set: { column: string; value: ExpressionNode }[]
+  where?: ExpressionNode
+  returning: ExpressionNode[]
+  from?: TableRefNode
+  ctes: CTENode[]
 }
 
 export interface DeleteNode {
-  type: "delete";
-  table: TableRefNode;
-  where?: ExpressionNode;
-  returning: ExpressionNode[];
-  ctes: CTENode[];
+  type: "delete"
+  table: TableRefNode
+  where?: ExpressionNode
+  returning: ExpressionNode[]
+  ctes: CTENode[]
 }
 
 export function tableRef(name: string, alias?: string, schema?: string): TableRefNode {
-  return Object.freeze({ type: "table_ref" as const, name, alias, schema });
+  return Object.freeze({ type: "table_ref" as const, name, alias, schema })
 }
 
 export function createSelectNode(): SelectNode {
@@ -250,7 +250,7 @@ export function createSelectNode(): SelectNode {
     orderBy: Object.freeze([]) as OrderByNode[],
     ctes: Object.freeze([]) as CTENode[],
     forUpdate: false,
-  }) as SelectNode;
+  }) as SelectNode
 }
 
 export function createInsertNode(table: TableRefNode): InsertNode {
@@ -261,7 +261,7 @@ export function createInsertNode(table: TableRefNode): InsertNode {
     values: Object.freeze([]) as ExpressionNode[][],
     returning: Object.freeze([]) as ExpressionNode[],
     ctes: Object.freeze([]) as CTENode[],
-  }) as InsertNode;
+  }) as InsertNode
 }
 
 export function createUpdateNode(table: TableRefNode): UpdateNode {
@@ -271,7 +271,7 @@ export function createUpdateNode(table: TableRefNode): UpdateNode {
     set: Object.freeze([]) as { column: string; value: ExpressionNode }[],
     returning: Object.freeze([]) as ExpressionNode[],
     ctes: Object.freeze([]) as CTENode[],
-  }) as UpdateNode;
+  }) as UpdateNode
 }
 
 export function createDeleteNode(table: TableRefNode): DeleteNode {
@@ -280,5 +280,5 @@ export function createDeleteNode(table: TableRefNode): DeleteNode {
     table,
     returning: Object.freeze([]) as ExpressionNode[],
     ctes: Object.freeze([]) as CTENode[],
-  }) as DeleteNode;
+  }) as DeleteNode
 }

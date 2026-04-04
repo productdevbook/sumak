@@ -22,7 +22,7 @@ export {
   timestamptz,
   uuid,
   varchar,
-} from "./schema/index.ts";
+} from "./schema/index.ts"
 export type {
   ColumnDef,
   ColumnType,
@@ -37,4 +37,4 @@ export type {
   TableDefinition,
   Updateable,
   UpdateType,
-} from "./schema/index.ts";
+} from "./schema/index.ts"

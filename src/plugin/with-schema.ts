@@ -5,8 +5,8 @@ import type {
   UpdateNode,
   DeleteNode,
   TableRefNode,
-} from "../ast/nodes.ts";
-import type { SumakPlugin } from "./types.ts";
+} from "../ast/nodes.ts"
+import type { SumakPlugin } from "./types.ts"
 
 /**
  * Plugin that prepends a schema name to all table references.
@@ -17,31 +17,31 @@ import type { SumakPlugin } from "./types.ts";
  * ```
  */
 export class WithSchemaPlugin implements SumakPlugin {
-  readonly name = "with-schema";
-  private schema: string;
+  readonly name = "with-schema"
+  private schema: string
 
   constructor(schema: string) {
-    this.schema = schema;
+    this.schema = schema
   }
 
   transformNode(node: ASTNode): ASTNode {
     switch (node.type) {
       case "select":
-        return this.transformSelect(node);
+        return this.transformSelect(node)
       case "insert":
-        return this.transformInsert(node);
+        return this.transformInsert(node)
       case "update":
-        return this.transformUpdate(node);
+        return this.transformUpdate(node)
       case "delete":
-        return this.transformDelete(node);
+        return this.transformDelete(node)
       default:
-        return node;
+        return node
     }
   }
 
   private addSchema(ref: TableRefNode): TableRefNode {
-    if (ref.schema) return ref;
-    return { ...ref, schema: this.schema };
+    if (ref.schema) return ref
+    return { ...ref, schema: this.schema }
   }
 
   private transformSelect(node: SelectNode): SelectNode {
@@ -56,11 +56,11 @@ export class WithSchemaPlugin implements SumakPlugin {
         ...j,
         table: j.table.type === "table_ref" ? this.addSchema(j.table) : j.table,
       })),
-    };
+    }
   }
 
   private transformInsert(node: InsertNode): InsertNode {
-    return { ...node, table: this.addSchema(node.table) };
+    return { ...node, table: this.addSchema(node.table) }
   }
 
   private transformUpdate(node: UpdateNode): UpdateNode {
@@ -68,10 +68,10 @@ export class WithSchemaPlugin implements SumakPlugin {
       ...node,
       table: this.addSchema(node.table),
       from: node.from ? this.addSchema(node.from) : undefined,
-    };
+    }
   }
 
   private transformDelete(node: DeleteNode): DeleteNode {
-    return { ...node, table: this.addSchema(node.table) };
+    return { ...node, table: this.addSchema(node.table) }
   }
 }

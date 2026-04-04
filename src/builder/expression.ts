@@ -1,4 +1,4 @@
-import type { ExpressionNode } from "../ast/nodes.ts";
+import type { ExpressionNode } from "../ast/nodes.ts"
 import {
   and,
   between,
@@ -18,17 +18,17 @@ import {
   not,
   or,
   param,
-} from "../ast/expression.ts";
+} from "../ast/expression.ts"
 
-let paramCounter = 0;
+let paramCounter = 0
 
 export function resetParamCounter(): void {
-  paramCounter = 0;
+  paramCounter = 0
 }
 
 export function val(value: unknown): ExpressionNode {
-  const index = paramCounter++;
-  return param(index, value);
+  const index = paramCounter++
+  return param(index, value)
 }
 
 export {
@@ -49,4 +49,4 @@ export {
   neq,
   not,
   or,
-};
+}

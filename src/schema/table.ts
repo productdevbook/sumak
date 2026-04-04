@@ -1,5 +1,5 @@
-import type { ColumnBuilder } from "./column.ts";
-import type { ColumnType } from "./types.ts";
+import type { ColumnBuilder } from "./column.ts"
+import type { ColumnType } from "./types.ts"
 
 export interface TableDefinition<
   TName extends string = string,
@@ -8,8 +8,8 @@ export interface TableDefinition<
     ColumnBuilder<any, any, any>
   >,
 > {
-  readonly name: TName;
-  readonly columns: TColumns;
+  readonly name: TName
+  readonly columns: TColumns
 }
 
 /**
@@ -28,7 +28,7 @@ export function defineTable<
   TName extends string,
   TColumns extends Record<string, ColumnBuilder<any, any, any>>,
 >(name: TName, columns: TColumns): TableDefinition<TName, TColumns> {
-  return Object.freeze({ name, columns });
+  return Object.freeze({ name, columns })
 }
 
 /**
@@ -47,6 +47,6 @@ export type InferTable<T extends TableDefinition> =
     ? {
         [K in keyof Cols]: Cols[K] extends ColumnBuilder<infer S, infer I, infer U>
           ? ColumnType<S, I, U>
-          : never;
+          : never
       }
-    : never;
+    : never

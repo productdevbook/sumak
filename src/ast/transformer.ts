@@ -5,21 +5,21 @@ import type {
   InsertNode,
   SelectNode,
   UpdateNode,
-} from "./nodes.ts";
+} from "./nodes.ts"
 
 export class ASTTransformer {
   transform(node: ASTNode): ASTNode {
     switch (node.type) {
       case "select":
-        return this.transformSelect(node);
+        return this.transformSelect(node)
       case "insert":
-        return this.transformInsert(node);
+        return this.transformInsert(node)
       case "update":
-        return this.transformUpdate(node);
+        return this.transformUpdate(node)
       case "delete":
-        return this.transformDelete(node);
+        return this.transformDelete(node)
       default:
-        return this.transformExpression(node);
+        return this.transformExpression(node)
     }
   }
 
@@ -37,14 +37,14 @@ export class ASTTransformer {
         ...o,
         expr: this.transformExpression(o.expr),
       })),
-    };
+    }
   }
 
   transformInsert(node: InsertNode): InsertNode {
     return {
       ...node,
       values: node.values.map((row) => row.map((v) => this.transformExpression(v))),
-    };
+    }
   }
 
   transformUpdate(node: UpdateNode): UpdateNode {
@@ -55,14 +55,14 @@ export class ASTTransformer {
         value: this.transformExpression(s.value),
       })),
       where: node.where ? this.transformExpression(node.where) : undefined,
-    };
+    }
   }
 
   transformDelete(node: DeleteNode): DeleteNode {
     return {
       ...node,
       where: node.where ? this.transformExpression(node.where) : undefined,
-    };
+    }
   }
 
   transformExpression(node: ExpressionNode): ExpressionNode {
@@ -72,24 +72,24 @@ export class ASTTransformer {
           ...node,
           left: this.transformExpression(node.left),
           right: this.transformExpression(node.right),
-        };
+        }
       case "unary_op":
         return {
           ...node,
           operand: this.transformExpression(node.operand),
-        };
+        }
       case "function_call":
         return {
           ...node,
           args: node.args.map((a) => this.transformExpression(a)),
-        };
+        }
       case "between":
         return {
           ...node,
           expr: this.transformExpression(node.expr),
           low: this.transformExpression(node.low),
           high: this.transformExpression(node.high),
-        };
+        }
       case "in":
         return {
           ...node,
@@ -97,27 +97,27 @@ export class ASTTransformer {
           values: Array.isArray(node.values)
             ? node.values.map((v) => this.transformExpression(v))
             : node.values,
-        };
+        }
       case "is_null":
         return {
           ...node,
           expr: this.transformExpression(node.expr),
-        };
+        }
       case "cast":
         return {
           ...node,
           expr: this.transformExpression(node.expr),
-        };
+        }
       case "json_access":
         return {
           ...node,
           expr: this.transformExpression(node.expr),
-        };
+        }
       case "array_expr":
         return {
           ...node,
           elements: node.elements.map((e) => this.transformExpression(e)),
-        };
+        }
       case "window_function":
         return {
           ...node,
@@ -127,9 +127,9 @@ export class ASTTransformer {
             ...o,
             expr: this.transformExpression(o.expr),
           })),
-        };
+        }
       default:
-        return node;
+        return node
     }
   }
 }

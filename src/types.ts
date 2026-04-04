@@ -1,20 +1,20 @@
-export type SQLDialect = "pg" | "mysql" | "sqlite";
+export type SQLDialect = "pg" | "mysql" | "sqlite"
 
 export interface CompiledQuery {
-  sql: string;
-  params: readonly unknown[];
+  sql: string
+  params: readonly unknown[]
 }
 
-export type Primitive = string | number | boolean | null;
+export type Primitive = string | number | boolean | null
 
-export type OrderDirection = "ASC" | "DESC";
+export type OrderDirection = "ASC" | "DESC"
 
-export type JoinType = "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS";
+export type JoinType = "INNER" | "LEFT" | "RIGHT" | "FULL" | "CROSS"
 
-export type SetOperator = "UNION" | "UNION ALL" | "INTERSECT" | "EXCEPT";
+export type SetOperator = "UNION" | "UNION ALL" | "INTERSECT" | "EXCEPT"
 
 export interface DialectConfig {
-  name: SQLDialect;
-  quoteIdentifier(name: string): string;
-  formatParam(index: number): string;
+  name: SQLDialect
+  quoteIdentifier(name: string): string
+  formatParam(index: number): string
 }

@@ -1,15 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { PgPrinter } from "../../src/printer/pg.ts";
-import { col, lit } from "../../src/ast/expression.ts";
-import { createSelectNode } from "../../src/ast/nodes.ts";
+import { describe, expect, it } from "vitest"
+import { PgPrinter } from "../../src/printer/pg.ts"
+import { col, lit } from "../../src/ast/expression.ts"
+import { createSelectNode } from "../../src/ast/nodes.ts"
 import type {
   JsonAccessNode,
   ArrayExprNode,
   SelectNode,
   WindowFunctionNode,
-} from "../../src/ast/nodes.ts";
+} from "../../src/ast/nodes.ts"
 
-const pg = new PgPrinter();
+const pg = new PgPrinter()
 
 describe("JsonAccessNode", () => {
   it("prints -> operator", () => {
@@ -24,11 +24,11 @@ describe("JsonAccessNode", () => {
         } satisfies JsonAccessNode,
       ],
       from: { type: "table_ref", name: "users" },
-    };
-    const result = pg.print(node);
-    expect(result.sql).toContain("->");
-    expect(result.sql).toContain("'name'");
-  });
+    }
+    const result = pg.print(node)
+    expect(result.sql).toContain("->")
+    expect(result.sql).toContain("'name'")
+  })
 
   it("prints ->> operator", () => {
     const node: SelectNode = {
@@ -43,12 +43,12 @@ describe("JsonAccessNode", () => {
         } satisfies JsonAccessNode,
       ],
       from: { type: "table_ref", name: "users" },
-    };
-    const result = pg.print(node);
-    expect(result.sql).toContain("->>");
-    expect(result.sql).toContain('AS "user_email"');
-  });
-});
+    }
+    const result = pg.print(node)
+    expect(result.sql).toContain("->>")
+    expect(result.sql).toContain('AS "user_email"')
+  })
+})
 
 describe("ArrayExprNode", () => {
   it("prints ARRAY constructor", () => {
@@ -60,10 +60,10 @@ describe("ArrayExprNode", () => {
           elements: [lit(1), lit(2), lit(3)],
         } satisfies ArrayExprNode,
       ],
-    };
-    const result = pg.print(node);
-    expect(result.sql).toBe("SELECT ARRAY[1, 2, 3]");
-  });
+    }
+    const result = pg.print(node)
+    expect(result.sql).toBe("SELECT ARRAY[1, 2, 3]")
+  })
 
   it("prints empty array", () => {
     const node: SelectNode = {
@@ -74,11 +74,11 @@ describe("ArrayExprNode", () => {
           elements: [],
         } satisfies ArrayExprNode,
       ],
-    };
-    const result = pg.print(node);
-    expect(result.sql).toBe("SELECT ARRAY[]");
-  });
-});
+    }
+    const result = pg.print(node)
+    expect(result.sql).toBe("SELECT ARRAY[]")
+  })
+})
 
 describe("WindowFunctionNode", () => {
   it("prints window function with PARTITION BY and ORDER BY", () => {
@@ -94,14 +94,14 @@ describe("WindowFunctionNode", () => {
         } satisfies WindowFunctionNode,
       ],
       from: { type: "table_ref", name: "employees" },
-    };
-    const result = pg.print(node);
-    expect(result.sql).toContain("ROW_NUMBER()");
-    expect(result.sql).toContain("OVER");
-    expect(result.sql).toContain("PARTITION BY");
-    expect(result.sql).toContain("ORDER BY");
-    expect(result.sql).toContain('AS "rank"');
-  });
+    }
+    const result = pg.print(node)
+    expect(result.sql).toContain("ROW_NUMBER()")
+    expect(result.sql).toContain("OVER")
+    expect(result.sql).toContain("PARTITION BY")
+    expect(result.sql).toContain("ORDER BY")
+    expect(result.sql).toContain('AS "rank"')
+  })
 
   it("prints window function with frame spec", () => {
     const node: SelectNode = {
@@ -119,10 +119,10 @@ describe("WindowFunctionNode", () => {
           },
         } satisfies WindowFunctionNode,
       ],
-    };
-    const result = pg.print(node);
-    expect(result.sql).toContain("ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW");
-  });
+    }
+    const result = pg.print(node)
+    expect(result.sql).toContain("ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW")
+  })
 
   it("prints window function with numeric frame bounds", () => {
     const node: SelectNode = {
@@ -140,10 +140,10 @@ describe("WindowFunctionNode", () => {
           },
         } satisfies WindowFunctionNode,
       ],
-    };
-    const result = pg.print(node);
-    expect(result.sql).toContain("ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING");
-  });
+    }
+    const result = pg.print(node)
+    expect(result.sql).toContain("ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING")
+  })
 
   it("prints window function without partition", () => {
     const node: SelectNode = {
@@ -156,9 +156,9 @@ describe("WindowFunctionNode", () => {
           orderBy: [],
         } satisfies WindowFunctionNode,
       ],
-    };
-    const result = pg.print(node);
-    expect(result.sql).toContain("COUNT(*)");
-    expect(result.sql).toContain("OVER ()");
-  });
-});
+    }
+    const result = pg.print(node)
+    expect(result.sql).toContain("COUNT(*)")
+    expect(result.sql).toContain("OVER ()")
+  })
+})

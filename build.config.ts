@@ -1,4 +1,4 @@
-import { defineBuildConfig } from "obuild/config";
+import { defineBuildConfig } from "obuild/config"
 
 export default defineBuildConfig({
   entries: [
@@ -14,4 +14,4 @@ export default defineBuildConfig({
       minify: true,
     },
   ],
-});
+})

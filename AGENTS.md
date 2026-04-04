@@ -98,14 +98,14 @@ test/
 ### Setup (single step)
 
 ```typescript
-import { sumak, pgDialect, serial, text, boolean } from "sumak";
+import { sumak, pgDialect, serial, text, boolean } from "sumak"
 
 const db = lale({
   dialect: pgDialect(),
   tables: {
     users: { id: serial(), name: text().notNull(), active: boolean().defaultTo(true) },
   },
-});
+})
 ```
 
 ### Queries
@@ -122,13 +122,13 @@ db.deleteFrom("users").where(...).compile(db.printer())
 ```typescript
 db.hook("select:before", (ctx) => {
   /* modify AST */
-});
+})
 db.hook("query:after", (ctx) => {
   /* logging, metrics */
-});
+})
 db.hook("result:transform", (rows) => {
   /* camelCase */
-});
+})
 ```
 
 ### Sub-paths

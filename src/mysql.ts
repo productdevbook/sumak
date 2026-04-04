@@ -1,2 +1,2 @@
-export { MysqlPrinter } from "./printer/mysql.ts";
-export { mysqlDialect } from "./dialect/mysql.ts";
+export { MysqlPrinter } from "./printer/mysql.ts"
+export { mysqlDialect } from "./dialect/mysql.ts"

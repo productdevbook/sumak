@@ -11,7 +11,7 @@ export type {
   SelectRow,
   Updateable,
   UpdateType,
-} from "./types.ts";
+} from "./types.ts"
 
 // Column builders
 export {
@@ -37,12 +37,12 @@ export {
   timestamptz,
   uuid,
   varchar,
-} from "./column.ts";
-export type { ColumnDef } from "./column.ts";
+} from "./column.ts"
+export type { ColumnDef } from "./column.ts"
 
 // Table
-export { defineTable } from "./table.ts";
-export type { InferTable, TableDefinition } from "./table.ts";
+export { defineTable } from "./table.ts"
+export type { InferTable, TableDefinition } from "./table.ts"
 
 // Type utilities
 export type {
@@ -54,4 +54,4 @@ export type {
   ResolveColumnType,
   SelectResult,
   TableName,
-} from "./type-utils.ts";
+} from "./type-utils.ts"

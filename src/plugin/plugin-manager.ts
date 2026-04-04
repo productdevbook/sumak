@@ -1,48 +1,48 @@
-import type { ASTNode } from "../ast/nodes.ts";
-import type { CompiledQuery } from "../types.ts";
-import type { SumakPlugin } from "./types.ts";
+import type { ASTNode } from "../ast/nodes.ts"
+import type { CompiledQuery } from "../types.ts"
+import type { SumakPlugin } from "./types.ts"
 
 /**
  * Manages plugin execution pipeline.
  * Plugins are applied sequentially in registration order.
  */
 export class PluginManager {
-  private readonly plugins: readonly SumakPlugin[];
+  private readonly plugins: readonly SumakPlugin[]
 
   constructor(plugins: SumakPlugin[]) {
-    this.plugins = Object.freeze([...plugins]);
+    this.plugins = Object.freeze([...plugins])
   }
 
   /** Apply all transformNode phases in order. */
   transformNode(node: ASTNode): ASTNode {
-    let result = node;
+    let result = node
     for (const plugin of this.plugins) {
       if (plugin.transformNode) {
-        result = plugin.transformNode(result);
+        result = plugin.transformNode(result)
       }
     }
-    return result;
+    return result
   }
 
   /** Apply all transformQuery phases in order. */
   transformQuery(query: CompiledQuery): CompiledQuery {
-    let result = query;
+    let result = query
     for (const plugin of this.plugins) {
       if (plugin.transformQuery) {
-        result = plugin.transformQuery(result);
+        result = plugin.transformQuery(result)
       }
     }
-    return result;
+    return result
   }
 
   /** Apply all transformResult phases in order. */
   transformResult(rows: Record<string, unknown>[]): Record<string, unknown>[] {
-    let result = rows;
+    let result = rows
     for (const plugin of this.plugins) {
       if (plugin.transformResult) {
-        result = plugin.transformResult(result);
+        result = plugin.transformResult(result)
       }
     }
-    return result;
+    return result
   }
 }

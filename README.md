@@ -21,7 +21,7 @@ npm install sumak
 ```
 
 ```ts
-import { sumak, pgDialect, serial, text, boolean, integer } from "sumak";
+import { sumak, pgDialect, serial, text, boolean, integer } from "sumak"
 
 const db = sumak({
   dialect: pgDialect(),
@@ -38,7 +38,7 @@ const db = sumak({
       userId: integer().references("users", "id"),
     },
   },
-});
+})
 ```
 
 ## Query Building
@@ -50,7 +50,7 @@ db.selectFrom("users")
   .where(({ age, active }) => and(age.gte(18), active.eq(true)))
   .orderBy("name")
   .limit(10)
-  .compile(db.printer());
+  .compile(db.printer())
 
 // INSERT
 db.insertInto("users")
@@ -59,19 +59,19 @@ db.insertInto("users")
     email: "alice@example.com",
   })
   .returningAll()
-  .compile(db.printer());
+  .compile(db.printer())
 
 // UPDATE
 db.update("users")
   .set({ active: false })
   .where(({ id }) => id.eq(1))
-  .compile(db.printer());
+  .compile(db.printer())
 
 // DELETE
 db.deleteFrom("users")
   .where(({ id }) => id.eq(1))
   .returning("id")
-  .compile(db.printer());
+  .compile(db.printer())
 ```
 
 ## Joins
@@ -79,7 +79,7 @@ db.deleteFrom("users")
 ```ts
 db.selectFrom("users")
   .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
-  .compile(db.printer());
+  .compile(db.printer())
 ```
 
 ## Tree Shaking
@@ -87,11 +87,11 @@ db.selectFrom("users")
 Import only the dialect you need:
 
 ```ts
-import { sumak } from "sumak";
-import { pgDialect } from "sumak/pg";
-import { mysqlDialect } from "sumak/mysql";
-import { sqliteDialect } from "sumak/sqlite";
-import { serial, text } from "sumak/schema";
+import { sumak } from "sumak"
+import { pgDialect } from "sumak/pg"
+import { mysqlDialect } from "sumak/mysql"
+import { sqliteDialect } from "sumak/sqlite"
+import { serial, text } from "sumak/schema"
 ```
 
 ## Dialects
@@ -126,30 +126,30 @@ const db = sumak({
 ```ts
 // Query logging
 db.hook("query:after", (ctx) => {
-  console.log(`[SQL] ${ctx.query.sql}`);
-});
+  console.log(`[SQL] ${ctx.query.sql}`)
+})
 
 // Add request tracing
 db.hook("query:after", (ctx) => {
   return {
     ...ctx.query,
     sql: `${ctx.query.sql} /* request_id=${requestId} */`,
-  };
-});
+  }
+})
 
 // Modify AST before compilation
 db.hook("select:before", (ctx) => {
   // Add tenant isolation, audit filters, etc.
-});
+})
 
 // Transform results
 db.hook("result:transform", (rows) => {
-  return rows.map(toCamelCase);
-});
+  return rows.map(toCamelCase)
+})
 
 // Unregister
-const off = db.hook("query:before", handler);
-off();
+const off = db.hook("query:before", handler)
+off()
 ```
 
 ## Expression API
