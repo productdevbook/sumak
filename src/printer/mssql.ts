@@ -116,9 +116,17 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("OUTPUT", cols.join(", "))
     }
 
-    parts.push("VALUES")
-    const rows = node.values.map((row) => `(${row.map((v) => this.printExpression(v)).join(", ")})`)
-    parts.push(rows.join(", "))
+    if (node.defaultValues) {
+      parts.push("DEFAULT VALUES")
+    } else if (node.source) {
+      parts.push(this.printSelect(node.source))
+    } else {
+      parts.push("VALUES")
+      const rows = node.values.map(
+        (row) => `(${row.map((v) => this.printExpression(v)).join(", ")})`,
+      )
+      parts.push(rows.join(", "))
+    }
 
     return parts.join(" ")
   }

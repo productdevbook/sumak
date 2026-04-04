@@ -154,9 +154,17 @@ export class BasePrinter implements Printer {
       parts.push(`(${node.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)
     }
 
-    parts.push("VALUES")
-    const rows = node.values.map((row) => `(${row.map((v) => this.printExpression(v)).join(", ")})`)
-    parts.push(rows.join(", "))
+    if (node.defaultValues) {
+      parts.push("DEFAULT VALUES")
+    } else if (node.source) {
+      parts.push(this.printSelect(node.source))
+    } else {
+      parts.push("VALUES")
+      const rows = node.values.map(
+        (row) => `(${row.map((v) => this.printExpression(v)).join(", ")})`,
+      )
+      parts.push(rows.join(", "))
+    }
 
     if (node.onConflict) {
       parts.push(this.printOnConflict(node.onConflict))

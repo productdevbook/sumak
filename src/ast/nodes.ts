@@ -238,6 +238,8 @@ export interface InsertNode {
   returning: ExpressionNode[]
   onConflict?: OnConflictNode
   ctes: CTENode[]
+  source?: SelectNode
+  defaultValues?: boolean
 }
 
 export interface OnConflictNode {

@@ -68,6 +68,16 @@ export class InsertBuilder {
     return new InsertBuilder({ ...this.node, onConflict: conflict }, this.paramIndex)
   }
 
+  /** INSERT INTO ... SELECT ... */
+  fromSelect(query: SelectNode): InsertBuilder {
+    return new InsertBuilder({ ...this.node, source: query }, this.paramIndex)
+  }
+
+  /** INSERT INTO ... DEFAULT VALUES */
+  defaultValues(): InsertBuilder {
+    return new InsertBuilder({ ...this.node, defaultValues: true }, this.paramIndex)
+  }
+
   with(name: string, query: SelectNode, recursive = false): InsertBuilder {
     const cte: CTENode = { name, query, recursive }
     return new InsertBuilder({ ...this.node, ctes: [...this.node.ctes, cte] }, this.paramIndex)

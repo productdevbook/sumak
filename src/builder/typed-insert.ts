@@ -102,6 +102,16 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     )
   }
 
+  /** INSERT INTO ... SELECT ... */
+  fromSelect(query: SelectNode): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(this._builder.fromSelect(query), this._paramIdx)
+  }
+
+  /** INSERT INTO ... DEFAULT VALUES */
+  defaultValues(): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(this._builder.defaultValues(), this._paramIdx)
+  }
+
   /** WITH (CTE) */
   with(name: string, query: SelectNode, recursive = false): TypedInsertBuilder<DB, TB> {
     return this._withBuilder(this._builder.with(name, query, recursive), this._paramIdx)
