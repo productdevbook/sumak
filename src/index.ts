@@ -209,6 +209,7 @@ export {
   lower,
   max,
   min,
+  neg,
   not,
   notExists,
   now,

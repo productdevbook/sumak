@@ -179,6 +179,26 @@ export class Col<T> {
     })
   }
 
+  /** = with Expression value */
+  eqExpr(value: Expression<T>): Expression<boolean> {
+    return wrap(binOp("=", this._node, (value as any).node))
+  }
+
+  /** != with Expression value */
+  neqExpr(value: Expression<T>): Expression<boolean> {
+    return wrap(binOp("!=", this._node, (value as any).node))
+  }
+
+  /** > with Expression value */
+  gtExpr(value: Expression<T>): Expression<boolean> {
+    return wrap(binOp(">", this._node, (value as any).node))
+  }
+
+  /** < with Expression value */
+  ltExpr(value: Expression<T>): Expression<boolean> {
+    return wrap(binOp("<", this._node, (value as any).node))
+  }
+
   /** Compare with another column: col1.eqCol(col2) */
   eqCol(other: Col<T>): Expression<boolean> {
     return wrap(binOp("=", this._node, other._node))
@@ -336,6 +356,16 @@ export function coalesce<T>(expr: Expression<T | null>, fallback: Expression<T>)
 /** NOT expr */
 export function not(expr: Expression<boolean>): Expression<boolean> {
   return wrap(rawNot((expr as any).node))
+}
+
+/** Unary minus: -expr */
+export function neg(expr: Expression<number>): Expression<number> {
+  return wrap({
+    type: "unary_op",
+    op: "-",
+    operand: (expr as any).node,
+    position: "prefix" as const,
+  })
 }
 
 /** EXISTS (subquery) */
@@ -515,6 +545,10 @@ export class WindowBuilder {
 
   range(start: FrameBound, end?: FrameBound): WindowBuilder {
     return this._withFrame("RANGE", start, end)
+  }
+
+  groups(start: FrameBound, end?: FrameBound): WindowBuilder {
+    return this._withFrame("GROUPS", start, end)
   }
 
   /** @internal */
