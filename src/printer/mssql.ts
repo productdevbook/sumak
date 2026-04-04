@@ -162,6 +162,10 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("OUTPUT", cols.join(", "))
     }
 
+    for (const join of node.joins) {
+      parts.push(this.printJoin(join))
+    }
+
     if (node.from) {
       parts.push("FROM", this.printTableRef(node.from))
     }
@@ -190,6 +194,10 @@ export class MssqlPrinter extends BasePrinter {
         return `DELETED.${printed}`
       })
       parts.push("OUTPUT", cols.join(", "))
+    }
+
+    for (const join of node.joins) {
+      parts.push(this.printJoin(join))
     }
 
     if (node.where) {

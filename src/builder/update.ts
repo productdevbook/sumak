@@ -1,5 +1,13 @@
-import type { CTENode, ExpressionNode, SelectNode, TableRefNode, UpdateNode } from "../ast/nodes.ts"
+import type {
+  CTENode,
+  ExpressionNode,
+  JoinNode,
+  SelectNode,
+  TableRefNode,
+  UpdateNode,
+} from "../ast/nodes.ts"
 import { createUpdateNode } from "../ast/nodes.ts"
+import type { JoinType } from "../types.ts"
 
 export class UpdateBuilder {
   private node: UpdateNode
@@ -33,6 +41,22 @@ export class UpdateBuilder {
   from(table: string | TableRefNode): UpdateBuilder {
     const ref: TableRefNode = typeof table === "string" ? { type: "table_ref", name: table } : table
     return new UpdateBuilder({ ...this.node, from: ref })
+  }
+
+  /** Generic JOIN (MySQL pattern: UPDATE t JOIN other ON ... SET ...) */
+  join(type: JoinType, table: string | TableRefNode, on?: ExpressionNode): UpdateBuilder {
+    const tableRef: TableRefNode =
+      typeof table === "string" ? { type: "table_ref", name: table } : table
+    const join: JoinNode = { type: "join", joinType: type, table: tableRef, on }
+    return new UpdateBuilder({ ...this.node, joins: [...this.node.joins, join] })
+  }
+
+  innerJoin(table: string | TableRefNode, on: ExpressionNode): UpdateBuilder {
+    return this.join("INNER", table, on)
+  }
+
+  leftJoin(table: string | TableRefNode, on: ExpressionNode): UpdateBuilder {
+    return this.join("LEFT", table, on)
   }
 
   returning(...exprs: ExpressionNode[]): UpdateBuilder {

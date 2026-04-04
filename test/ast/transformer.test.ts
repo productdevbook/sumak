@@ -63,6 +63,7 @@ describe("ASTTransformer", () => {
       table: { type: "table_ref", name: "users" },
       set: [{ column: "name", value: col("old_name") }],
       returning: [],
+      joins: [],
       ctes: [],
     })
     expect((result.set[0]!.value as ColumnRefNode).column).toBe("OLD_NAME")
@@ -75,6 +76,7 @@ describe("ASTTransformer", () => {
       table: { type: "table_ref", name: "users" },
       where: col("status"),
       returning: [],
+      joins: [],
       ctes: [],
     })
     expect((result.where as ColumnRefNode).column).toBe("STATUS")

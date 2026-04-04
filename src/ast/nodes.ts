@@ -265,6 +265,7 @@ export interface UpdateNode {
   where?: ExpressionNode
   returning: ExpressionNode[]
   from?: TableRefNode
+  joins: JoinNode[]
   ctes: CTENode[]
 }
 
@@ -274,6 +275,8 @@ export interface DeleteNode {
   where?: ExpressionNode
   returning: ExpressionNode[]
   ctes: CTENode[]
+  using?: TableRefNode
+  joins: JoinNode[]
 }
 
 export interface MergeWhenMatched {
@@ -350,6 +353,7 @@ export function createUpdateNode(table: TableRefNode): UpdateNode {
     table,
     set: [],
     returning: [],
+    joins: [],
     ctes: [],
   }
 }
@@ -360,5 +364,6 @@ export function createDeleteNode(table: TableRefNode): DeleteNode {
     table,
     returning: [],
     ctes: [],
+    joins: [],
   }
 }

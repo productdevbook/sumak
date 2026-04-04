@@ -222,6 +222,10 @@ export class BasePrinter implements Printer {
     )
     parts.push(sets.join(", "))
 
+    for (const join of node.joins) {
+      parts.push(this.printJoin(join))
+    }
+
     if (node.from) {
       parts.push("FROM", this.printTableRef(node.from))
     }
@@ -245,6 +249,14 @@ export class BasePrinter implements Printer {
     }
 
     parts.push("DELETE FROM", this.printTableRef(node.table))
+
+    if (node.using) {
+      parts.push("USING", this.printTableRef(node.using))
+    }
+
+    for (const join of node.joins) {
+      parts.push(this.printJoin(join))
+    }
 
     if (node.where) {
       parts.push("WHERE", this.printExpression(node.where))
