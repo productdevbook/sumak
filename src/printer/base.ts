@@ -188,7 +188,9 @@ export class BasePrinter implements Printer {
   protected printOnConflict(node: OnConflictNode): string {
     const parts: string[] = ["ON CONFLICT"]
 
-    if (node.columns.length > 0) {
+    if (node.constraint) {
+      parts.push(`ON CONSTRAINT ${quoteIdentifier(node.constraint, this.dialect)}`)
+    } else if (node.columns.length > 0) {
       parts.push(`(${node.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)
     }
 

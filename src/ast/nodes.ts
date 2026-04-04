@@ -263,6 +263,7 @@ export interface InsertNode {
 
 export interface OnConflictNode {
   columns: string[]
+  constraint?: string
   action: "nothing" | { set: { column: string; value: ExpressionNode }[] }
   where?: ExpressionNode
 }

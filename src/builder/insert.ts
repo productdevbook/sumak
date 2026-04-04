@@ -69,6 +69,31 @@ export class InsertBuilder {
     return new InsertBuilder({ ...this.node, onConflict: conflict }, this.paramIndex)
   }
 
+  /** ON CONFLICT ON CONSTRAINT name DO NOTHING */
+  onConflictConstraintDoNothing(constraint: string): InsertBuilder {
+    const conflict: OnConflictNode = {
+      columns: [],
+      constraint,
+      action: "nothing",
+    }
+    return new InsertBuilder({ ...this.node, onConflict: conflict }, this.paramIndex)
+  }
+
+  /** ON CONFLICT ON CONSTRAINT name DO UPDATE SET ... */
+  onConflictConstraintDoUpdate(
+    constraint: string,
+    set: { column: string; value: ExpressionNode }[],
+    where?: ExpressionNode,
+  ): InsertBuilder {
+    const conflict: OnConflictNode = {
+      columns: [],
+      constraint,
+      action: { set },
+      where,
+    }
+    return new InsertBuilder({ ...this.node, onConflict: conflict }, this.paramIndex)
+  }
+
   /** Set insert mode (SQLite: INSERT OR IGNORE, INSERT OR REPLACE, etc.) */
   mode(mode: InsertMode): InsertBuilder {
     return new InsertBuilder({ ...this.node, insertMode: mode }, this.paramIndex)

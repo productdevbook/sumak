@@ -102,6 +102,28 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     )
   }
 
+  /** ON CONFLICT ON CONSTRAINT name DO NOTHING */
+  onConflictConstraintDoNothing(constraint: string): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(
+      this._builder.onConflictConstraintDoNothing(constraint),
+      this._paramIdx,
+    )
+  }
+
+  /** ON CONFLICT ON CONSTRAINT name DO UPDATE SET ... */
+  onConflictConstraintDoUpdate(
+    constraint: string,
+    set: { column: keyof DB[TB] & string; value: Expression<any> }[],
+  ): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(
+      this._builder.onConflictConstraintDoUpdate(
+        constraint,
+        set.map((s) => ({ column: s.column, value: unwrap(s.value) })),
+      ),
+      this._paramIdx,
+    )
+  }
+
   /** INSERT OR IGNORE (SQLite) */
   orIgnore(): TypedInsertBuilder<DB, TB> {
     return this._withBuilder(this._builder.orIgnore(), this._paramIdx)
