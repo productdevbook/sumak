@@ -304,6 +304,58 @@ db.selectFrom("orders")
   .compile(db.printer())
 ```
 
+### IN Subquery
+
+```ts
+// WHERE id IN (SELECT ...)
+const deptIds = db.selectFrom("departments").select("id").build()
+
+db.selectFrom("users")
+  .select("id", "name")
+  .where(({ dept_id }) => dept_id.inSubquery(deptIds))
+  .compile(db.printer())
+
+// WHERE id NOT IN (SELECT ...)
+db.selectFrom("users")
+  .select("id")
+  .where(({ dept_id }) => dept_id.notInSubquery(deptIds))
+  .compile(db.printer())
+```
+
+### Raw SQL Expression
+
+```ts
+import { rawExpr } from "sumak"
+
+// Escape hatch for arbitrary SQL in expressions
+db.selectFrom("users")
+  .select("id")
+  .where(() => rawExpr<boolean>("age > 18"))
+  .compile(db.printer())
+
+// With parameters
+db.selectFrom("users")
+  .where(() => rawExpr<boolean>("age > $1", [18]))
+  .compile(db.printer())
+
+// In selectExpr
+db.selectFrom("users")
+  .selectExpr(rawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
+  .compile(db.printer())
+```
+
+### Derived Tables (Subquery in FROM)
+
+```ts
+const sub = db
+  .selectFrom("users")
+  .select("id", "name")
+  .where(({ age }) => age.gt(18))
+
+db.selectFromSubquery(sub, "adults").selectAll().compile(db.printer())
+// SELECT * FROM (SELECT "id", "name" FROM "users" WHERE ...) AS "adults"
+```
+
 ### EXISTS / NOT EXISTS
 
 ```ts
@@ -623,6 +675,15 @@ db.insertInto("users").values({ name: "Alice" }).orIgnore().compile(db.printer()
 
 db.insertInto("users").values({ name: "Alice" }).orReplace().compile(db.printer())
 // INSERT OR REPLACE INTO "users" ...
+
+// Batch insert (multiple rows)
+db.insertInto("users")
+  .valuesMany([
+    { name: "Alice", email: "a@b.com" },
+    { name: "Bob", email: "b@b.com" },
+    { name: "Carol", email: "c@b.com" },
+  ])
+  .compile(db.printer())
 ```
 
 ## ON CONFLICT
@@ -646,6 +707,12 @@ db.insertInto("users")
   .onConflictConstraintDoNothing("users_email_key")
   .compile(db.printer())
 // ON CONFLICT ON CONSTRAINT "users_email_key" DO NOTHING
+
+// DO UPDATE with plain object (auto-parameterized)
+db.insertInto("users")
+  .values({ name: "Alice", email: "a@b.com" })
+  .onConflictDoUpdateSet(["email"], { name: "Alice Updated" })
+  .compile(db.printer())
 
 // MySQL: ON DUPLICATE KEY UPDATE
 db.insertInto("users")
@@ -849,6 +916,114 @@ db.selectFrom("users").forSystemTime({ kind: "all" }).compile(db.printer())
 
 Supported modes: `as_of`, `from_to`, `between`, `contained_in`, `all`.
 
+## Schema Builder (DDL)
+
+### CREATE TABLE
+
+```ts
+db.schema
+  .createTable("users")
+  .ifNotExists()
+  .addColumn("id", "serial", (c) => c.primaryKey())
+  .addColumn("name", "varchar(255)", (c) => c.notNull())
+  .addColumn("email", "varchar", (c) => c.unique().notNull())
+  .addColumn("active", "boolean", (c) => c.defaultTo(lit(true)))
+  .addColumn("created_at", "timestamp", (c) => c.defaultTo(rawExpr("NOW()")))
+  .build()
+
+// Column with foreign key
+db.schema
+  .createTable("posts")
+  .addColumn("id", "serial", (c) => c.primaryKey())
+  .addColumn("user_id", "integer", (c) => c.notNull().references("users", "id").onDelete("CASCADE"))
+  .build()
+
+// Table-level constraints
+db.schema
+  .createTable("order_items")
+  .addColumn("order_id", "integer")
+  .addColumn("product_id", "integer")
+  .addPrimaryKeyConstraint("pk_order_items", ["order_id", "product_id"])
+  .addForeignKeyConstraint("fk_order", ["order_id"], "orders", ["id"], (fk) =>
+    fk.onDelete("CASCADE"),
+  )
+  .build()
+```
+
+### ALTER TABLE
+
+```ts
+// Add column
+db.schema
+  .alterTable("users")
+  .addColumn("age", "integer", (c) => c.notNull())
+  .build()
+
+// Drop column
+db.schema.alterTable("users").dropColumn("age").build()
+
+// Rename column
+db.schema.alterTable("users").renameColumn("name", "full_name").build()
+
+// Rename table
+db.schema.alterTable("users").renameTo("people").build()
+
+// Alter column
+db.schema.alterTable("users").alterColumn("name", { type: "set_not_null" }).build()
+db.schema
+  .alterTable("users")
+  .alterColumn("age", { type: "set_data_type", dataType: "bigint" })
+  .build()
+db.schema.alterTable("users").alterColumn("active", { type: "drop_default" }).build()
+```
+
+### CREATE INDEX
+
+```ts
+// Basic index
+db.schema.createIndex("idx_users_name").on("users").column("name").build()
+
+// Unique index
+db.schema.createIndex("uq_email").unique().on("users").column("email").build()
+
+// Multi-column with direction
+db.schema
+  .createIndex("idx_multi")
+  .on("users")
+  .column("last_name", "ASC")
+  .column("age", "DESC")
+  .build()
+
+// GIN index (PG)
+db.schema.createIndex("idx_tags").on("posts").column("tags").using("gin").build()
+
+// Partial index with WHERE
+db.schema
+  .createIndex("idx_active")
+  .on("users")
+  .column("email")
+  .where(rawExpr("active = true"))
+  .build()
+```
+
+### CREATE VIEW
+
+```ts
+db.schema.createView("active_users").asSelect(selectQuery).build()
+db.schema.createView("stats").materialized().asSelect(selectQuery).build()
+db.schema.createView("my_view").orReplace().columns("id", "name").asSelect(selectQuery).build()
+```
+
+### DROP
+
+```ts
+db.schema.dropTable("users").ifExists().cascade().build()
+db.schema.dropIndex("idx_name").ifExists().build()
+db.schema.dropView("my_view").materialized().ifExists().build()
+```
+
+All DDL nodes are compiled via `db.compileDDL(node)`.
+
 ## Tree Shaking
 
 Import only the dialect you need:
@@ -950,15 +1125,15 @@ off()
 
 ## Why sumak?
 
-|                    | sumak             | Drizzle         | Kysely         |
-| ------------------ | ----------------- | --------------- | -------------- |
-| **Architecture**   | AST-first         | Template        | AST (98 nodes) |
-| **Type inference** | Auto (no codegen) | Auto            | Manual DB type |
-| **Plugin system**  | Hooks + plugins   | None            | Plugins only   |
-| **SQL printer**    | Wadler algebra    | Template concat | String append  |
-| **Dependencies**   | 0                 | 0               | 0              |
-| **Node types**     | ~35 (focused)     | Config objects  | 98 (complex)   |
-| **API style**      | Callback proxy    | Method chain    | Method chain   |
+|                    | sumak                 | Drizzle         | Kysely         |
+| ------------------ | --------------------- | --------------- | -------------- |
+| **Architecture**   | AST-first             | Template        | AST (98 nodes) |
+| **Type inference** | Auto (no codegen)     | Auto            | Manual DB type |
+| **Plugin system**  | Hooks + plugins       | None            | Plugins only   |
+| **SQL printer**    | Wadler algebra        | Template concat | String append  |
+| **Dependencies**   | 0                     | 0               | 0              |
+| **DDL support**    | Full (schema builder) | drizzle-kit     | Full           |
+| **API style**      | Callback proxy        | Method chain    | Method chain   |
 
 ## Architecture
 
