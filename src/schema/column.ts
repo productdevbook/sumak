@@ -1,4 +1,3 @@
-import type { ColumnType } from "./types.ts";
 
 export interface ColumnDef {
   readonly dataType: string;
@@ -13,8 +12,14 @@ export class ColumnBuilder<S, I = S, U = I> {
   /** @internal */
   readonly _def: ColumnDef;
 
-  /** Phantom type — never exists at runtime */
-  declare readonly _type: ColumnType<S, I, U>;
+  /**
+   * Phantom branded fields — carry type info for indexed access.
+   * tsgo resolves `C["__select"]` via O(1) symbol table lookup,
+   * avoiding conditional type evaluation entirely.
+   */
+  declare readonly __select: S;
+  declare readonly __insert: I;
+  declare readonly __update: U;
 
   constructor(dataType: string, def?: Partial<ColumnDef>) {
     this._def = {

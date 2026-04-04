@@ -1,6 +1,6 @@
 import type { Dialect } from "./dialect/types.ts";
 import type { ColumnBuilder } from "./schema/column.ts";
-import type { ColumnType, SelectRow } from "./schema/types.ts";
+import type { SelectRow } from "./schema/types.ts";
 import { SelectBuilder } from "./builder/select.ts";
 import { TypedSelectBuilder } from "./builder/typed-select.ts";
 import { TypedInsertBuilder } from "./builder/typed-insert.ts";
@@ -14,31 +14,24 @@ import { Hookable } from "./plugin/hooks.ts";
 import type { HookName, SumakHooks } from "./plugin/hooks.ts";
 
 /**
- * Extract column type from a ColumnBuilder.
- * Named alias enables tsgo's alias fast-path (inference.go line 79).
+ * Tables config constraint.
+ * Each table = Record of ColumnBuilder instances.
  */
-type InferColumn<C> =
-  C extends ColumnBuilder<infer S, infer I, infer U> ? ColumnType<S, I, U> : never;
+type TablesConfig = Record<string, Record<string, ColumnBuilder<any, any, any>>>;
 
-/**
- * Extract the DB type from a tables config object.
- */
-type InferDB<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>> = {
-  [Table in keyof T]: {
-    [Col in keyof T[Table]]: InferColumn<T[Table][Col]>;
-  };
-};
-
-export interface SumakConfig<
-  T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>,
-> {
+export interface SumakConfig<T extends TablesConfig> {
   dialect: Dialect;
   tables: T;
   plugins?: SumakPlugin[];
 }
 
 /**
- * Create a fully typed sumak instance. DB type is inferred automatically.
+ * Create a fully typed sumak instance.
+ *
+ * DB type = typeof tables directly. No `InferDB` mapped type.
+ * ColumnBuilder carries __select/__insert/__update phantom fields,
+ * so SelectType/InsertType/UpdateType resolve via O(1) indexed access
+ * instead of conditional type evaluation.
  *
  * ```ts
  * const db = sumak({
@@ -48,17 +41,10 @@ export interface SumakConfig<
  *   },
  * });
  *
- * // Hook into the query lifecycle
- * db.hook("select:before", (ctx) => {
- *   console.log("Selecting from:", ctx.table);
- * });
- *
  * db.selectFrom("users").select("id", "name")...
  * ```
  */
-export function sumak<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>>(
-  config: SumakConfig<T>,
-): Sumak<InferDB<T>> {
+export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<T> {
   return new Sumak(config.dialect, config.plugins ?? []);
 }
 
