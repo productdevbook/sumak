@@ -1,5 +1,10 @@
 import type { ASTNode } from "./ast/nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
+import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
+import { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
+import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
+import { CreateViewBuilder } from "./builder/ddl/create-view.ts"
+import { DropIndexBuilder, DropTableBuilder, DropViewBuilder } from "./builder/ddl/drop.ts"
 import { Col } from "./builder/eb.ts"
 import { SelectBuilder } from "./builder/select.ts"
 import { TypedDeleteBuilder } from "./builder/typed-delete.ts"
@@ -12,6 +17,7 @@ import { Hookable } from "./plugin/hooks.ts"
 import type { HookName, SumakHooks } from "./plugin/hooks.ts"
 import { PluginManager } from "./plugin/plugin-manager.ts"
 import type { SumakPlugin } from "./plugin/types.ts"
+import { DDLPrinter } from "./printer/ddl.ts"
 import type { Printer } from "./printer/types.ts"
 import type { ColumnBuilder } from "./schema/column.ts"
 import type { SelectRow } from "./schema/types.ts"
@@ -221,6 +227,17 @@ export class Sumak<DB> {
     return this._dialect.createPrinter()
   }
 
+  /** Schema builder for DDL operations (CREATE TABLE, ALTER TABLE, etc.) */
+  get schema(): SchemaBuilder {
+    return new SchemaBuilder(this._dialect.name)
+  }
+
+  /** Compile a DDL node to SQL. */
+  compileDDL(node: import("./ast/ddl-nodes.ts").DDLNode): CompiledQuery {
+    const printer = new DDLPrinter(this._dialect.name)
+    return printer.print(node)
+  }
+
   private _extractTableName(node: ASTNode): string | undefined {
     switch (node.type) {
       case "select":
@@ -236,5 +253,50 @@ export class Sumak<DB> {
       default:
         return undefined
     }
+  }
+}
+
+/**
+ * Schema builder — entry point for DDL operations.
+ *
+ * ```ts
+ * db.schema.createTable("users").addColumn("id", "serial", c => c.primaryKey()).build()
+ * db.schema.alterTable("users").addColumn("age", "integer").build()
+ * db.schema.dropTable("users").ifExists().build()
+ * ```
+ */
+export class SchemaBuilder {
+  private _dialect: import("./types.ts").SQLDialect
+
+  constructor(dialect: import("./types.ts").SQLDialect) {
+    this._dialect = dialect
+  }
+
+  createTable(table: string, schema?: string): CreateTableBuilder {
+    return new CreateTableBuilder(table, schema)
+  }
+
+  alterTable(table: string, schema?: string): AlterTableBuilder {
+    return new AlterTableBuilder(table, schema)
+  }
+
+  createIndex(name: string): CreateIndexBuilder {
+    return new CreateIndexBuilder(name)
+  }
+
+  createView(name: string, schema?: string): CreateViewBuilder {
+    return new CreateViewBuilder(name, schema)
+  }
+
+  dropTable(table: string, schema?: string): DropTableBuilder {
+    return new DropTableBuilder(table, schema)
+  }
+
+  dropIndex(name: string): DropIndexBuilder {
+    return new DropIndexBuilder(name)
+  }
+
+  dropView(name: string): DropViewBuilder {
+    return new DropViewBuilder(name)
   }
 }

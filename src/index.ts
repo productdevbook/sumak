@@ -270,6 +270,40 @@ export { CamelCasePlugin } from "./plugin/camel-case.ts"
 export { Hookable } from "./plugin/hooks.ts"
 export type { HookContext, HookName, SumakHooks } from "./plugin/hooks.ts"
 
+// DDL builders
+export {
+  CreateTableBuilder,
+  ColumnDefBuilder,
+  ForeignKeyBuilder,
+} from "./builder/ddl/create-table.ts"
+export { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
+export { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
+export { CreateViewBuilder } from "./builder/ddl/create-view.ts"
+export { DropTableBuilder, DropIndexBuilder, DropViewBuilder } from "./builder/ddl/drop.ts"
+export { DDLPrinter } from "./printer/ddl.ts"
+export { SchemaBuilder } from "./sumak.ts"
+
+// DDL AST types
+export type {
+  AlterColumnSet,
+  AlterTableAction,
+  AlterTableNode,
+  CheckConstraintNode,
+  ColumnDefinitionNode,
+  CreateIndexNode,
+  CreateTableNode,
+  CreateViewNode,
+  DDLNode,
+  DropIndexNode,
+  DropTableNode,
+  DropViewNode,
+  ForeignKeyAction,
+  ForeignKeyConstraintNode,
+  PrimaryKeyConstraintNode,
+  TableConstraintNode,
+  UniqueConstraintNode,
+} from "./ast/ddl-nodes.ts"
+
 // Errors
 export {
   EmptyQueryError,
