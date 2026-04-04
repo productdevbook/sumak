@@ -51,7 +51,6 @@ db.selectFrom("users")
   .orderBy("name")
   .limit(10)
   .compile(db.printer());
-// → SELECT "id", "name" FROM "users" WHERE ("age" >= $1 AND "active" = $2) ORDER BY "name" ASC LIMIT 10
 
 // INSERT
 db.insertInto("users")
@@ -81,7 +80,6 @@ db.deleteFrom("users")
 db.selectFrom("users")
   .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
   .compile(db.printer());
-// → SELECT * FROM "users" INNER JOIN "posts" ON ("users"."id" = "posts"."userId")
 ```
 
 ## Tree Shaking
@@ -157,23 +155,54 @@ off();
 ## Expression API
 
 ```ts
-.where(({ id }) => id.eq(42))              // "id" = $1
-.where(({ name }) => name.like("%ali%"))    // "name" LIKE '%ali%'
-.where(({ age }) => age.between(18, 65))    // "age" BETWEEN $1 AND $2
-.where(({ id }) => id.in([1, 2, 3]))       // "id" IN ($1, $2, $3)
-.where(({ bio }) => bio.isNull())           // "bio" IS NULL
-.where(({ email }) => email.isNotNull())    // "email" IS NOT NULL
-.where(({ a, b }) =>                        // ("a" > $1 AND "b" != $2)
-  and(a.gt(0), b.neq("x")),
+// Equality
+.where(({ id }) =>
+  id.eq(42),
 )
-.where(({ a, b }) =>                        // ("a" = $1 OR "b" = $2)
-  or(a.eq(1), b.eq(2)),
+
+// String matching
+.where(({ name }) =>
+  name.like("%ali%"),
+)
+
+// Range
+.where(({ age }) =>
+  age.between(18, 65),
+)
+
+// List
+.where(({ id }) =>
+  id.in([1, 2, 3]),
+)
+
+// Null checks
+.where(({ bio }) =>
+  bio.isNull(),
+)
+.where(({ email }) =>
+  email.isNotNull(),
+)
+
+// AND
+.where(({ a, b }) =>
+  and(
+    a.gt(0),
+    b.neq("x"),
+  ),
+)
+
+// OR
+.where(({ a, b }) =>
+  or(
+    a.eq(1),
+    b.eq(2),
+  ),
 )
 ```
 
-## Why lale?
+## Why sumak?
 
-|                    | lale              | Drizzle         | Kysely         |
+|                    | sumak             | Drizzle         | Kysely         |
 | ------------------ | ----------------- | --------------- | -------------- |
 | **Architecture**   | AST-first         | Template        | AST (98 nodes) |
 | **Type inference** | Auto (no codegen) | Auto            | Manual DB type |
@@ -190,9 +219,9 @@ Schema → Builder → AST → Plugin/Hook → Printer → SQL
 ```
 
 - **Schema Layer** — `defineTable()`, `ColumnType<S,I,U>`, auto type inference
-- **Builder Layer** — `Lale<DB>`, `TypedSelectBuilder<DB,TB,O>`, proxy-based expressions
+- **Builder Layer** — `Sumak<DB>`, `TypedSelectBuilder<DB,TB,O>`, proxy-based expressions
 - **AST Layer** — ~35 frozen node types, discriminated unions, visitor pattern
-- **Plugin Layer** — `LalePlugin` interface, `Hookable` lifecycle hooks
+- **Plugin Layer** — `SumakPlugin` interface, `Hookable` lifecycle hooks
 - **Printer Layer** — `BasePrinter` with dialect subclasses, Wadler document algebra
 
 ## License
