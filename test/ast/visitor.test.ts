@@ -33,21 +33,21 @@ describe("visitNode", () => {
 
   it("dispatches insert to visitInsert", () => {
     const visitor = createMockVisitor()
-    const result = visitNode(createInsertNode({ name: "t" }), visitor)
+    const result = visitNode(createInsertNode({ type: "table_ref", name: "t" }), visitor)
     expect(result).toBe("insert")
     expect(visitor.visitInsert).toHaveBeenCalledOnce()
   })
 
   it("dispatches update to visitUpdate", () => {
     const visitor = createMockVisitor()
-    const result = visitNode(createUpdateNode({ name: "t" }), visitor)
+    const result = visitNode(createUpdateNode({ type: "table_ref", name: "t" }), visitor)
     expect(result).toBe("update")
     expect(visitor.visitUpdate).toHaveBeenCalledOnce()
   })
 
   it("dispatches delete to visitDelete", () => {
     const visitor = createMockVisitor()
-    const result = visitNode(createDeleteNode({ name: "t" }), visitor)
+    const result = visitNode(createDeleteNode({ type: "table_ref", name: "t" }), visitor)
     expect(result).toBe("delete")
     expect(visitor.visitDelete).toHaveBeenCalledOnce()
   })

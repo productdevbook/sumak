@@ -49,7 +49,6 @@ export type {
   AnyColumn,
   ColumnName,
   FullSelectModel,
-  Nullable,
   QualifiedColumn,
   ResolveColumnType,
   SelectResult,

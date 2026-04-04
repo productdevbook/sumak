@@ -18,22 +18,16 @@ export type Generated<T> = ColumnType<T, T | undefined, T | undefined>
 export type GeneratedAlways<T> = ColumnType<T, never, never>
 
 /**
- * Any type that carries __select/__insert/__update branded fields.
- * Both ColumnType and ColumnBuilder satisfy this.
- */
-type HasPhases = { readonly __select: any; readonly __insert: any; readonly __update: any }
-
-/**
  * Extract the SELECT type from a column.
- * Uses indexed access (O(1) symbol lookup in tsgo) instead of conditional type.
+ * Works with both ColumnType and ColumnBuilder (both declare __select).
  */
-export type SelectType<C> = C extends HasPhases ? C["__select"] : C
+export type SelectType<C> = C extends { readonly __select: infer S } ? S : C
 
 /** Extract the INSERT type from a column. */
-export type InsertType<C> = C extends HasPhases ? C["__insert"] : C
+export type InsertType<C> = C extends { readonly __insert: infer I } ? I : C
 
 /** Extract the UPDATE type from a column. */
-export type UpdateType<C> = C extends HasPhases ? C["__update"] : C
+export type UpdateType<C> = C extends { readonly __update: infer U } ? U : C
 
 /** Make all properties nullable. */
 export type Nullable<T> = { [K in keyof T]: T[K] | null }

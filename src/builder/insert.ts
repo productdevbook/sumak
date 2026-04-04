@@ -14,7 +14,7 @@ export class InsertBuilder {
   private paramIndex: number
 
   constructor(node?: InsertNode, paramIndex = 0) {
-    this.node = node ?? createInsertNode({ name: "" })
+    this.node = node ?? createInsertNode({ type: "table_ref", name: "" })
     this.paramIndex = paramIndex
   }
 

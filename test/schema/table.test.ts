@@ -55,8 +55,10 @@ describe("Type inference", () => {
       email: string
     }>()
 
-    // Optional: id (serial/generated), bio (nullable), active (default), createdAt (default)
+    // Full insert row: required + optional columns
     expectTypeOf<{
+      name: string
+      email: string
       id?: number
       bio?: string | null
       active?: boolean

@@ -153,7 +153,7 @@ pnpm release        # pnpm test && pnpm build && bumpp && npm publish && git pus
 - **Pure ESM** — no CJS
 - **Zero runtime dependencies** — everything bundled
 - **TypeScript strict** — tsgo for typecheck
-- **Formatter:** oxfmt (double quotes, semicolons)
+- **Formatter:** oxfmt (double quotes, no semicolons, sortImports)
 - **Linter:** oxlint (unicorn, typescript, oxc plugins)
 - **Tests:** vitest in `test/` directory, mirrors `src/` structure
 - **Exports:** explicit in `src/index.ts`, no barrel re-exports
@@ -180,4 +180,4 @@ pnpm release        # pnpm test && pnpm build && bumpp && npm publish && git pus
 - **No code without tests** — PR must include tests for all new/changed code
 - Run all: `pnpm test`
 - Run single: `pnpm vitest run test/<path>.test.ts`
-- **Current:** 34 test files, 281 tests, 0 lint errors
+- **Current:** 35 test files, 298 tests, 0 lint errors, 0 tsgo errors

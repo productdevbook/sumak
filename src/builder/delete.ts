@@ -5,7 +5,7 @@ export class DeleteBuilder {
   private node: DeleteNode
 
   constructor(node?: DeleteNode) {
-    this.node = node ?? createDeleteNode({ name: "" })
+    this.node = node ?? createDeleteNode({ type: "table_ref", name: "" })
   }
 
   from(table: string | TableRefNode): DeleteBuilder {

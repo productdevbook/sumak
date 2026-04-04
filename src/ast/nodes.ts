@@ -241,44 +241,44 @@ export function tableRef(name: string, alias?: string, schema?: string): TableRe
 }
 
 export function createSelectNode(): SelectNode {
-  return Object.freeze({
-    type: "select" as const,
+  return {
+    type: "select",
     distinct: false,
-    columns: Object.freeze([]) as ExpressionNode[],
-    joins: Object.freeze([]) as JoinNode[],
-    groupBy: Object.freeze([]) as ExpressionNode[],
-    orderBy: Object.freeze([]) as OrderByNode[],
-    ctes: Object.freeze([]) as CTENode[],
+    columns: [],
+    joins: [],
+    groupBy: [],
+    orderBy: [],
+    ctes: [],
     forUpdate: false,
-  }) as SelectNode
+  }
 }
 
 export function createInsertNode(table: TableRefNode): InsertNode {
-  return Object.freeze({
-    type: "insert" as const,
+  return {
+    type: "insert",
     table,
-    columns: Object.freeze([]) as string[],
-    values: Object.freeze([]) as ExpressionNode[][],
-    returning: Object.freeze([]) as ExpressionNode[],
-    ctes: Object.freeze([]) as CTENode[],
-  }) as InsertNode
+    columns: [],
+    values: [],
+    returning: [],
+    ctes: [],
+  }
 }
 
 export function createUpdateNode(table: TableRefNode): UpdateNode {
-  return Object.freeze({
-    type: "update" as const,
+  return {
+    type: "update",
     table,
-    set: Object.freeze([]) as { column: string; value: ExpressionNode }[],
-    returning: Object.freeze([]) as ExpressionNode[],
-    ctes: Object.freeze([]) as CTENode[],
-  }) as UpdateNode
+    set: [],
+    returning: [],
+    ctes: [],
+  }
 }
 
 export function createDeleteNode(table: TableRefNode): DeleteNode {
-  return Object.freeze({
-    type: "delete" as const,
+  return {
+    type: "delete",
     table,
-    returning: Object.freeze([]) as ExpressionNode[],
-    ctes: Object.freeze([]) as CTENode[],
-  }) as DeleteNode
+    returning: [],
+    ctes: [],
+  }
 }

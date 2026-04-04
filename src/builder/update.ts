@@ -5,7 +5,7 @@ export class UpdateBuilder {
   private node: UpdateNode
 
   constructor(node?: UpdateNode) {
-    this.node = node ?? createUpdateNode({ name: "" })
+    this.node = node ?? createUpdateNode({ type: "table_ref", name: "" })
   }
 
   table(table: string | TableRefNode): UpdateBuilder {

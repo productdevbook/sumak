@@ -146,7 +146,7 @@ export function doublePrecision(): ColumnBuilder<number, number, number> {
   return new ColumnBuilder("double precision")
 }
 
-export function bytea(): ColumnBuilder<Buffer, Buffer | Uint8Array, Buffer | Uint8Array> {
+export function bytea(): ColumnBuilder<Uint8Array, Uint8Array, Uint8Array> {
   return new ColumnBuilder("bytea")
 }
 

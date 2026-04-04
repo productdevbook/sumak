@@ -3,19 +3,19 @@ import { describe, expect, it } from "vitest"
 import { createSelectNode } from "../../src/ast/nodes.ts"
 import type { ASTNode } from "../../src/ast/nodes.ts"
 import { PluginManager } from "../../src/plugin/plugin-manager.ts"
-import type { LalePlugin } from "../../src/plugin/types.ts"
+import type { SumakPlugin } from "../../src/plugin/types.ts"
 
 describe("PluginManager", () => {
   it("applies transformNode plugins in order", () => {
     const log: string[] = []
-    const p1: LalePlugin = {
+    const p1: SumakPlugin = {
       name: "p1",
       transformNode(node: ASTNode) {
         log.push("p1")
         return node
       },
     }
-    const p2: LalePlugin = {
+    const p2: SumakPlugin = {
       name: "p2",
       transformNode(node: ASTNode) {
         log.push("p2")
@@ -29,13 +29,13 @@ describe("PluginManager", () => {
   })
 
   it("applies transformQuery plugins in order", () => {
-    const p1: LalePlugin = {
+    const p1: SumakPlugin = {
       name: "p1",
       transformQuery(q) {
         return { ...q, sql: q.sql + " /* p1 */" }
       },
     }
-    const p2: LalePlugin = {
+    const p2: SumakPlugin = {
       name: "p2",
       transformQuery(q) {
         return { ...q, sql: q.sql + " /* p2 */" }
@@ -48,7 +48,7 @@ describe("PluginManager", () => {
   })
 
   it("applies transformResult plugins in order", () => {
-    const p1: LalePlugin = {
+    const p1: SumakPlugin = {
       name: "p1",
       transformResult(rows) {
         return rows.map((r) => ({ ...r, p1: true }))
@@ -60,7 +60,7 @@ describe("PluginManager", () => {
   })
 
   it("skips plugins without the relevant method", () => {
-    const p1: LalePlugin = { name: "p1" }
+    const p1: SumakPlugin = { name: "p1" }
     const pm = new PluginManager([p1])
 
     const node = createSelectNode()

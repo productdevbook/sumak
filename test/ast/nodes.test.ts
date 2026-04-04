@@ -29,7 +29,7 @@ describe("AST Node Factories", () => {
 
   describe("createInsertNode", () => {
     it("creates an insert node with table", () => {
-      const node = createInsertNode({ name: "users" })
+      const node = createInsertNode({ type: "table_ref", name: "users" })
       expect(node.type).toBe("insert")
       expect(node.table.name).toBe("users")
       expect(node.columns).toEqual([])
@@ -41,7 +41,7 @@ describe("AST Node Factories", () => {
 
   describe("createUpdateNode", () => {
     it("creates an update node with table", () => {
-      const node = createUpdateNode({ name: "users" })
+      const node = createUpdateNode({ type: "table_ref", name: "users" })
       expect(node.type).toBe("update")
       expect(node.table.name).toBe("users")
       expect(node.set).toEqual([])
@@ -53,7 +53,7 @@ describe("AST Node Factories", () => {
 
   describe("createDeleteNode", () => {
     it("creates a delete node with table", () => {
-      const node = createDeleteNode({ name: "users" })
+      const node = createDeleteNode({ type: "table_ref", name: "users" })
       expect(node.type).toBe("delete")
       expect(node.table.name).toBe("users")
       expect(node.returning).toEqual([])
