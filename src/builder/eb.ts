@@ -271,9 +271,31 @@ export function sum(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("SUM", [(expr as any).node]))
 }
 
+/** SUM(DISTINCT expr) */
+export function sumDistinct(expr: Expression<number>): Expression<number> {
+  const node: FunctionCallNode = {
+    type: "function_call",
+    name: "SUM",
+    args: [(expr as any).node],
+    distinct: true,
+  }
+  return wrap(node)
+}
+
 /** AVG(expr) */
 export function avg(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("AVG", [(expr as any).node]))
+}
+
+/** AVG(DISTINCT expr) */
+export function avgDistinct(expr: Expression<number>): Expression<number> {
+  const node: FunctionCallNode = {
+    type: "function_call",
+    name: "AVG",
+    args: [(expr as any).node],
+    distinct: true,
+  }
+  return wrap(node)
 }
 
 /** MIN(expr) */
