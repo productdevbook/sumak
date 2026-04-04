@@ -268,7 +268,24 @@ export class Sumak<DB> {
           let col = c
           if (def.isPrimaryKey) col = col.primaryKey()
           if (def.isNotNull && !def.isPrimaryKey) col = col.notNull()
-          if (def.references) col = col.references(def.references.table, def.references.column)
+          if (def.isUnique) col = col.unique()
+          if (def.hasDefault && def.defaultValue !== undefined) {
+            const dv = def.defaultValue
+            const lit =
+              typeof dv === "string"
+                ? { type: "literal" as const, value: dv }
+                : typeof dv === "number" || typeof dv === "boolean"
+                  ? { type: "literal" as const, value: dv }
+                  : dv === null
+                    ? { type: "literal" as const, value: null }
+                    : { type: "literal" as const, value: String(dv) }
+            col = col.defaultTo(lit)
+          }
+          if (def.references) {
+            col = col.references(def.references.table, def.references.column)
+            if (def.references.onDelete) col = col.onDelete(def.references.onDelete)
+            if (def.references.onUpdate) col = col.onUpdate(def.references.onUpdate)
+          }
           return col
         })
       }

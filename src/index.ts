@@ -148,6 +148,7 @@ export {
   doublePrecision,
   enumType,
   integer,
+  interval,
   json,
   jsonb,
   numeric,

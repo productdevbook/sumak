@@ -77,4 +77,33 @@ describe("EXPLAIN", () => {
     expect(node.type).toBe("explain")
     expect(node.statement.type).toBe("select")
   })
+
+  it("EXPLAIN INSERT", () => {
+    const q = db.insertInto("users").values({ name: "Alice" }).explain().compile(p)
+    expect(q.sql).toMatch(/^EXPLAIN INSERT/)
+  })
+
+  it("EXPLAIN UPDATE", () => {
+    const q = db
+      .update("users")
+      .set({ name: "Bob" })
+      .where(({ id }) => id.eq(1))
+      .explain()
+      .compile(p)
+    expect(q.sql).toMatch(/^EXPLAIN UPDATE/)
+  })
+
+  it("EXPLAIN DELETE", () => {
+    const q = db
+      .deleteFrom("users")
+      .where(({ id }) => id.eq(1))
+      .explain()
+      .compile(p)
+    expect(q.sql).toMatch(/^EXPLAIN DELETE/)
+  })
+
+  it("EXPLAIN ANALYZE on INSERT", () => {
+    const q = db.insertInto("users").values({ name: "Alice" }).explain({ analyze: true }).compile(p)
+    expect(q.sql).toMatch(/^EXPLAIN ANALYZE INSERT/)
+  })
 })

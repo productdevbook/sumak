@@ -1,10 +1,19 @@
+import type { ForeignKeyAction } from "../ast/ddl-nodes.ts"
+
 export interface ColumnDef {
   readonly dataType: string
   readonly isNotNull: boolean
   readonly hasDefault: boolean
+  readonly defaultValue?: unknown
   readonly isPrimaryKey: boolean
+  readonly isUnique: boolean
   readonly isGenerated: boolean
-  readonly references?: { table: string; column: string }
+  readonly references?: {
+    table: string
+    column: string
+    onDelete?: ForeignKeyAction
+    onUpdate?: ForeignKeyAction
+  }
 }
 
 export class ColumnBuilder<S, I = S, U = I> {
@@ -26,6 +35,7 @@ export class ColumnBuilder<S, I = S, U = I> {
       isNotNull: false,
       hasDefault: false,
       isPrimaryKey: false,
+      isUnique: false,
       isGenerated: false,
       ...def,
     }
@@ -39,8 +49,12 @@ export class ColumnBuilder<S, I = S, U = I> {
     return new ColumnBuilder(this._def.dataType, { ...this._def, isNotNull: false })
   }
 
-  defaultTo(_value: I): ColumnBuilder<S, I | undefined, U> {
-    return new ColumnBuilder(this._def.dataType, { ...this._def, hasDefault: true })
+  defaultTo(value: I): ColumnBuilder<S, I | undefined, U> {
+    return new ColumnBuilder(this._def.dataType, {
+      ...this._def,
+      hasDefault: true,
+      defaultValue: value,
+    })
   }
 
   primaryKey(): ColumnBuilder<S, I, U> {
@@ -51,10 +65,30 @@ export class ColumnBuilder<S, I = S, U = I> {
     })
   }
 
+  unique(): ColumnBuilder<S, I, U> {
+    return new ColumnBuilder(this._def.dataType, { ...this._def, isUnique: true })
+  }
+
   references(table: string, column: string): ColumnBuilder<S, I, U> {
     return new ColumnBuilder(this._def.dataType, {
       ...this._def,
       references: { table, column },
+    })
+  }
+
+  onDelete(action: ForeignKeyAction): ColumnBuilder<S, I, U> {
+    if (!this._def.references) return this as any
+    return new ColumnBuilder(this._def.dataType, {
+      ...this._def,
+      references: { ...this._def.references, onDelete: action },
+    })
+  }
+
+  onUpdate(action: ForeignKeyAction): ColumnBuilder<S, I, U> {
+    if (!this._def.references) return this as any
+    return new ColumnBuilder(this._def.dataType, {
+      ...this._def,
+      references: { ...this._def.references, onUpdate: action },
     })
   }
 }
@@ -152,4 +186,8 @@ export function bytea(): ColumnBuilder<Uint8Array, Uint8Array, Uint8Array> {
 
 export function enumType<T extends string>(...values: [T, ...T[]]): ColumnBuilder<T, T, T> {
   return new ColumnBuilder(`enum(${values.map((v) => `'${v}'`).join(",")})`)
+}
+
+export function interval(): ColumnBuilder<string, string, string> {
+  return new ColumnBuilder("interval")
 }

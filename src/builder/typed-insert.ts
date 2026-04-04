@@ -212,6 +212,24 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
   }
+
+  /** EXPLAIN this query. */
+  explain(options?: { analyze?: boolean; format?: "TEXT" | "JSON" | "YAML" | "XML" }): {
+    build(): import("../ast/nodes.ts").ExplainNode
+    compile(printer: Printer): CompiledQuery
+  } {
+    const node = this.build()
+    const explainNode: import("../ast/nodes.ts").ExplainNode = {
+      type: "explain",
+      statement: node,
+      analyze: options?.analyze,
+      format: options?.format,
+    }
+    return {
+      build: () => explainNode,
+      compile: (p: Printer) => p.print(explainNode),
+    }
+  }
 }
 
 export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, _R> {
