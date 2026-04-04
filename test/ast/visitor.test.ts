@@ -2,10 +2,11 @@ import { describe, expect, it, vi } from "vitest"
 
 import { col } from "../../src/ast/expression.ts"
 import {
-  createSelectNode,
-  createInsertNode,
-  createUpdateNode,
   createDeleteNode,
+  createInsertNode,
+  createMergeNode,
+  createSelectNode,
+  createUpdateNode,
 } from "../../src/ast/nodes.ts"
 import { visitNode } from "../../src/ast/visitor.ts"
 import type { ASTVisitor } from "../../src/ast/visitor.ts"
@@ -16,6 +17,7 @@ function createMockVisitor(): ASTVisitor<string> {
     visitInsert: vi.fn(() => "insert"),
     visitUpdate: vi.fn(() => "update"),
     visitDelete: vi.fn(() => "delete"),
+    visitMerge: vi.fn(() => "merge"),
     visitExpression: vi.fn(() => "expression"),
     visitJoin: vi.fn(() => "join"),
     visitOrderBy: vi.fn(() => "orderBy"),
@@ -50,6 +52,19 @@ describe("visitNode", () => {
     const result = visitNode(createDeleteNode({ type: "table_ref", name: "t" }), visitor)
     expect(result).toBe("delete")
     expect(visitor.visitDelete).toHaveBeenCalledOnce()
+  })
+
+  it("dispatches merge to visitMerge", () => {
+    const visitor = createMockVisitor()
+    const node = createMergeNode(
+      { type: "table_ref", name: "target" },
+      { type: "table_ref", name: "source" },
+      "s",
+      { type: "literal", value: true },
+    )
+    const result = visitNode(node, visitor)
+    expect(result).toBe("merge")
+    expect(visitor.visitMerge).toHaveBeenCalledOnce()
   })
 
   it("dispatches expression to visitExpression", () => {

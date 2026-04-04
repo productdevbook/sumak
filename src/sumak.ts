@@ -1,7 +1,10 @@
 import type { ASTNode } from "./ast/nodes.ts"
+import type { Expression } from "./ast/typed-expression.ts"
+import { Col } from "./builder/eb.ts"
 import { SelectBuilder } from "./builder/select.ts"
 import { TypedDeleteBuilder } from "./builder/typed-delete.ts"
 import { TypedInsertBuilder } from "./builder/typed-insert.ts"
+import { TypedMergeBuilder } from "./builder/typed-merge.ts"
 import { TypedSelectBuilder } from "./builder/typed-select.ts"
 import { TypedUpdateBuilder } from "./builder/typed-update.ts"
 import type { Dialect } from "./dialect/types.ts"
@@ -94,6 +97,44 @@ export class Sumak<DB> {
   }
 
   /**
+   * MERGE INTO target USING source ON condition.
+   *
+   * ```ts
+   * db.mergeInto("users", "staging", "s", ({ target, source }) =>
+   *   target.id.eqCol(source.id),
+   * )
+   * .whenMatchedThenUpdate({ name: "updated" })
+   * .whenNotMatchedThenInsert({ name: "new", email: "e@x.com" })
+   * .compile(db.printer())
+   * ```
+   */
+  mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
+    target: T,
+    source: S,
+    sourceAlias: string,
+    on: (proxies: {
+      target: { [K in keyof DB[T] & string]: Col<any> }
+      source: { [K in keyof DB[S] & string]: Col<any> }
+    }) => Expression<boolean>,
+  ): TypedMergeBuilder<DB, T, S> {
+    const makeProxy = (prefix: string) =>
+      new Proxy(
+        {},
+        {
+          get(_t: any, colName: string) {
+            return new Col(colName, prefix)
+          },
+        },
+      )
+    const proxies = {
+      target: makeProxy(target),
+      source: makeProxy(sourceAlias),
+    } as any
+    const onExpr = on(proxies)
+    return new TypedMergeBuilder<DB, T, S>(target, source, sourceAlias, onExpr)
+  }
+
+  /**
    * Compile an AST node through the full pipeline:
    * plugins.transformNode → type-specific hooks → printer → plugins.transformQuery → query hooks
    */
@@ -168,6 +209,8 @@ export class Sumak<DB> {
         return node.table.name
       case "delete":
         return node.table.name
+      case "merge":
+        return node.target.name
       default:
         return undefined
     }

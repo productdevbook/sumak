@@ -31,6 +31,7 @@ src/
   sumak.ts                   # sumak() factory + Sumak<DB> class
   index.ts                  # Main API — all exports
   pg.ts                     # Sub-path: sumak/pg
+  mssql.ts                  # Sub-path: sumak/mssql
   mysql.ts                  # Sub-path: sumak/mysql
   sqlite.ts                 # Sub-path: sumak/sqlite
   schema.ts                 # Sub-path: sumak/schema
@@ -43,7 +44,7 @@ src/
     type-utils.ts           # Nullable, ResolveColumnType, SelectResult, etc.
     index.ts                # Re-exports
   ast/
-    nodes.ts                # ~35 AST node types (discriminated unions, frozen)
+    nodes.ts                # ~40 AST node types (discriminated unions, frozen)
     expression.ts           # Untyped expression factories (col, lit, eq, etc.)
     typed-expression.ts     # Expression<T> phantom types (typedEq, typedCol, etc.)
     visitor.ts              # ASTVisitor interface + visitNode dispatcher
@@ -53,15 +54,18 @@ src/
     insert.ts               # InsertBuilder
     update.ts               # UpdateBuilder
     delete.ts               # DeleteBuilder
+    merge.ts                # MergeBuilder
     expression.ts           # Expression builder helpers (val, resetParamCounter)
     raw.ts                  # Raw SQL escape hatch
     typed-select.ts         # TypedSelectBuilder<DB, TB, O>
     typed-insert.ts         # TypedInsertBuilder<DB, TB>
     typed-update.ts         # TypedUpdateBuilder<DB, TB>
     typed-delete.ts         # TypedDeleteBuilder<DB, TB>
+    typed-merge.ts          # TypedMergeBuilder<DB, Target, Source>
   printer/
     base.ts                 # BasePrinter — visitor-based SQL generation
     pg.ts                   # PgPrinter ($1 params, double-quote identifiers)
+    mssql.ts                # MssqlPrinter (@p0 params, square-bracket identifiers)
     mysql.ts                # MysqlPrinter (? params, backtick identifiers)
     sqlite.ts               # SqlitePrinter (? params, double-quote identifiers)
     formatter.ts            # SQL pretty-printer (keyword-aware)
@@ -69,6 +73,7 @@ src/
     types.ts                # Printer, PrinterOptions, PrintMode
   dialect/
     pg.ts                   # pgDialect() factory
+    mssql.ts                # mssqlDialect() factory
     mysql.ts                # mysqlDialect() factory
     sqlite.ts               # sqliteDialect() factory
     types.ts                # Dialect interface
@@ -133,7 +138,7 @@ db.hook("result:transform", (rows) => {
 
 ### Sub-paths
 
-`sumak`, `sumak/pg`, `sumak/mysql`, `sumak/sqlite`, `sumak/schema`
+`sumak`, `sumak/pg`, `sumak/mssql`, `sumak/mysql`, `sumak/sqlite`, `sumak/schema`
 
 ## Build & Scripts
 
@@ -180,4 +185,4 @@ pnpm release        # pnpm test && pnpm build && bumpp && npm publish && git pus
 - **No code without tests** — PR must include tests for all new/changed code
 - Run all: `pnpm test`
 - Run single: `pnpm vitest run test/<path>.test.ts`
-- **Current:** 35 test files, 320 tests, 0 lint errors, 0 tsgo errors
+- **Current:** 39 test files, 349 tests, 0 lint errors, 0 tsgo errors

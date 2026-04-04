@@ -5,6 +5,7 @@ import type {
   ExpressionNode,
   InsertNode,
   JoinNode,
+  MergeNode,
   OrderByNode,
   SelectNode,
   UpdateNode,
@@ -15,6 +16,7 @@ export interface ASTVisitor<R = void> {
   visitInsert(node: InsertNode): R
   visitUpdate(node: UpdateNode): R
   visitDelete(node: DeleteNode): R
+  visitMerge(node: MergeNode): R
   visitExpression(node: ExpressionNode): R
   visitJoin(node: JoinNode): R
   visitOrderBy(node: OrderByNode): R
@@ -31,6 +33,8 @@ export function visitNode<R>(node: ASTNode, visitor: ASTVisitor<R>): R {
       return visitor.visitUpdate(node)
     case "delete":
       return visitor.visitDelete(node)
+    case "merge":
+      return visitor.visitMerge(node)
     default:
       return visitor.visitExpression(node)
   }

@@ -7,5 +7,7 @@ export function formatParam(index: number, dialect: SQLDialect): string {
     case "mysql":
     case "sqlite":
       return "?"
+    case "mssql":
+      return `@p${index}`
   }
 }

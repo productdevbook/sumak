@@ -32,6 +32,7 @@ import type {
   UpdateNode,
   WindowFunctionNode,
 } from "../ast/nodes.ts"
+import type { MergeNode, MergeWhenMatched, MergeWhenNotMatched } from "../ast/nodes.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { formatParam } from "../utils/param.ts"
@@ -61,6 +62,8 @@ export class BasePrinter implements Printer {
         return this.printUpdate(node)
       case "delete":
         return this.printDelete(node)
+      case "merge":
+        return this.printMerge(node)
       default:
         return this.printExpression(node)
     }
@@ -484,6 +487,64 @@ export class BasePrinter implements Printer {
       case "unbounded_following":
         return "UNBOUNDED FOLLOWING"
     }
+  }
+
+  protected printMerge(node: MergeNode): string {
+    const parts: string[] = []
+
+    if (node.ctes.length > 0) {
+      parts.push(this.printCTEs(node.ctes))
+    }
+
+    parts.push("MERGE INTO", this.printTableRef(node.target))
+    parts.push("USING")
+
+    if (node.source.type === "subquery") {
+      parts.push(this.printSubquery(node.source))
+    } else {
+      parts.push(this.printTableRef(node.source))
+    }
+
+    parts.push("AS", quoteIdentifier(node.sourceAlias, this.dialect))
+    parts.push("ON", this.printExpression(node.on))
+
+    for (const when of node.whens) {
+      if (when.type === "matched") {
+        parts.push(this.printMergeWhenMatched(when))
+      } else {
+        parts.push(this.printMergeWhenNotMatched(when))
+      }
+    }
+
+    return parts.join(" ")
+  }
+
+  protected printMergeWhenMatched(when: MergeWhenMatched): string {
+    const parts: string[] = ["WHEN MATCHED"]
+    if (when.condition) {
+      parts.push("AND", this.printExpression(when.condition))
+    }
+    if (when.action === "delete") {
+      parts.push("THEN DELETE")
+    } else {
+      parts.push("THEN UPDATE SET")
+      const sets = (when.set ?? []).map(
+        (s) => `${quoteIdentifier(s.column, this.dialect)} = ${this.printExpression(s.value)}`,
+      )
+      parts.push(sets.join(", "))
+    }
+    return parts.join(" ")
+  }
+
+  protected printMergeWhenNotMatched(when: MergeWhenNotMatched): string {
+    const parts: string[] = ["WHEN NOT MATCHED"]
+    if (when.condition) {
+      parts.push("AND", this.printExpression(when.condition))
+    }
+    parts.push("THEN INSERT")
+    parts.push(`(${when.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)
+    parts.push(`VALUES (${when.values.map((v) => this.printExpression(v)).join(", ")})`)
+    return parts.join(" ")
   }
 
   protected printAliasedExpr(node: AliasedExprNode): string {

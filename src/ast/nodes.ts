@@ -1,6 +1,6 @@
 import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
 
-export type ASTNode = SelectNode | InsertNode | UpdateNode | DeleteNode | ExpressionNode
+export type ASTNode = SelectNode | InsertNode | UpdateNode | DeleteNode | MergeNode | ExpressionNode
 
 export type ExpressionNode =
   | ColumnRefNode
@@ -241,6 +241,47 @@ export interface DeleteNode {
   where?: ExpressionNode
   returning: ExpressionNode[]
   ctes: CTENode[]
+}
+
+export interface MergeWhenMatched {
+  type: "matched"
+  condition?: ExpressionNode
+  action: "update" | "delete"
+  set?: { column: string; value: ExpressionNode }[]
+}
+
+export interface MergeWhenNotMatched {
+  type: "not_matched"
+  condition?: ExpressionNode
+  columns: string[]
+  values: ExpressionNode[]
+}
+
+export interface MergeNode {
+  type: "merge"
+  target: TableRefNode
+  source: TableRefNode | SubqueryNode
+  sourceAlias: string
+  on: ExpressionNode
+  whens: (MergeWhenMatched | MergeWhenNotMatched)[]
+  ctes: CTENode[]
+}
+
+export function createMergeNode(
+  target: TableRefNode,
+  source: TableRefNode | SubqueryNode,
+  sourceAlias: string,
+  on: ExpressionNode,
+): MergeNode {
+  return {
+    type: "merge",
+    target,
+    source,
+    sourceAlias,
+    on,
+    whens: [],
+    ctes: [],
+  }
 }
 
 export function tableRef(name: string, alias?: string, schema?: string): TableRefNode {

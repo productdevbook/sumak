@@ -5,6 +5,7 @@
   "keywords": [
     "database",
     "esm",
+    "mssql",
     "mysql",
     "orm",
     "postgresql",
@@ -41,6 +42,10 @@
     "./pg": {
       "types": "./dist/pg.d.mts",
       "default": "./dist/pg.mjs"
+    },
+    "./mssql": {
+      "types": "./dist/mssql.d.mts",
+      "default": "./dist/mssql.mjs"
     },
     "./mysql": {
       "types": "./dist/mysql.d.mts",

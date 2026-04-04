@@ -7,6 +7,8 @@ export function quoteIdentifier(name: string, dialect: SQLDialect): string {
       return `"${name.replaceAll('"', '""')}"`
     case "mysql":
       return `\`${name.replaceAll("`", "``")}\``
+    case "mssql":
+      return `[${name.replaceAll("]", "]]")}]`
   }
 }
 

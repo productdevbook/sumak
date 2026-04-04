@@ -378,6 +378,23 @@ db.insertInto("users")
   .compile(db.printer())
 ```
 
+## MERGE (SQL:2003)
+
+```ts
+db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(source.id))
+  .whenMatchedThenUpdate({ name: "updated" })
+  .whenNotMatchedThenInsert({
+    name: "Alice",
+    email: "alice@example.com",
+  })
+  .compile(db.printer())
+
+// MERGE with conditional delete
+db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(source.id))
+  .whenMatchedThenDelete()
+  .compile(db.printer())
+```
+
 ## Tree Shaking
 
 Import only the dialect you need:
@@ -385,6 +402,7 @@ Import only the dialect you need:
 ```ts
 import { sumak } from "sumak"
 import { pgDialect } from "sumak/pg"
+import { mssqlDialect } from "sumak/mssql"
 import { mysqlDialect } from "sumak/mysql"
 import { sqliteDialect } from "sumak/sqlite"
 import { serial, text } from "sumak/schema"
@@ -398,6 +416,30 @@ Same query, different SQL:
 // PostgreSQL  → SELECT "id" FROM "users" WHERE ("id" = $1)
 // MySQL       → SELECT `id` FROM `users` WHERE (`id` = ?)
 // SQLite      → SELECT "id" FROM "users" WHERE ("id" = ?)
+// MSSQL       → SELECT [id] FROM [users] WHERE ([id] = @p0)
+```
+
+### MSSQL Specifics
+
+```ts
+import { mssqlDialect } from "sumak/mssql"
+
+const db = sumak({
+  dialect: mssqlDialect(),
+  tables: { ... },
+})
+
+// LIMIT → TOP N
+// SELECT TOP 10 * FROM [users]
+
+// LIMIT + OFFSET → OFFSET/FETCH
+// SELECT * FROM [users] ORDER BY [id] ASC OFFSET 20 ROWS FETCH NEXT 10 ROWS ONLY
+
+// RETURNING → OUTPUT INSERTED.*
+// INSERT INTO [users] ([name]) OUTPUT INSERTED.* VALUES (@p0)
+
+// DELETE RETURNING → OUTPUT DELETED.*
+// DELETE FROM [users] OUTPUT DELETED.* WHERE ([id] = @p0)
 ```
 
 ## Plugins
@@ -474,7 +516,7 @@ Schema → Builder → AST → Plugin/Hook → Printer → SQL
 - **Builder Layer** — `Sumak<DB>`, `TypedSelectBuilder<DB,TB,O>`, proxy-based expressions
 - **AST Layer** — ~35 frozen node types, discriminated unions, visitor pattern
 - **Plugin Layer** — `SumakPlugin` interface, `Hookable` lifecycle hooks
-- **Printer Layer** — `BasePrinter` with dialect subclasses, Wadler document algebra
+- **Printer Layer** — `BasePrinter` with 4 dialect subclasses (PG, MySQL, SQLite, MSSQL), Wadler document algebra
 
 ## License
 

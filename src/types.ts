@@ -1,4 +1,4 @@
-export type SQLDialect = "pg" | "mysql" | "sqlite"
+export type SQLDialect = "pg" | "mysql" | "sqlite" | "mssql"
 
 export interface CompiledQuery {
   sql: string

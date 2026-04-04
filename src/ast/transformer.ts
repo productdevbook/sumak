@@ -3,6 +3,7 @@ import type {
   DeleteNode,
   ExpressionNode,
   InsertNode,
+  MergeNode,
   SelectNode,
   UpdateNode,
 } from "./nodes.ts"
@@ -18,6 +19,8 @@ export class ASTTransformer {
         return this.transformUpdate(node)
       case "delete":
         return this.transformDelete(node)
+      case "merge":
+        return this.transformMerge(node)
       default:
         return this.transformExpression(node)
     }
@@ -62,6 +65,27 @@ export class ASTTransformer {
     return {
       ...node,
       where: node.where ? this.transformExpression(node.where) : undefined,
+    }
+  }
+
+  transformMerge(node: MergeNode): MergeNode {
+    return {
+      ...node,
+      on: this.transformExpression(node.on),
+      whens: node.whens.map((w) => {
+        if (w.type === "matched") {
+          return {
+            ...w,
+            condition: w.condition ? this.transformExpression(w.condition) : undefined,
+            set: w.set?.map((s) => ({ ...s, value: this.transformExpression(s.value) })),
+          }
+        }
+        return {
+          ...w,
+          condition: w.condition ? this.transformExpression(w.condition) : undefined,
+          values: w.values.map((v) => this.transformExpression(v)),
+        }
+      }),
     }
   }
 

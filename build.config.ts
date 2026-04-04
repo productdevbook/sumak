@@ -7,6 +7,7 @@ export default defineBuildConfig({
       input: [
         "./src/index.ts",
         "./src/pg.ts",
+        "./src/mssql.ts",
         "./src/mysql.ts",
         "./src/sqlite.ts",
         "./src/schema.ts",

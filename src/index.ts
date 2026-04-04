@@ -22,6 +22,9 @@ export type {
   JoinNode,
   JsonAccessNode,
   LiteralNode,
+  MergeNode,
+  MergeWhenMatched,
+  MergeWhenNotMatched,
   OnConflictNode,
   OrderByNode,
   ParamNode,
@@ -38,6 +41,7 @@ export type {
 export {
   createDeleteNode,
   createInsertNode,
+  createMergeNode,
   createSelectNode,
   createUpdateNode,
   tableRef,
@@ -73,6 +77,7 @@ export type { ASTVisitor } from "./ast/visitor.ts"
 export type { Expression } from "./ast/typed-expression.ts"
 
 // Builders
+export { merge, MergeBuilder } from "./builder/merge.ts"
 export { select, SelectBuilder } from "./builder/select.ts"
 export { insert, InsertBuilder } from "./builder/insert.ts"
 export { update, UpdateBuilder } from "./builder/update.ts"
@@ -81,6 +86,7 @@ export { deleteFrom, DeleteBuilder } from "./builder/delete.ts"
 // Printers
 export { BasePrinter } from "./printer/base.ts"
 export { PgPrinter } from "./printer/pg.ts"
+export { MssqlPrinter } from "./printer/mssql.ts"
 export { MysqlPrinter } from "./printer/mysql.ts"
 export { SqlitePrinter } from "./printer/sqlite.ts"
 export { formatSQL } from "./printer/formatter.ts"
@@ -101,6 +107,7 @@ export type { Doc } from "./printer/document.ts"
 
 // Dialects
 export { pgDialect } from "./dialect/pg.ts"
+export { mssqlDialect } from "./dialect/mssql.ts"
 export { mysqlDialect } from "./dialect/mysql.ts"
 export { sqliteDialect } from "./dialect/sqlite.ts"
 export type { Dialect } from "./dialect/types.ts"
@@ -194,6 +201,7 @@ export { TypedSelectBuilder } from "./builder/typed-select.ts"
 export { TypedInsertBuilder, TypedInsertReturningBuilder } from "./builder/typed-insert.ts"
 export { TypedUpdateBuilder, TypedUpdateReturningBuilder } from "./builder/typed-update.ts"
 export { TypedDeleteBuilder, TypedDeleteReturningBuilder } from "./builder/typed-delete.ts"
+export { TypedMergeBuilder } from "./builder/typed-merge.ts"
 
 // Plugins
 export type { SumakPlugin } from "./plugin/types.ts"
