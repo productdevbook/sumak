@@ -11,6 +11,7 @@ export type {
   CTENode,
   DeleteNode,
   ExistsNode,
+  ExplainNode,
   ExpressionNode,
   FrameBound,
   FrameKind,

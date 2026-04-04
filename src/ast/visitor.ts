@@ -35,6 +35,8 @@ export function visitNode<R>(node: ASTNode, visitor: ASTVisitor<R>): R {
       return visitor.visitDelete(node)
     case "merge":
       return visitor.visitMerge(node)
+    case "explain":
+      return visitNode(node.statement, visitor)
     default:
       return visitor.visitExpression(node)
   }

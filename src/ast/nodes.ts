@@ -1,6 +1,20 @@
 import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
 
-export type ASTNode = SelectNode | InsertNode | UpdateNode | DeleteNode | MergeNode | ExpressionNode
+export type ASTNode =
+  | SelectNode
+  | InsertNode
+  | UpdateNode
+  | DeleteNode
+  | MergeNode
+  | ExplainNode
+  | ExpressionNode
+
+export interface ExplainNode {
+  type: "explain"
+  statement: SelectNode | InsertNode | UpdateNode | DeleteNode
+  analyze?: boolean
+  format?: "TEXT" | "JSON" | "YAML" | "XML"
+}
 
 export type ExpressionNode =
   | ColumnRefNode

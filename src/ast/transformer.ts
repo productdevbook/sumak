@@ -21,6 +21,8 @@ export class ASTTransformer {
         return this.transformDelete(node)
       case "merge":
         return this.transformMerge(node)
+      case "explain":
+        return { ...node, statement: this.transform(node.statement) as any }
       default:
         return this.transformExpression(node)
     }

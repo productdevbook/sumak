@@ -10,6 +10,7 @@ import type {
   CTENode,
   DeleteNode,
   ExistsNode,
+  ExplainNode,
   ExpressionNode,
   FrameBound,
   FrameSpec,
@@ -69,6 +70,8 @@ export class BasePrinter implements Printer {
         return this.printDelete(node)
       case "merge":
         return this.printMerge(node)
+      case "explain":
+        return this.printExplain(node)
       default:
         return this.printExpression(node)
     }
@@ -608,6 +611,18 @@ export class BasePrinter implements Printer {
 
   protected printAliasedExpr(node: AliasedExprNode): string {
     return `${this.printExpression(node.expr)} AS ${quoteIdentifier(node.alias, this.dialect)}`
+  }
+
+  protected printExplain(node: ExplainNode): string {
+    const parts: string[] = ["EXPLAIN"]
+    if (node.analyze) {
+      parts.push("ANALYZE")
+    }
+    if (node.format) {
+      parts.push(`(FORMAT ${node.format})`)
+    }
+    parts.push(this.printNode(node.statement))
+    return parts.join(" ")
   }
 
   protected printFullTextSearch(node: FullTextSearchNode): string {

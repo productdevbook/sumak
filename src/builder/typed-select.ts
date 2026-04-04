@@ -1,4 +1,10 @@
-import type { AliasedExprNode, ExpressionNode, SelectNode, TemporalClause } from "../ast/nodes.ts"
+import type {
+  AliasedExprNode,
+  ExplainNode,
+  ExpressionNode,
+  SelectNode,
+  TemporalClause,
+} from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -256,6 +262,24 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   /** Compile to SQL. */
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** EXPLAIN this query. */
+  explain(options?: { analyze?: boolean; format?: "TEXT" | "JSON" | "YAML" | "XML" }): {
+    build(): ExplainNode
+    compile(printer: Printer): CompiledQuery
+  } {
+    const node = this.build()
+    const explainNode: ExplainNode = {
+      type: "explain",
+      statement: node,
+      analyze: options?.analyze,
+      format: options?.format,
+    }
+    return {
+      build: () => explainNode,
+      compile: (printer: Printer) => printer.print(explainNode),
+    }
   }
 }
 
