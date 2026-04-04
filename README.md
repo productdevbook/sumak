@@ -430,11 +430,13 @@ active.union(premium).compile(db.printer())
 // UNION ALL
 active.unionAll(premium).compile(db.printer())
 
-// INTERSECT
+// INTERSECT / INTERSECT ALL
 active.intersect(premium).compile(db.printer())
+active.intersectAll(premium).compile(db.printer())
 
-// EXCEPT
+// EXCEPT / EXCEPT ALL
 active.except(premium).compile(db.printer())
+active.exceptAll(premium).compile(db.printer())
 ```
 
 ## CTEs (WITH)
@@ -481,19 +483,72 @@ db.update("users")
 // UPDATE "users" SET "name" = $1 FROM "posts" WHERE ("id" = $2)
 ```
 
+## Conditional Query Building
+
+```ts
+const withFilter = true
+const withOrder = false
+
+db.selectFrom("users")
+  .select("id", "name")
+  .$if(withFilter, (qb) => qb.where(({ age }) => age.gt(18)))
+  .$if(withOrder, (qb) => qb.orderBy("name"))
+  .compile(db.printer())
+// WHERE applied, ORDER BY skipped
+
+// Multiple .where() calls are AND'd together
+db.selectFrom("users")
+  .select("id")
+  .where(({ age }) => age.gt(18))
+  .where(({ active }) => active.eq(true))
+  .compile(db.printer())
+// WHERE ("age" > $1) AND ("active" = $2)
+```
+
+## INSERT Advanced
+
+```ts
+// INSERT ... SELECT
+const selectQuery = db.selectFrom("users").select("name", "age").build()
+db.insertInto("archive").fromSelect(selectQuery).compile(db.printer())
+
+// INSERT ... DEFAULT VALUES
+db.insertInto("users").defaultValues().compile(db.printer())
+
+// SQLite: INSERT OR IGNORE / INSERT OR REPLACE
+db.insertInto("users").values({ name: "Alice" }).orIgnore().compile(db.printer())
+// INSERT OR IGNORE INTO "users" ...
+
+db.insertInto("users").values({ name: "Alice" }).orReplace().compile(db.printer())
+// INSERT OR REPLACE INTO "users" ...
+```
+
 ## ON CONFLICT
 
 ```ts
-// DO NOTHING
+// DO NOTHING (by columns)
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
   .onConflictDoNothing("email")
   .compile(db.printer())
 
-// DO UPDATE
+// DO UPDATE (by columns)
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
   .onConflictDoUpdate(["email"], [{ column: "name", value: val("Alice") }])
+  .compile(db.printer())
+
+// DO NOTHING (by constraint name)
+db.insertInto("users")
+  .values({ name: "Alice", email: "a@b.com" })
+  .onConflictConstraintDoNothing("users_email_key")
+  .compile(db.printer())
+// ON CONFLICT ON CONSTRAINT "users_email_key" DO NOTHING
+
+// MySQL: ON DUPLICATE KEY UPDATE
+db.insertInto("users")
+  .values({ name: "Alice" })
+  .onDuplicateKeyUpdate([{ column: "name", value: val("Alice") }])
   .compile(db.printer())
 ```
 
@@ -512,6 +567,82 @@ db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(so
 db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(source.id))
   .whenMatchedThenDelete()
   .compile(db.printer())
+```
+
+## Row Locking
+
+```ts
+// FOR UPDATE
+db.selectFrom("users").select("id").forUpdate().compile(db.printer())
+
+// FOR SHARE
+db.selectFrom("users").select("id").forShare().compile(db.printer())
+
+// FOR NO KEY UPDATE / FOR KEY SHARE (PG)
+db.selectFrom("users").select("id").forNoKeyUpdate().compile(db.printer())
+db.selectFrom("users").select("id").forKeyShare().compile(db.printer())
+
+// SKIP LOCKED / NOWAIT
+db.selectFrom("users").select("id").forUpdate().skipLocked().compile(db.printer())
+db.selectFrom("users").select("id").forUpdate().noWait().compile(db.printer())
+```
+
+## DISTINCT ON (PG)
+
+```ts
+db.selectFrom("users")
+  .selectAll()
+  .distinctOn("dept")
+  .orderBy("dept")
+  .orderBy("salary", "DESC")
+  .compile(db.printer())
+// SELECT DISTINCT ON ("dept") * FROM "users" ORDER BY "dept" ASC, "salary" DESC
+```
+
+## DELETE USING / JOIN in UPDATE & DELETE
+
+```ts
+// PG: DELETE ... USING
+db.deleteFrom("orders")
+  .using("users")
+  .where(eq(col("orders.user_id"), col("users.id")))
+  .compile(db.printer())
+
+// MySQL: DELETE with JOIN
+db.deleteFrom("orders")
+  .innerJoin("users", eq(col("user_id", "orders"), col("id", "users")))
+  .where(eq(col("name", "users"), lit("Alice")))
+  .compile(db.printer())
+
+// MySQL: UPDATE with JOIN
+db.update("orders")
+  .set({ total: 0 })
+  .innerJoin("users", eq(col("user_id", "orders"), col("id", "users")))
+  .compile(db.printer())
+```
+
+## Aggregate FILTER (WHERE)
+
+```ts
+import { filter, count, sum } from "sumak"
+
+// COUNT(*) FILTER (WHERE active = true)
+db.selectFrom("users").selectExpr(filter(count(), activeExpr), "activeCount").compile(db.printer())
+```
+
+## EXPLAIN
+
+```ts
+// EXPLAIN
+db.selectFrom("users").select("id").explain().compile(db.printer())
+// EXPLAIN SELECT "id" FROM "users"
+
+// EXPLAIN ANALYZE
+db.selectFrom("users").select("id").explain({ analyze: true }).compile(db.printer())
+
+// EXPLAIN with format
+db.selectFrom("users").select("id").explain({ format: "JSON" }).compile(db.printer())
+// EXPLAIN (FORMAT JSON) SELECT "id" FROM "users"
 ```
 
 ## Full-Text Search
