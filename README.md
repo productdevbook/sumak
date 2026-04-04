@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src=".github/assets/cover.svg" alt="lale — Type-safe SQL query builder" width="100%">
+  <img src=".github/assets/cover.png" alt="lale — Type-safe SQL query builder" width="100%">
   <br><br>
   <b style="font-size: 2em;">lale</b>
   <br><br>
