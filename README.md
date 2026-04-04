@@ -89,11 +89,11 @@ That's it. `db` now knows every table, column, and type. All queries are fully t
 
 ```ts
 // Basic select
-db.selectFrom("users").select("id", "name").compile(db.printer())
+db.selectFrom("users").select("id", "name").toSQL()
 // SELECT "id", "name" FROM "users"
 
 // Select all columns
-db.selectFrom("users").selectAll().compile(db.printer())
+db.selectFrom("users").selectAll().toSQL()
 
 // With WHERE, ORDER BY, LIMIT, OFFSET
 db.selectFrom("users")
@@ -102,10 +102,10 @@ db.selectFrom("users")
   .orderBy("name")
   .limit(10)
   .offset(20)
-  .compile(db.printer())
+  .toSQL()
 
 // DISTINCT
-db.selectFrom("users").select("name").distinct().compile(db.printer())
+db.selectFrom("users").select("name").distinct().toSQL()
 
 // DISTINCT ON (PostgreSQL)
 db.selectFrom("users")
@@ -113,7 +113,7 @@ db.selectFrom("users")
   .distinctOn("dept")
   .orderBy("dept")
   .orderBy("salary", "DESC")
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ---
@@ -122,7 +122,7 @@ db.selectFrom("users")
 
 ```ts
 // Single row
-db.insertInto("users").values({ name: "Alice", email: "alice@example.com" }).compile(db.printer())
+db.insertInto("users").values({ name: "Alice", email: "alice@example.com" }).toSQL()
 
 // Multiple rows
 db.insertInto("users")
@@ -130,23 +130,20 @@ db.insertInto("users")
     { name: "Alice", email: "a@b.com" },
     { name: "Bob", email: "b@b.com" },
   ])
-  .compile(db.printer())
+  .toSQL()
 
 // RETURNING
-db.insertInto("users")
-  .values({ name: "Alice", email: "a@b.com" })
-  .returningAll()
-  .compile(db.printer())
+db.insertInto("users").values({ name: "Alice", email: "a@b.com" }).returningAll().toSQL()
 
 // INSERT ... SELECT
 const source = db.selectFrom("users").select("name", "email").build()
-db.insertInto("archive").fromSelect(source).compile(db.printer())
+db.insertInto("archive").fromSelect(source).toSQL()
 
 // DEFAULT VALUES
-db.insertInto("users").defaultValues().compile(db.printer())
+db.insertInto("users").defaultValues().toSQL()
 
 // SQLite: INSERT OR IGNORE / INSERT OR REPLACE
-db.insertInto("users").values({ name: "Alice" }).orIgnore().compile(db.printer())
+db.insertInto("users").values({ name: "Alice" }).orIgnore().toSQL()
 ```
 
 ---
@@ -158,33 +155,33 @@ db.insertInto("users").values({ name: "Alice" }).orIgnore().compile(db.printer()
 db.update("users")
   .set({ active: false })
   .where(({ id }) => id.eq(1))
-  .compile(db.printer())
+  .toSQL()
 
 // SET with expression
 db.update("users")
   .setExpr("name", val("Anonymous"))
   .where(({ active }) => active.eq(false))
-  .compile(db.printer())
+  .toSQL()
 
 // UPDATE ... FROM (PostgreSQL)
 db.update("users")
   .set({ name: "Bob" })
   .from("posts")
   .where(({ id }) => id.eq(1))
-  .compile(db.printer())
+  .toSQL()
 
 // UPDATE with JOIN (MySQL)
-db.update("orders").set({ total: 0 }).innerJoin("users", onExpr).compile(db.printer())
+db.update("orders").set({ total: 0 }).innerJoin("users", onExpr).toSQL()
 
 // RETURNING
 db.update("users")
   .set({ active: false })
   .where(({ id }) => id.eq(1))
   .returningAll()
-  .compile(db.printer())
+  .toSQL()
 
 // ORDER BY + LIMIT (MySQL)
-db.update("users").set({ active: false }).orderBy("id").limit(lit(10)).compile(db.printer())
+db.update("users").set({ active: false }).orderBy("id").limit(lit(10)).toSQL()
 ```
 
 ---
@@ -194,22 +191,22 @@ db.update("users").set({ active: false }).orderBy("id").limit(lit(10)).compile(d
 ```ts
 db.deleteFrom("users")
   .where(({ id }) => id.eq(1))
-  .compile(db.printer())
+  .toSQL()
 
 // RETURNING
 db.deleteFrom("users")
   .where(({ id }) => id.eq(1))
   .returning("id")
-  .compile(db.printer())
+  .toSQL()
 
 // DELETE ... USING (PostgreSQL)
-db.deleteFrom("orders").using("users").where(onExpr).compile(db.printer())
+db.deleteFrom("orders").using("users").where(onExpr).toSQL()
 
 // DELETE with JOIN (MySQL)
 db.deleteFrom("orders")
   .innerJoin("users", onExpr)
   .where(({ id }) => id.eq(1))
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ---
@@ -304,7 +301,7 @@ db.selectFrom("users")
   .select("id")
   .where(({ age }) => age.gt(18))
   .where(({ active }) => active.eq(true))
-  .compile(db.printer())
+  .toSQL()
 // WHERE ("age" > $1) AND ("active" = $2)
 ```
 
@@ -328,32 +325,32 @@ db.selectFrom("users")
 db.selectFrom("users")
   .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
   .select("id", "title")
-  .compile(db.printer())
+  .toSQL()
 
 // LEFT JOIN — joined columns become nullable
 db.selectFrom("users")
   .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
-  .compile(db.printer())
+  .toSQL()
 
 // RIGHT JOIN
 db.selectFrom("users")
   .rightJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
-  .compile(db.printer())
+  .toSQL()
 
 // FULL JOIN — both sides nullable
 db.selectFrom("users")
   .fullJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
-  .compile(db.printer())
+  .toSQL()
 
 // CROSS JOIN
-db.selectFrom("users").crossJoin("posts").compile(db.printer())
+db.selectFrom("users").crossJoin("posts").toSQL()
 
 // LATERAL JOINs (correlated subqueries)
-db.selectFrom("users").innerJoinLateral(subquery, "recent_posts", onExpr).compile(db.printer())
+db.selectFrom("users").innerJoinLateral(subquery, "recent_posts", onExpr).toSQL()
 
-db.selectFrom("users").leftJoinLateral(subquery, "recent_posts", onExpr).compile(db.printer())
+db.selectFrom("users").leftJoinLateral(subquery, "recent_posts", onExpr).toSQL()
 
-db.selectFrom("users").crossJoinLateral(subquery, "latest").compile(db.printer())
+db.selectFrom("users").crossJoinLateral(subquery, "latest").toSQL()
 ```
 
 ---
@@ -366,7 +363,7 @@ db.selectFrom("users").crossJoinLateral(subquery, "latest").compile(db.printer()
 import { val, cast, rawExpr } from "sumak"
 
 // Add a computed column with alias
-db.selectFrom("users").selectExpr(val("hello"), "greeting").compile(db.printer())
+db.selectFrom("users").selectExpr(val("hello"), "greeting").toSQL()
 
 // Multiple expressions at once
 db.selectFrom("users")
@@ -374,12 +371,12 @@ db.selectFrom("users")
     total: count(),
     greeting: val("hello"),
   })
-  .compile(db.printer())
+  .toSQL()
 
 // CAST
 db.selectFrom("users")
   .selectExpr(cast(val(42), "text"), "idAsText")
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ### Arithmetic
@@ -387,12 +384,12 @@ db.selectFrom("users")
 ```ts
 import { add, sub, mul, div, mod, neg } from "sumak"
 
-db.selectFrom("orders").selectExpr(mul(col.price, col.qty), "total").compile(db.printer())
+db.selectFrom("orders").selectExpr(mul(col.price, col.qty), "total").toSQL()
 // ("price" * "qty") AS "total"
 
 db.selectFrom("orders")
   .selectExpr(add(col.price, val(10)), "adjusted")
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ### CASE / WHEN
@@ -409,7 +406,7 @@ db.selectFrom("users")
       .end(),
     "status",
   )
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ### JSON Operations
@@ -420,15 +417,15 @@ import { jsonRef, jsonAgg, toJson, jsonBuildObject } from "sumak"
 // Access: ->  (JSON object), ->> (text value)
 db.selectFrom("users")
   .selectExpr(jsonRef(col.meta, "name", "->>"), "metaName")
-  .compile(db.printer())
+  .toSQL()
 
 // JSON_AGG / TO_JSON
-db.selectFrom("users").selectExpr(jsonAgg(col.name), "namesJson").compile(db.printer())
+db.selectFrom("users").selectExpr(jsonAgg(col.name), "namesJson").toSQL()
 
 // JSON_BUILD_OBJECT
 db.selectFrom("users")
   .selectExpr(jsonBuildObject(["name", col.name], ["age", col.age]), "obj")
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ### PostgreSQL Array Operators
@@ -448,15 +445,15 @@ import { arrayContains, arrayContainedBy, arrayOverlaps, rawExpr } from "sumak"
 ```ts
 import { count, countDistinct, sum, sumDistinct, avg, avgDistinct, min, max, coalesce } from "sumak"
 
-db.selectFrom("users").selectExpr(count(), "total").compile(db.printer())
-db.selectFrom("users").selectExpr(countDistinct(col.dept), "uniqueDepts").compile(db.printer())
-db.selectFrom("orders").selectExpr(sumDistinct(col.amount), "uniqueSum").compile(db.printer())
-db.selectFrom("orders").selectExpr(avg(col.amount), "avgAmount").compile(db.printer())
+db.selectFrom("users").selectExpr(count(), "total").toSQL()
+db.selectFrom("users").selectExpr(countDistinct(col.dept), "uniqueDepts").toSQL()
+db.selectFrom("orders").selectExpr(sumDistinct(col.amount), "uniqueSum").toSQL()
+db.selectFrom("orders").selectExpr(avg(col.amount), "avgAmount").toSQL()
 
 // COALESCE (variadic)
 db.selectFrom("users")
   .selectExpr(coalesce(col.nick, col.name, val("Anonymous")), "displayName")
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ### Aggregate with FILTER (PostgreSQL)
@@ -464,7 +461,7 @@ db.selectFrom("users")
 ```ts
 import { filter, count } from "sumak"
 
-db.selectFrom("users").selectExpr(filter(count(), activeExpr), "activeCount").compile(db.printer())
+db.selectFrom("users").selectExpr(filter(count(), activeExpr), "activeCount").toSQL()
 // COUNT(*) FILTER (WHERE ...)
 ```
 
@@ -476,11 +473,11 @@ import { stringAgg, arrayAgg } from "sumak"
 // STRING_AGG with ORDER BY
 db.selectFrom("users")
   .selectExpr(stringAgg(col.name, ", ", [{ expr: col.name, direction: "ASC" }]), "names")
-  .compile(db.printer())
+  .toSQL()
 // STRING_AGG("name", ', ' ORDER BY "name" ASC)
 
 // ARRAY_AGG
-db.selectFrom("users").selectExpr(arrayAgg(col.id), "ids").compile(db.printer())
+db.selectFrom("users").selectExpr(arrayAgg(col.id), "ids").toSQL()
 ```
 
 ---
@@ -496,7 +493,7 @@ db.selectFrom("employees")
     over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary", "DESC")),
     "rn",
   )
-  .compile(db.printer())
+  .toSQL()
 
 // RANK / DENSE_RANK
 over(rank(), (w) => w.orderBy("score", "DESC"))
@@ -587,7 +584,7 @@ db.selectFrom("users")
         .build(),
     ),
   )
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ### Derived Tables (Subquery in FROM)
@@ -598,7 +595,7 @@ const sub = db
   .select("id", "name")
   .where(({ age }) => age.gt(18))
 
-db.selectFromSubquery(sub, "adults").selectAll().compile(db.printer())
+db.selectFromSubquery(sub, "adults").selectAll().toSQL()
 // SELECT * FROM (SELECT ...) AS "adults"
 ```
 
@@ -609,7 +606,7 @@ const deptIds = db.selectFrom("departments").select("id").build()
 
 db.selectFrom("users")
   .where(({ dept_id }) => dept_id.inSubquery(deptIds))
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ---
@@ -626,12 +623,12 @@ const premium = db
   .select("id")
   .where(({ tier }) => tier.eq("premium"))
 
-active.union(premium).compile(db.printer()) // UNION
-active.unionAll(premium).compile(db.printer()) // UNION ALL
-active.intersect(premium).compile(db.printer()) // INTERSECT
-active.intersectAll(premium).compile(db.printer()) // INTERSECT ALL
-active.except(premium).compile(db.printer()) // EXCEPT
-active.exceptAll(premium).compile(db.printer()) // EXCEPT ALL
+active.union(premium).toSQL() // UNION
+active.unionAll(premium).toSQL() // UNION ALL
+active.intersect(premium).toSQL() // INTERSECT
+active.intersectAll(premium).toSQL() // INTERSECT ALL
+active.except(premium).toSQL() // EXCEPT
+active.exceptAll(premium).toSQL() // EXCEPT ALL
 ```
 
 ---
@@ -644,10 +641,10 @@ const activeCte = db
   .where(({ active }) => active.eq(true))
   .build()
 
-db.selectFrom("users").with("active_users", activeCte).compile(db.printer())
+db.selectFrom("users").with("active_users", activeCte).toSQL()
 
 // Recursive CTE
-db.selectFrom("categories").with("tree", recursiveQuery, true).compile(db.printer())
+db.selectFrom("categories").with("tree", recursiveQuery, true).toSQL()
 ```
 
 ---
@@ -664,7 +661,7 @@ db.selectFrom("users")
   .select("id", "name")
   .$if(withFilter, (qb) => qb.where(({ age }) => age.gt(18)))
   .$if(withOrder, (qb) => qb.orderBy("name"))
-  .compile(db.printer())
+  .toSQL()
 // WHERE applied, ORDER BY skipped
 ```
 
@@ -674,11 +671,7 @@ db.selectFrom("users")
 const withPagination = (qb) => qb.limit(10).offset(20)
 const onlyActive = (qb) => qb.where(({ active }) => active.eq(true))
 
-db.selectFrom("users")
-  .select("id", "name")
-  .$call(onlyActive)
-  .$call(withPagination)
-  .compile(db.printer())
+db.selectFrom("users").select("id", "name").$call(onlyActive).$call(withPagination).toSQL()
 ```
 
 ### `clear*()` — reset clauses
@@ -689,7 +682,7 @@ db.selectFrom("users")
   .orderBy("name")
   .clearOrderBy() // removes ORDER BY
   .orderBy("id", "DESC") // re-add different order
-  .compile(db.printer())
+  .toSQL()
 ```
 
 Available: `clearWhere()`, `clearOrderBy()`, `clearLimit()`, `clearOffset()`, `clearGroupBy()`, `clearHaving()`, `clearSelect()`.
@@ -718,7 +711,7 @@ sql`SELECT ${sql.ref("id")} FROM ${sql.table("users", "public")}`
 // In queries
 db.selectFrom("users")
   .selectExpr(sql`CURRENT_DATE`, "today")
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ### `rawExpr()` escape hatch
@@ -729,12 +722,10 @@ import { rawExpr } from "sumak"
 // In WHERE
 db.selectFrom("users")
   .where(() => rawExpr<boolean>("age > 18"))
-  .compile(db.printer())
+  .toSQL()
 
 // In SELECT
-db.selectFrom("users")
-  .selectExpr(rawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
-  .compile(db.printer())
+db.selectFrom("users").selectExpr(rawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year").toSQL()
 ```
 
 ---
@@ -746,31 +737,31 @@ db.selectFrom("users")
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
   .onConflictDoNothing("email")
-  .compile(db.printer())
+  .toSQL()
 
 // ON CONFLICT DO UPDATE (with Expression)
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
   .onConflictDoUpdate(["email"], [{ column: "name", value: val("Updated") }])
-  .compile(db.printer())
+  .toSQL()
 
 // ON CONFLICT DO UPDATE (with plain object — auto-parameterized)
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
   .onConflictDoUpdateSet(["email"], { name: "Alice Updated" })
-  .compile(db.printer())
+  .toSQL()
 
 // ON CONFLICT ON CONSTRAINT
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
   .onConflictConstraintDoNothing("users_email_key")
-  .compile(db.printer())
+  .toSQL()
 
 // MySQL: ON DUPLICATE KEY UPDATE
 db.insertInto("users")
   .values({ name: "Alice" })
   .onDuplicateKeyUpdate([{ column: "name", value: val("Alice") }])
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ---
@@ -781,12 +772,12 @@ db.insertInto("users")
 db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(source.id))
   .whenMatchedThenUpdate({ name: "updated" })
   .whenNotMatchedThenInsert({ name: "Alice", email: "a@b.com" })
-  .compile(db.printer())
+  .toSQL()
 
 // Conditional delete
 db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(source.id))
   .whenMatchedThenDelete()
-  .compile(db.printer())
+  .toSQL()
 ```
 
 ---
@@ -794,14 +785,14 @@ db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(so
 ## Row Locking
 
 ```ts
-db.selectFrom("users").select("id").forUpdate().compile(db.printer()) // FOR UPDATE
-db.selectFrom("users").select("id").forShare().compile(db.printer()) // FOR SHARE
-db.selectFrom("users").select("id").forNoKeyUpdate().compile(db.printer()) // FOR NO KEY UPDATE (PG)
-db.selectFrom("users").select("id").forKeyShare().compile(db.printer()) // FOR KEY SHARE (PG)
+db.selectFrom("users").select("id").forUpdate().toSQL() // FOR UPDATE
+db.selectFrom("users").select("id").forShare().toSQL() // FOR SHARE
+db.selectFrom("users").select("id").forNoKeyUpdate().toSQL() // FOR NO KEY UPDATE (PG)
+db.selectFrom("users").select("id").forKeyShare().toSQL() // FOR KEY SHARE (PG)
 
 // Modifiers
-db.selectFrom("users").select("id").forUpdate().skipLocked().compile(db.printer()) // SKIP LOCKED
-db.selectFrom("users").select("id").forUpdate().noWait().compile(db.printer()) // NOWAIT
+db.selectFrom("users").select("id").forUpdate().skipLocked().toSQL() // SKIP LOCKED
+db.selectFrom("users").select("id").forUpdate().noWait().toSQL() // NOWAIT
 ```
 
 ---
@@ -809,13 +800,13 @@ db.selectFrom("users").select("id").forUpdate().noWait().compile(db.printer()) /
 ## EXPLAIN
 
 ```ts
-db.selectFrom("users").select("id").explain().compile(db.printer())
+db.selectFrom("users").select("id").explain().toSQL()
 // EXPLAIN SELECT "id" FROM "users"
 
-db.selectFrom("users").select("id").explain({ analyze: true }).compile(db.printer())
+db.selectFrom("users").select("id").explain({ analyze: true }).toSQL()
 // EXPLAIN ANALYZE SELECT ...
 
-db.selectFrom("users").select("id").explain({ format: "JSON" }).compile(db.printer())
+db.selectFrom("users").select("id").explain({ format: "JSON" }).toSQL()
 // EXPLAIN (FORMAT JSON) SELECT ...
 ```
 
@@ -959,7 +950,7 @@ import { textSearch, val } from "sumak"
 // PostgreSQL: to_tsvector("name") @@ to_tsquery('alice')
 db.selectFrom("users")
   .where(({ name }) => textSearch([name.toExpr()], val("alice")))
-  .compile(db.printer())
+  .toSQL()
 
 // MySQL: MATCH(`name`) AGAINST(? IN BOOLEAN MODE)
 // SQLite: ("name" MATCH ?)
@@ -974,15 +965,15 @@ db.selectFrom("users")
 // Point-in-time query
 db.selectFrom("users")
   .forSystemTime({ kind: "as_of", timestamp: lit("2024-01-01") })
-  .compile(db.printer())
+  .toSQL()
 
 // Time range
 db.selectFrom("users")
   .forSystemTime({ kind: "between", start: lit("2024-01-01"), end: lit("2024-12-31") })
-  .compile(db.printer())
+  .toSQL()
 
 // Full history
-db.selectFrom("users").forSystemTime({ kind: "all" }).compile(db.printer())
+db.selectFrom("users").forSystemTime({ kind: "all" }).toSQL()
 ```
 
 Modes: `as_of`, `from_to`, `between`, `contained_in`, `all`.
@@ -1063,36 +1054,47 @@ import { serial, text } from "sumak/schema"
 
 ## Architecture
 
+sumak uses a 5-layer pipeline. Your code never touches SQL strings — everything flows through an AST.
+
 ```
-User Code
-  │
-  ├── sumak({ dialect, tables })      ← DB type inferred
-  │
-  ├── db.selectFrom("users")          ← TypedSelectBuilder<DB, "users", O>
-  │     .select("id", "name")         ← O narrows to Pick<O, "id"|"name">
-  │     .where(({ age }) => age.gt(18))
-  │     .build()                       ← SelectNode (frozen AST)
-  │
-  ├── db.compile(node)                ← Plugin → Hooks → Printer
-  │
-  └── { sql, params }                ← Parameterized output
+┌─────────────────────────────────────────────────────────────────┐
+│  1. SCHEMA                                                      │
+│     sumak({ dialect, tables: { users: { id: serial(), ... } } })│
+│     → DB type auto-inferred, zero codegen                       │
+├─────────────────────────────────────────────────────────────────┤
+│  2. BUILDER                                                     │
+│     db.selectFrom("users").select("id").where(...)              │
+│     → Immutable, chainable, fully type-checked                  │
+├─────────────────────────────────────────────────────────────────┤
+│  3. AST                                                         │
+│     .build() → SelectNode (frozen, discriminated union)         │
+│     → ~40 node types, Object.freeze on all outputs              │
+├─────────────────────────────────────────────────────────────────┤
+│  4. PLUGIN / HOOK                                               │
+│     Plugin.transformNode() → Hook "query:before"                │
+│     → AST rewriting, tenant isolation, soft delete, logging     │
+├─────────────────────────────────────────────────────────────────┤
+│  5. PRINTER                                                     │
+│     .toSQL() → { sql: "SELECT ...", params: [...] }             │
+│     → Dialect-specific: PG ($1), MySQL (?), MSSQL (@p0)        │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**5 layers:**
+### Why AST-first?
 
-- **Schema** — `defineTable()`, `ColumnType<S,I,U>`, auto type inference
-- **Builder** — `TypedSelectBuilder<DB,TB,O>`, proxy-based expressions
-- **AST** — Frozen node types, discriminated unions, visitor pattern
-- **Plugin/Hook** — `SumakPlugin`, `Hookable` lifecycle hooks
-- **Printer** — `BasePrinter` + 4 dialect subclasses, Wadler document algebra
+The query is never a string until the very last step. This means:
 
-|                    | sumak                 | Drizzle     | Kysely         |
-| ------------------ | --------------------- | ----------- | -------------- |
-| **Architecture**   | AST-first             | Template    | AST (98 nodes) |
-| **Type inference** | Auto (no codegen)     | Auto        | Manual DB type |
-| **Plugin system**  | Hooks + plugins       | None        | Plugins only   |
-| **DDL support**    | Full (schema builder) | drizzle-kit | Full           |
-| **Dependencies**   | 0                     | 0           | 0              |
+- **Plugins can rewrite queries** — add WHERE clauses, prefix schemas, transform joins
+- **Hooks can inspect/modify** — logging, tracing, tenant isolation
+- **Printers are swappable** — same AST, different SQL per dialect
+- **No SQL injection** — values are always parameterized
+
+### Key design decisions
+
+- **Params at print time** — no global state, no index tracking during build
+- **Immutable builders** — every method returns a new instance
+- **Proxy-based column access** — `({ age }) => age.gt(18)` with full type safety
+- **Phantom types** — `Expression<T>` carries type info with zero runtime cost
 
 ---
 
