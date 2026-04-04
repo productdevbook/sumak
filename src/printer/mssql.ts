@@ -107,7 +107,8 @@ export class MssqlPrinter extends BasePrinter {
       parts.push(this.printCTEs(node.ctes))
     }
 
-    parts.push("INSERT INTO", this.printTableRef(node.table))
+    const insertKeyword = node.insertMode ?? "INSERT"
+    parts.push(`${insertKeyword} INTO`, this.printTableRef(node.table))
 
     if (node.columns.length > 0) {
       parts.push(`(${node.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)

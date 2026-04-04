@@ -239,8 +239,17 @@ export interface SelectNode {
   lock?: LockClause
 }
 
+export type InsertMode =
+  | "INSERT"
+  | "INSERT OR IGNORE"
+  | "INSERT OR REPLACE"
+  | "INSERT OR ABORT"
+  | "INSERT OR ROLLBACK"
+  | "INSERT OR FAIL"
+
 export interface InsertNode {
   type: "insert"
+  insertMode?: InsertMode
   table: TableRefNode
   columns: string[]
   values: ExpressionNode[][]

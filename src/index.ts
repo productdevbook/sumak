@@ -19,6 +19,7 @@ export type {
   FullTextSearchNode,
   FunctionCallNode,
   InNode,
+  InsertMode,
   InsertNode,
   IsNullNode,
   JoinNode,

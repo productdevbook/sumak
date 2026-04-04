@@ -102,6 +102,16 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     )
   }
 
+  /** INSERT OR IGNORE (SQLite) */
+  orIgnore(): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(this._builder.orIgnore(), this._paramIdx)
+  }
+
+  /** INSERT OR REPLACE (SQLite) */
+  orReplace(): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(this._builder.orReplace(), this._paramIdx)
+  }
+
   /** MySQL: ON DUPLICATE KEY UPDATE */
   onDuplicateKeyUpdate(
     set: { column: keyof DB[TB] & string; value: Expression<any> }[],

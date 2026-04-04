@@ -2,6 +2,7 @@ import { param } from "../ast/expression.ts"
 import type {
   CTENode,
   ExpressionNode,
+  InsertMode,
   InsertNode,
   OnConflictNode,
   SelectNode,
@@ -66,6 +67,21 @@ export class InsertBuilder {
       where,
     }
     return new InsertBuilder({ ...this.node, onConflict: conflict }, this.paramIndex)
+  }
+
+  /** Set insert mode (SQLite: INSERT OR IGNORE, INSERT OR REPLACE, etc.) */
+  mode(mode: InsertMode): InsertBuilder {
+    return new InsertBuilder({ ...this.node, insertMode: mode }, this.paramIndex)
+  }
+
+  /** Shorthand: INSERT OR IGNORE (SQLite) */
+  orIgnore(): InsertBuilder {
+    return this.mode("INSERT OR IGNORE")
+  }
+
+  /** Shorthand: INSERT OR REPLACE (SQLite) */
+  orReplace(): InsertBuilder {
+    return this.mode("INSERT OR REPLACE")
   }
 
   /** MySQL: ON DUPLICATE KEY UPDATE */
