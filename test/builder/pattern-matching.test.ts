@@ -66,3 +66,14 @@ describe("NOT BETWEEN", () => {
     expect(q.sql).toContain("NOT BETWEEN")
   })
 })
+
+describe("BETWEEN SYMMETRIC", () => {
+  it("BETWEEN SYMMETRIC", () => {
+    const q = db
+      .selectFrom("users")
+      .select("id")
+      .where(({ age }) => age.betweenSymmetric(65, 18))
+      .compile(p)
+    expect(q.sql).toContain("BETWEEN SYMMETRIC")
+  })
+})

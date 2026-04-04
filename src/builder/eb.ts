@@ -147,6 +147,18 @@ export class Col<T> {
     })
   }
 
+  /** BETWEEN SYMMETRIC low AND high (PG) — order-independent range check */
+  betweenSymmetric(low: T, high: T): Expression<boolean> {
+    return wrap({
+      type: "between",
+      expr: this._node,
+      low: autoParam(low),
+      high: autoParam(high),
+      negated: false,
+      symmetric: true,
+    })
+  }
+
   /** Compare with another column: col1.eqCol(col2) */
   eqCol(other: Col<T>): Expression<boolean> {
     return wrap(binOp("=", this._node, other._node))

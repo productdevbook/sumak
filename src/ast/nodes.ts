@@ -98,6 +98,7 @@ export interface BetweenNode {
   low: ExpressionNode
   high: ExpressionNode
   negated: boolean
+  symmetric?: boolean
 }
 
 export interface InNode {

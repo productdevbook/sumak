@@ -384,7 +384,8 @@ export class BasePrinter implements Printer {
 
   protected printBetween(node: BetweenNode): string {
     const neg = node.negated ? "NOT " : ""
-    return `(${this.printExpression(node.expr)} ${neg}BETWEEN ${this.printExpression(node.low)} AND ${this.printExpression(node.high)})`
+    const sym = node.symmetric ? " SYMMETRIC" : ""
+    return `(${this.printExpression(node.expr)} ${neg}BETWEEN${sym} ${this.printExpression(node.low)} AND ${this.printExpression(node.high)})`
   }
 
   protected printIn(node: InNode): string {
