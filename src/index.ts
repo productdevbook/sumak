@@ -229,6 +229,9 @@ export {
 } from "./builder/eb.ts"
 export type { ColumnProxies, WhereCallback } from "./builder/eb.ts"
 
+// SQL tagged template
+export { sql } from "./builder/sql.ts"
+
 // Typed builders
 export { sumak, Sumak } from "./sumak.ts"
 export type { SumakConfig } from "./sumak.ts"
