@@ -185,4 +185,4 @@ pnpm release        # pnpm test && pnpm build && bumpp && npm publish && git pus
 - **No code without tests** — PR must include tests for all new/changed code
 - Run all: `pnpm test`
 - Run single: `pnpm vitest run test/<path>.test.ts`
-- **Current:** 59 test files, 524 tests, 0 lint errors, 0 tsgo errors
+- **Current:** 64 test files, 547 tests, 0 lint errors, 0 tsgo errors
