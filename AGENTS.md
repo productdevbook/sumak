@@ -5,84 +5,135 @@ Type-safe SQL query builder with powerful SQL printers. Zero dependencies, tree-
 > [!IMPORTANT]
 > Keep `AGENTS.md` updated with project status.
 
+## Architecture
+
+5-layer pipeline: **Schema → Builder → AST → Plugin/Hook → Printer → SQL**
+
+```
+User Code
+  │
+  ├─ lale({ dialect, tables })     ← DB type auto-inferred
+  │
+  ├─ db.selectFrom("users")       ← TypedSelectBuilder<DB, "users", O>
+  │    .select("id", "name")       ← O narrows to Pick<O, "id"|"name">
+  │    .where(typedEq(...))        ← Expression<boolean> enforced
+  │    .build()                    ← SelectNode (frozen AST)
+  │
+  ├─ db.compile(node)             ← Plugin transforms → Hooks → Printer
+  │
+  └─ { sql, params }              ← Parameterized output
+```
+
 ## Project Structure
 
 ```
 src/
+  lale.ts                   # lale() factory + Lale<DB> class
   index.ts                  # Main API — all exports
   pg.ts                     # Sub-path: lale/pg
   mysql.ts                  # Sub-path: lale/mysql
   sqlite.ts                 # Sub-path: lale/sqlite
+  schema.ts                 # Sub-path: lale/schema
   errors.ts                 # Custom error classes
-  env.d.ts                  # Runtime type declarations
-  types.ts                  # Shared types and interfaces
+  types.ts                  # Shared types (CompiledQuery, SQLDialect, etc.)
+  schema/
+    types.ts                # ColumnType<S,I,U>, Selectable, Insertable, Updateable
+    column.ts               # ColumnBuilder<S,I,U>, 22 column factories (serial, text, etc.)
+    table.ts                # defineTable(), InferTable
+    type-utils.ts           # Nullable, ResolveColumnType, SelectResult, etc.
+    index.ts                # Re-exports
   ast/
-    nodes.ts                # AST node definitions (Select, Insert, Update, Delete, etc.)
-    expression.ts           # Expression nodes (Column, Literal, Binary, Function, etc.)
-    visitor.ts              # AST visitor interface
-    transformer.ts          # AST transformer base
+    nodes.ts                # ~35 AST node types (discriminated unions, frozen)
+    expression.ts           # Untyped expression factories (col, lit, eq, etc.)
+    typed-expression.ts     # Expression<T> phantom types (typedEq, typedCol, etc.)
+    visitor.ts              # ASTVisitor interface + visitNode dispatcher
+    transformer.ts          # ASTTransformer base class
   builder/
-    select.ts               # SELECT query builder
-    insert.ts               # INSERT query builder
-    update.ts               # UPDATE query builder
-    delete.ts               # DELETE query builder
-    expression.ts           # Expression builder (WHERE, HAVING, ON)
-    join.ts                 # JOIN builder
-    cte.ts                  # CTE (WITH) builder
+    select.ts               # SelectBuilder (untyped, immutable)
+    insert.ts               # InsertBuilder
+    update.ts               # UpdateBuilder
+    delete.ts               # DeleteBuilder
+    expression.ts           # Expression builder helpers (val, resetParamCounter)
     raw.ts                  # Raw SQL escape hatch
-    schema.ts               # Schema definition types
+    typed-select.ts         # TypedSelectBuilder<DB, TB, O>
+    typed-insert.ts         # TypedInsertBuilder<DB, TB>
+    typed-update.ts         # TypedUpdateBuilder<DB, TB>
+    typed-delete.ts         # TypedDeleteBuilder<DB, TB>
   printer/
-    base.ts                 # Base SQL printer (dialect-agnostic)
-    pg.ts                   # PostgreSQL printer ($1, $2 params, RETURNING, etc.)
-    mysql.ts                # MySQL printer (backticks, ? params, etc.)
-    sqlite.ts               # SQLite printer (? params, type affinity, etc.)
-    formatter.ts            # SQL pretty-printer / formatter
-    types.ts                # Printer types and interfaces
+    base.ts                 # BasePrinter — visitor-based SQL generation
+    pg.ts                   # PgPrinter ($1 params, double-quote identifiers)
+    mysql.ts                # MysqlPrinter (? params, backtick identifiers)
+    sqlite.ts               # SqlitePrinter (? params, double-quote identifiers)
+    formatter.ts            # SQL pretty-printer (keyword-aware)
+    document.ts             # Wadler-style document algebra (text/line/nest/group/render)
+    types.ts                # Printer, PrinterOptions, PrintMode
   dialect/
-    pg.ts                   # PostgreSQL dialect config
-    mysql.ts                # MySQL dialect config
-    sqlite.ts               # SQLite dialect config
-    types.ts                # Dialect type definitions
+    pg.ts                   # pgDialect() factory
+    mysql.ts                # mysqlDialect() factory
+    sqlite.ts               # sqliteDialect() factory
+    types.ts                # Dialect interface
+  plugin/
+    types.ts                # LalePlugin interface
+    plugin-manager.ts       # PluginManager — sequential plugin pipeline
+    hooks.ts                # Hookable — lifecycle hooks (query:before/after, etc.)
+    with-schema.ts          # WithSchemaPlugin — auto schema prefix
+    soft-delete.ts          # SoftDeletePlugin — auto WHERE deleted_at IS NULL
+    camel-case.ts           # CamelCasePlugin — snake_case → camelCase results
   utils/
-    identifier.ts           # Identifier quoting utilities
-    param.ts                # Parameter binding utilities
+    identifier.ts           # Identifier quoting per dialect
+    param.ts                # Parameter formatting per dialect
 test/
-  ast/
-    nodes.test.ts           # AST node creation tests
-    visitor.test.ts         # Visitor pattern tests
-    transformer.test.ts     # Transformer tests
-  builder/
-    select.test.ts          # SELECT builder tests
-    insert.test.ts          # INSERT builder tests
-    update.test.ts          # UPDATE builder tests
-    delete.test.ts          # DELETE builder tests
-    expression.test.ts      # Expression builder tests
-    join.test.ts            # JOIN builder tests
-    cte.test.ts             # CTE builder tests
-  printer/
-    base.test.ts            # Base printer tests
-    pg.test.ts              # PostgreSQL printer tests
-    mysql.test.ts           # MySQL printer tests
-    sqlite.test.ts          # SQLite printer tests
-    formatter.test.ts       # SQL formatter tests
-  dialect/
-    pg.test.ts              # PostgreSQL dialect tests
-    mysql.test.ts           # MySQL dialect tests
-    sqlite.test.ts          # SQLite dialect tests
-  utils/
-    identifier.test.ts      # Identifier quoting tests
-    param.test.ts           # Parameter binding tests
+  lale.test.ts              # Integration: lale() clean API, plugins, hooks
+  ast/                      # 4 files: nodes, visitor, transformer, typed-expression
+  builder/                  # 9 files: select, insert, update, delete, expression + typed variants
+  printer/                  # 7 files: base, pg, mysql, sqlite, formatter, document, new-nodes
+  dialect/                  # 3 files: pg, mysql, sqlite
+  plugin/                   # 4 files: plugin-manager, with-schema, soft-delete, camel-case, hooks
+  schema/                   # 3 files: column, table, type-utils
+  utils/                    # 2 files: identifier, param
 ```
 
 ## Public API
 
-Single entry: `lale` (everything). Sub-paths: `lale/pg`, `lale/mysql`, `lale/sqlite`.
+### Setup (single step)
 
-Key functions: `select()`, `insert()`, `update()`, `deleteFrom()`, `raw()`, `sql()`.
+```typescript
+import { lale, pgDialect, serial, text, boolean } from "lale";
 
-Dialect-specific: `pgDialect()`, `mysqlDialect()`, `sqliteDialect()`.
+const db = lale({
+  dialect: pgDialect(),
+  tables: {
+    users: { id: serial(), name: text().notNull(), active: boolean().defaultTo(true) },
+  },
+});
+```
 
-Utilities: `toSQL()`, `formatSQL()`, `identifier()`, `param()`.
+### Queries
+
+```typescript
+db.selectFrom("users").select("id", "name").where(...).compile(db.printer())
+db.insertInto("users").values({ name: "Alice" }).returningAll().compile(db.printer())
+db.update("users").set({ active: false }).where(...).compile(db.printer())
+db.deleteFrom("users").where(...).compile(db.printer())
+```
+
+### Hooks
+
+```typescript
+db.hook("select:before", (ctx) => {
+  /* modify AST */
+});
+db.hook("query:after", (ctx) => {
+  /* logging, metrics */
+});
+db.hook("result:transform", (rows) => {
+  /* camelCase */
+});
+```
+
+### Sub-paths
+
+`lale`, `lale/pg`, `lale/mysql`, `lale/sqlite`, `lale/schema`
 
 ## Build & Scripts
 
@@ -105,23 +156,28 @@ pnpm release        # pnpm test && pnpm build && bumpp && npm publish && git pus
 - **Formatter:** oxfmt (double quotes, semicolons)
 - **Linter:** oxlint (unicorn, typescript, oxc plugins)
 - **Tests:** vitest in `test/` directory, mirrors `src/` structure
-- **Internal files:** prefix with `_` where applicable
 - **Exports:** explicit in `src/index.ts`, no barrel re-exports
 - **Commits:** semantic lowercase (`feat:`, `fix:`, `chore:`, `docs:`)
 - **Issues:** reference in commits (`feat(#N):`)
 - **No code without tests** — every function must have corresponding test coverage
 - **AST-first design** — all queries are first built as AST nodes, then printed to SQL
 - **Immutable builders** — each builder method returns a new instance
+- **Frozen AST nodes** — Object.freeze on all factory outputs
 - **Dialect-agnostic core** — printers handle dialect differences, not builders
+- **Parameters by default** — never inline user values into SQL strings
+- **Type nesting ≤ 5 levels** — keep IDE responsive (tsgo and tsc both have 100-depth limit)
 
 ## Testing
 
 - **Framework:** vitest
 - **Location:** `test/` directory (mirrors `src/` structure)
 - **Coverage:** `@vitest/coverage-v8`
-- **Snapshot testing:** SQL output verified with inline snapshots
-- **Dialect testing:** every query tested against all 3 dialects (pg, mysql, sqlite)
+- **Snapshot testing:** SQL output verified with inline assertions
+- **Dialect testing:** every query tested against pg, mysql, sqlite printers
 - **Type testing:** type-level assertions with `expectTypeOf`
+- **Plugin testing:** each plugin tested in isolation and in combination
+- **Hook testing:** lifecycle hooks tested with mock handlers
 - **No code without tests** — PR must include tests for all new/changed code
 - Run all: `pnpm test`
 - Run single: `pnpm vitest run test/<path>.test.ts`
+- **Current:** 34 test files, 281 tests, 0 lint errors
