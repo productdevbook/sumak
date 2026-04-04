@@ -159,6 +159,26 @@ export class Col<T> {
     })
   }
 
+  /** IN (SELECT ...) — subquery */
+  inSubquery(query: SelectNode): Expression<boolean> {
+    return wrap({
+      type: "in",
+      expr: this._node,
+      values: query,
+      negated: false,
+    })
+  }
+
+  /** NOT IN (SELECT ...) — subquery */
+  notInSubquery(query: SelectNode): Expression<boolean> {
+    return wrap({
+      type: "in",
+      expr: this._node,
+      values: query,
+      negated: true,
+    })
+  }
+
   /** Compare with another column: col1.eqCol(col2) */
   eqCol(other: Col<T>): Expression<boolean> {
     return wrap(binOp("=", this._node, other._node))
