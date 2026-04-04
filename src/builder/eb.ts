@@ -272,14 +272,8 @@ export class Col<T> {
 
 // ── Internal helpers ──
 
-let _paramIdx = 0
-
-export function resetParams(): void {
-  _paramIdx = 0
-}
-
 function autoParam(value: unknown): ExpressionNode {
-  return rawParam(_paramIdx++, value)
+  return rawParam(0, value)
 }
 
 function binOp(op: string, left: ExpressionNode, right: ExpressionNode): ExpressionNode {

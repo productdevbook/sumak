@@ -14,18 +14,18 @@ import { InsertBuilder } from "./insert.ts"
 export class TypedInsertBuilder<DB, TB extends keyof DB> {
   /** @internal */
   readonly _builder: InsertBuilder
-  private _paramIdx: number
+  /** @internal */
+  _printer?: Printer
 
-  constructor(table: TB & string, paramIdx = 0) {
+  constructor(table: TB & string) {
     this._builder = new InsertBuilder().into(table)
-    this._paramIdx = paramIdx
   }
 
   /** @internal */
-  private _withBuilder(builder: InsertBuilder, paramIdx: number): TypedInsertBuilder<DB, TB> {
+  private _withBuilder(builder: InsertBuilder): TypedInsertBuilder<DB, TB> {
     const t = new TypedInsertBuilder<DB, TB>("" as TB & string)
     ;(t as any)._builder = builder
-    ;(t as any)._paramIdx = paramIdx
+    ;(t as any)._printer = this._printer
     return t
   }
 
@@ -35,23 +35,19 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   values(row: Insertable<DB[TB]>): TypedInsertBuilder<DB, TB> {
     const entries = Object.entries(row as Record<string, unknown>)
     const cols = entries.map(([k]) => k)
-    const vals = entries.map(([_, v]) => {
-      const p = param(this._paramIdx, v)
-      this._paramIdx++
-      return p
-    })
+    const vals = entries.map(([_, v]) => param(0, v))
 
     let builder = this._builder
     // Only set columns on first values() call
     if (builder.build().columns.length === 0) {
       builder = builder.columns(...cols)
     }
-    builder = new InsertBuilder(
-      { ...builder.build(), values: [...builder.build().values, vals] },
-      this._paramIdx,
-    )
+    builder = new InsertBuilder({
+      ...builder.build(),
+      values: [...builder.build().values, vals],
+    })
 
-    return this._withBuilder(builder, this._paramIdx)
+    return this._withBuilder(builder)
   }
 
   /**
@@ -72,10 +68,10 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     ...cols: K[]
   ): TypedInsertReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
-    const builder = new InsertBuilder(
-      { ...this._builder.build(), returning: exprs },
-      this._paramIdx,
-    )
+    const builder = new InsertBuilder({
+      ...this._builder.build(),
+      returning: exprs,
+    })
     return new TypedInsertReturningBuilder(builder)
   }
 
@@ -92,13 +88,10 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
       expr: node,
       alias,
     }
-    const builder = new InsertBuilder(
-      {
-        ...this._builder.build(),
-        returning: [...this._builder.build().returning, aliased],
-      },
-      this._paramIdx,
-    )
+    const builder = new InsertBuilder({
+      ...this._builder.build(),
+      returning: [...this._builder.build().returning, aliased],
+    })
     return new TypedInsertReturningBuilder(builder)
   }
 
@@ -106,10 +99,10 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
    * RETURNING all columns.
    */
   returningAll(): TypedInsertReturningBuilder<DB, TB, SelectRow<DB, TB>> {
-    const builder = new InsertBuilder(
-      { ...this._builder.build(), returning: [star()] },
-      this._paramIdx,
-    )
+    const builder = new InsertBuilder({
+      ...this._builder.build(),
+      returning: [star()],
+    })
     return new TypedInsertReturningBuilder(builder)
   }
 
@@ -117,7 +110,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
    * ON CONFLICT DO NOTHING.
    */
   onConflictDoNothing(...columns: (keyof DB[TB] & string)[]): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.onConflictDoNothing(...columns), this._paramIdx)
+    return this._withBuilder(this._builder.onConflictDoNothing(...columns))
   }
 
   /**
@@ -132,38 +125,28 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
         columns,
         set.map((s) => ({ column: s.column, value: unwrap(s.value) })),
       ),
-      this._paramIdx,
     )
   }
 
   /**
    * ON CONFLICT DO UPDATE — with plain object (auto-parameterized).
-   *
-   * ```ts
-   * .onConflictDoUpdateSet(["email"], { name: "Alice Updated" })
-   * ```
    */
   onConflictDoUpdateSet(
     columns: (keyof DB[TB] & string)[],
     values: Partial<Insertable<DB[TB]>>,
   ): TypedInsertBuilder<DB, TB> {
-    const set: { column: string; value: import("../ast/nodes.ts").ExpressionNode }[] = []
-    let idx = this._paramIdx
+    const set: { column: string; value: ExpressionNode }[] = []
     for (const [col, val] of Object.entries(values as Record<string, unknown>)) {
       if (val !== undefined) {
-        set.push({ column: col, value: param(idx, val) })
-        idx++
+        set.push({ column: col, value: param(0, val) })
       }
     }
-    return this._withBuilder(this._builder.onConflictDoUpdate(columns, set), idx)
+    return this._withBuilder(this._builder.onConflictDoUpdate(columns, set))
   }
 
   /** ON CONFLICT ON CONSTRAINT name DO NOTHING */
   onConflictConstraintDoNothing(constraint: string): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(
-      this._builder.onConflictConstraintDoNothing(constraint),
-      this._paramIdx,
-    )
+    return this._withBuilder(this._builder.onConflictConstraintDoNothing(constraint))
   }
 
   /** ON CONFLICT ON CONSTRAINT name DO UPDATE SET ... */
@@ -176,18 +159,17 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
         constraint,
         set.map((s) => ({ column: s.column, value: unwrap(s.value) })),
       ),
-      this._paramIdx,
     )
   }
 
   /** INSERT OR IGNORE (SQLite) */
   orIgnore(): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.orIgnore(), this._paramIdx)
+    return this._withBuilder(this._builder.orIgnore())
   }
 
   /** INSERT OR REPLACE (SQLite) */
   orReplace(): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.orReplace(), this._paramIdx)
+    return this._withBuilder(this._builder.orReplace())
   }
 
   /** MySQL: ON DUPLICATE KEY UPDATE */
@@ -198,23 +180,22 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
       this._builder.onDuplicateKeyUpdate(
         set.map((s) => ({ column: s.column, value: unwrap(s.value) })),
       ),
-      this._paramIdx,
     )
   }
 
   /** INSERT INTO ... SELECT ... */
   fromSelect(query: SelectNode): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.fromSelect(query), this._paramIdx)
+    return this._withBuilder(this._builder.fromSelect(query))
   }
 
   /** INSERT INTO ... DEFAULT VALUES */
   defaultValues(): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.defaultValues(), this._paramIdx)
+    return this._withBuilder(this._builder.defaultValues())
   }
 
   /** WITH (CTE) */
   with(name: string, query: SelectNode, recursive = false): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.with(name, query, recursive), this._paramIdx)
+    return this._withBuilder(this._builder.with(name, query, recursive))
   }
 
   /** Conditionally apply a transformation. */
@@ -234,6 +215,16 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
 
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** Compile to SQL using the dialect's printer. */
+  toSQL(): CompiledQuery {
+    if (!this._printer) {
+      throw new Error(
+        "toSQL() requires a printer. Use db.insertInto() or pass a printer to compile().",
+      )
+    }
+    return this._printer.print(this.build())
   }
 
   /** EXPLAIN this query. */

@@ -100,7 +100,11 @@ export class Sumak<DB> {
     table: T,
     alias?: string,
   ): TypedSelectBuilder<DB, T, SelectRow<DB, T>> {
-    return new TypedSelectBuilder(new SelectBuilder().from(table, alias), table)
+    return new TypedSelectBuilder(
+      new SelectBuilder().from(table, alias),
+      table,
+      this._dialect.createPrinter(),
+    )
   }
 
   /**
@@ -125,15 +129,21 @@ export class Sumak<DB> {
   }
 
   insertInto<T extends keyof DB & string>(table: T): TypedInsertBuilder<DB, T> {
-    return new TypedInsertBuilder<DB, T>(table)
+    const b = new TypedInsertBuilder<DB, T>(table)
+    ;(b as any)._printer = this._dialect.createPrinter()
+    return b
   }
 
   update<T extends keyof DB & string>(table: T): TypedUpdateBuilder<DB, T> {
-    return new TypedUpdateBuilder<DB, T>(table)
+    const b = new TypedUpdateBuilder<DB, T>(table)
+    ;(b as any)._printer = this._dialect.createPrinter()
+    return b
   }
 
   deleteFrom<T extends keyof DB & string>(table: T): TypedDeleteBuilder<DB, T> {
-    return new TypedDeleteBuilder<DB, T>(table)
+    const b = new TypedDeleteBuilder<DB, T>(table)
+    ;(b as any)._printer = this._dialect.createPrinter()
+    return b
   }
 
   /**

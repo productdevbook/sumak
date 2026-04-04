@@ -7,7 +7,7 @@ import type { SelectRow } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
 import { DeleteBuilder } from "./delete.ts"
 import type { WhereCallback } from "./eb.ts"
-import { createColumnProxies, resetParams } from "./eb.ts"
+import { createColumnProxies } from "./eb.ts"
 
 /**
  * Type-safe DELETE query builder.
@@ -15,6 +15,8 @@ import { createColumnProxies, resetParams } from "./eb.ts"
 export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   /** @internal */
   readonly _builder: DeleteBuilder
+  /** @internal */
+  _printer?: Printer
 
   constructor(table: TB & string) {
     this._builder = new DeleteBuilder().from(table)
@@ -24,6 +26,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   private _with(builder: DeleteBuilder): TypedDeleteBuilder<DB, TB> {
     const t = new TypedDeleteBuilder<DB, TB>("" as TB & string)
     ;(t as any)._builder = builder
+    ;(t as any)._printer = this._printer
     return t
   }
 
@@ -32,7 +35,6 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
    */
   where(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedDeleteBuilder<DB, TB> {
     if (typeof exprOrCallback === "function") {
-      resetParams()
       const table = this._builder.build().table.name as TB & string
       const cols = createColumnProxies<DB, TB>(table)
       const result = exprOrCallback(cols)
@@ -105,6 +107,16 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
 
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** Compile to SQL using the dialect's printer. */
+  toSQL(): CompiledQuery {
+    if (!this._printer) {
+      throw new Error(
+        "toSQL() requires a printer. Use db.deleteFrom() or pass a printer to compile().",
+      )
+    }
+    return this._printer.print(this.build())
   }
 
   /** EXPLAIN this query. */

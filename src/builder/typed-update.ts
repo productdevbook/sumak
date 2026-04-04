@@ -6,7 +6,7 @@ import type { Printer } from "../printer/types.ts"
 import type { SelectRow, Updateable } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
 import type { WhereCallback } from "./eb.ts"
-import { createColumnProxies, resetParams } from "./eb.ts"
+import { createColumnProxies } from "./eb.ts"
 import { UpdateBuilder } from "./update.ts"
 
 /**
@@ -15,18 +15,18 @@ import { UpdateBuilder } from "./update.ts"
 export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   /** @internal */
   readonly _builder: UpdateBuilder
-  private _paramIdx: number
+  /** @internal */
+  _printer?: Printer
 
-  constructor(table: TB & string, paramIdx = 0) {
+  constructor(table: TB & string) {
     this._builder = new UpdateBuilder().table(table)
-    this._paramIdx = paramIdx
   }
 
   /** @internal */
-  private _with(builder: UpdateBuilder, paramIdx: number): TypedUpdateBuilder<DB, TB> {
+  private _with(builder: UpdateBuilder): TypedUpdateBuilder<DB, TB> {
     const t = new TypedUpdateBuilder<DB, TB>("" as TB & string)
     ;(t as any)._builder = builder
-    ;(t as any)._paramIdx = paramIdx
+    ;(t as any)._printer = this._printer
     return t
   }
 
@@ -35,21 +35,19 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
    */
   set(values: Updateable<DB[TB]>): TypedUpdateBuilder<DB, TB> {
     let builder = this._builder
-    let idx = this._paramIdx
     for (const [col, val] of Object.entries(values as Record<string, unknown>)) {
       if (val !== undefined) {
-        builder = builder.set(col, param(idx, val))
-        idx++
+        builder = builder.set(col, param(0, val))
       }
     }
-    return this._with(builder, idx)
+    return this._with(builder)
   }
 
   /**
    * SET a single column with an expression.
    */
   setExpr(column: keyof DB[TB] & string, value: Expression<any>): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.set(column, unwrap(value)), this._paramIdx)
+    return this._with(this._builder.set(column, unwrap(value)))
   }
 
   /**
@@ -57,12 +55,11 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
    */
   where(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedUpdateBuilder<DB, TB> {
     if (typeof exprOrCallback === "function") {
-      resetParams()
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return this._with(this._builder.where(unwrap(result)), this._paramIdx)
+      return this._with(this._builder.where(unwrap(result)))
     }
-    return this._with(this._builder.where(unwrap(exprOrCallback)), this._paramIdx)
+    return this._with(this._builder.where(unwrap(exprOrCallback)))
   }
 
   private get _table(): TB & string {
@@ -98,22 +95,22 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
 
   /** INNER JOIN for UPDATE (MySQL pattern) */
   innerJoin(table: string, on: Expression<boolean>): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.innerJoin(table, unwrap(on)), this._paramIdx)
+    return this._with(this._builder.innerJoin(table, unwrap(on)))
   }
 
   /** LEFT JOIN for UPDATE */
   leftJoin(table: string, on: Expression<boolean>): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.leftJoin(table, unwrap(on)), this._paramIdx)
+    return this._with(this._builder.leftJoin(table, unwrap(on)))
   }
 
   /** FROM clause (for UPDATE ... FROM ... WHERE joins). */
   from<T extends keyof DB & string>(table: T): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.from(table), this._paramIdx)
+    return this._with(this._builder.from(table))
   }
 
   /** WITH (CTE) */
   with(name: string, query: SelectNode, recursive = false): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.with(name, query, recursive), this._paramIdx)
+    return this._with(this._builder.with(name, query, recursive))
   }
 
   /** Conditionally apply a transformation. */
@@ -133,6 +130,14 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
 
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** Compile to SQL using the dialect's printer. */
+  toSQL(): CompiledQuery {
+    if (!this._printer) {
+      throw new Error("toSQL() requires a printer. Use db.update() or pass a printer to compile().")
+    }
+    return this._printer.print(this.build())
   }
 
   /** EXPLAIN this query. */

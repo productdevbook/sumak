@@ -229,7 +229,6 @@ export {
   over,
   rank,
   rawExpr,
-  resetParams,
   round,
   rowNumber,
   sqlFn,
