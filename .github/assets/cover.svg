@@ -1,0 +1,264 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 628" width="1200" height="628">
+  <defs>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feBlend in="SourceGraphic" mode="overlay" result="blend"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.06"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" mode="normal"/>
+    </filter>
+
+    <filter id="glow-rose" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feFlood flood-color="#e11d48" flood-opacity="0.5"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <filter id="glow-pink" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feFlood flood-color="#ec4899" flood-opacity="0.45"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <filter id="glow-violet" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feFlood flood-color="#8b5cf6" flood-opacity="0.4"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <filter id="glow-fuchsia" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feFlood flood-color="#d946ef" flood-opacity="0.35"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <filter id="glow-amber" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feFlood flood-color="#f59e0b" flood-opacity="0.35"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <radialGradient id="ambientRose" cx="0.05" cy="0.2" r="0.4">
+      <stop offset="0%" stop-color="#e11d48" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#e11d48" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ambientPink" cx="0.95" cy="0.15" r="0.35">
+      <stop offset="0%" stop-color="#ec4899" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#ec4899" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ambientViolet" cx="0.05" cy="0.85" r="0.35">
+      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.07"/>
+      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ambientFuchsia" cx="0.95" cy="0.85" r="0.35">
+      <stop offset="0%" stop-color="#d946ef" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#d946ef" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="centerBackdrop" cx="0.5" cy="0.5" r="0.55">
+      <stop offset="0%" stop-color="#06070b" stop-opacity="0.96"/>
+      <stop offset="55%" stop-color="#06070b" stop-opacity="0.9"/>
+      <stop offset="80%" stop-color="#06070b" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#06070b" stop-opacity="0"/>
+    </radialGradient>
+
+    <pattern id="dotGrid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <circle cx="14" cy="14" r="0.6" fill="#334155" opacity="0.35"/>
+    </pattern>
+
+    <radialGradient id="vignetteGrad" cx="0.5" cy="0.5" r="0.7">
+      <stop offset="0%" stop-color="transparent"/>
+      <stop offset="100%" stop-color="#06070b"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="628" fill="#06070b"/>
+  <rect width="1200" height="628" fill="url(#ambientRose)"/>
+  <rect width="1200" height="628" fill="url(#ambientPink)"/>
+  <rect width="1200" height="628" fill="url(#ambientViolet)"/>
+  <rect width="1200" height="628" fill="url(#ambientFuchsia)"/>
+  <rect width="1200" height="628" fill="url(#dotGrid)" opacity="0.4"/>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- SELECT QUERY — top left                 -->
+  <!-- ════════════════════════════════════════ -->
+  <g transform="translate(-20, -10) rotate(-8, 180, 160)" filter="url(#glow-rose)" opacity="0.8">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="13" fill="#e11d48" opacity="0.85">
+      <tspan x="30" y="30" font-weight="bold">SELECT</tspan>
+      <tspan x="46" y="50">"id",</tspan>
+      <tspan x="46" y="70">"name",</tspan>
+      <tspan x="46" y="90">"email"</tspan>
+      <tspan x="30" y="116" font-weight="bold">FROM</tspan>
+      <tspan x="46" y="136">"users"</tspan>
+      <tspan x="30" y="162" font-weight="bold">WHERE</tspan>
+      <tspan x="46" y="182">"age" &gt;= $1</tspan>
+      <tspan x="46" y="202" font-weight="bold">AND</tspan>
+      <tspan x="46" y="222">"active" = $2</tspan>
+      <tspan x="30" y="248" font-weight="bold">ORDER BY</tspan>
+      <tspan x="46" y="268">"name" ASC</tspan>
+      <tspan x="30" y="294" font-weight="bold">LIMIT</tspan>
+      <tspan x="46" y="314">10</tspan>
+    </text>
+    <text x="120" y="348" text-anchor="middle" fill="#e11d48" opacity="0.5" font-family="'SF Mono','Fira Code',monospace" font-size="12" font-weight="bold" letter-spacing="4">POSTGRESQL</text>
+  </g>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- TypeScript API — top right              -->
+  <!-- ════════════════════════════════════════ -->
+  <g transform="translate(860, -30) rotate(8, 160, 160)" filter="url(#glow-pink)" opacity="0.7">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="12" fill="#ec4899" opacity="0.85">
+      <tspan x="0" y="20" fill="#ec489980">// type-safe, auto-inferred</tspan>
+      <tspan x="0" y="44">db</tspan>
+      <tspan x="0" y="64">  .selectFrom("users")</tspan>
+      <tspan x="0" y="84">  .select("id", "name")</tspan>
+      <tspan x="0" y="104">  .where(({ age }) =&gt;</tspan>
+      <tspan x="0" y="124">    age.gte(18)</tspan>
+      <tspan x="0" y="144">  )</tspan>
+      <tspan x="0" y="164">  .orderBy("name")</tspan>
+      <tspan x="0" y="184">  .limit(10)</tspan>
+      <tspan x="0" y="210" fill="#ec489960">// Expression&lt;boolean&gt;</tspan>
+      <tspan x="0" y="234">({ id }) =&gt; id.eq(42)</tspan>
+      <tspan x="0" y="258">({ a, b }) =&gt; and(</tspan>
+      <tspan x="0" y="278">  a.gt(0), b.isNotNull()</tspan>
+      <tspan x="0" y="298">)</tspan>
+    </text>
+    <text x="130" y="332" text-anchor="middle" fill="#ec4899" opacity="0.5" font-family="'SF Mono','Fira Code',monospace" font-size="12" font-weight="bold" letter-spacing="4">TYPESCRIPT</text>
+  </g>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- AST nodes — bottom left                 -->
+  <!-- ════════════════════════════════════════ -->
+  <g transform="translate(-10, 380) rotate(5, 160, 100)" filter="url(#glow-violet)" opacity="0.65">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="#8b5cf6" opacity="0.8">
+      <tspan x="20" y="20">SelectNode {</tspan>
+      <tspan x="36" y="38">type: "select"</tspan>
+      <tspan x="36" y="56">columns: [ColumnRefNode]</tspan>
+      <tspan x="36" y="74">from: TableRefNode</tspan>
+      <tspan x="36" y="92">where: BinaryOpNode {</tspan>
+      <tspan x="52" y="110">op: "&gt;="</tspan>
+      <tspan x="52" y="128">left: ColumnRefNode</tspan>
+      <tspan x="52" y="146">right: ParamNode</tspan>
+      <tspan x="36" y="164">}</tspan>
+      <tspan x="36" y="182">orderBy: [OrderByNode]</tspan>
+      <tspan x="20" y="200">}</tspan>
+    </text>
+    <text x="130" y="230" text-anchor="middle" fill="#8b5cf6" opacity="0.45" font-family="'SF Mono','Fira Code',monospace" font-size="12" font-weight="bold" letter-spacing="4">AST</text>
+  </g>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- Dialects — bottom right                 -->
+  <!-- ════════════════════════════════════════ -->
+  <g transform="translate(880, 400) rotate(-6, 140, 80)" filter="url(#glow-fuchsia)" opacity="0.6">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="12" fill="#d946ef" opacity="0.8">
+      <tspan x="0" y="16" font-weight="bold">PostgreSQL</tspan>
+      <tspan x="16" y="36">"id" = $1</tspan>
+      <tspan x="0" y="64" font-weight="bold">MySQL</tspan>
+      <tspan x="16" y="84">`id` = ?</tspan>
+      <tspan x="0" y="112" font-weight="bold">SQLite</tspan>
+      <tspan x="16" y="132">"id" = ?</tspan>
+    </text>
+    <text x="80" y="170" text-anchor="middle" fill="#d946ef" opacity="0.45" font-family="'SF Mono','Fira Code',monospace" font-size="12" font-weight="bold" letter-spacing="4">DIALECTS</text>
+  </g>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- Plugin hooks — far right mid            -->
+  <!-- ════════════════════════════════════════ -->
+  <g transform="translate(1060, 180) rotate(12, 60, 80)" filter="url(#glow-amber)" opacity="0.45">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="#f59e0b" opacity="0.8">
+      <tspan x="0" y="16">hooks</tspan>
+      <tspan x="0" y="38">query:before</tspan>
+      <tspan x="0" y="56">query:after</tspan>
+      <tspan x="0" y="74">select:before</tspan>
+      <tspan x="0" y="92">insert:before</tspan>
+      <tspan x="0" y="110">result:transform</tspan>
+    </text>
+    <text x="60" y="145" text-anchor="middle" fill="#f59e0b" opacity="0.4" font-family="'SF Mono','Fira Code',monospace" font-size="11" font-weight="bold" letter-spacing="3">HOOKS</text>
+  </g>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- Tulip icon — far left mid               -->
+  <!-- ════════════════════════════════════════ -->
+  <g transform="translate(20, 220)" opacity="0.4">
+    <!-- Stylized tulip flower -->
+    <g fill="none" stroke="#e11d48" stroke-width="1.5" opacity="0.7">
+      <!-- Stem -->
+      <path d="M35 85 Q35 65 35 55" stroke="#22c55e" stroke-width="1.5"/>
+      <path d="M25 75 Q30 68 35 65" stroke="#22c55e" stroke-width="1"/>
+      <path d="M45 78 Q40 70 35 67" stroke="#22c55e" stroke-width="1"/>
+      <!-- Petals -->
+      <path d="M35 55 Q20 35 22 18 Q28 8 35 12 Q42 8 48 18 Q50 35 35 55" fill="#e11d4830" stroke="#e11d48"/>
+      <path d="M35 50 Q28 38 30 25" stroke="#ec4899" opacity="0.5"/>
+      <path d="M35 50 Q42 38 40 25" stroke="#ec4899" opacity="0.5"/>
+    </g>
+  </g>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- CENTER DARK BACKDROP                    -->
+  <!-- ════════════════════════════════════════ -->
+  <rect width="1200" height="628" fill="url(#centerBackdrop)"/>
+
+  <!-- ════════════════════════════════════════ -->
+  <!-- CENTER CONTENT                          -->
+  <!-- ════════════════════════════════════════ -->
+
+  <!-- "lale" wordmark -->
+  <text x="600" y="260" text-anchor="middle" fill="#f8fafc" font-family="'Georgia','Playfair Display','Times New Roman',serif" font-size="148" font-weight="bold" letter-spacing="-3" opacity="0.97">lale</text>
+
+  <!-- Thin rule -->
+  <line x1="340" y1="286" x2="860" y2="286" stroke="#475569" stroke-width="1" opacity="0.5"/>
+
+  <!-- Tagline -->
+  <text x="600" y="326" text-anchor="middle" fill="#cbd5e1" font-family="'SF Mono','Fira Code','Menlo',monospace" font-size="19" letter-spacing="6">TYPE-SAFE SQL QUERY BUILDER</text>
+
+  <!-- Feature pills — tulip colors -->
+  <g font-family="'SF Mono','Fira Code','Menlo',monospace" font-size="14" letter-spacing="1.5">
+    <g transform="translate(144, 356)">
+      <rect x="0" y="0" width="164" height="38" rx="19" fill="#e11d4810" stroke="#e11d48" stroke-width="1.3" opacity="0.7"/>
+      <text x="82" y="25" text-anchor="middle" fill="#e11d48" opacity="0.95">0 DEPENDENCIES</text>
+    </g>
+    <g transform="translate(324, 356)">
+      <rect x="0" y="0" width="120" height="38" rx="19" fill="#ec489910" stroke="#ec4899" stroke-width="1.3" opacity="0.7"/>
+      <text x="60" y="25" text-anchor="middle" fill="#ec4899" opacity="0.95">AST-FIRST</text>
+    </g>
+    <g transform="translate(460, 356)">
+      <rect x="0" y="0" width="128" height="38" rx="19" fill="#8b5cf610" stroke="#8b5cf6" stroke-width="1.3" opacity="0.7"/>
+      <text x="64" y="25" text-anchor="middle" fill="#8b5cf6" opacity="0.95">TYPE-SAFE</text>
+    </g>
+    <g transform="translate(604, 356)">
+      <rect x="0" y="0" width="120" height="38" rx="19" fill="#d946ef10" stroke="#d946ef" stroke-width="1.3" opacity="0.7"/>
+      <text x="60" y="25" text-anchor="middle" fill="#d946ef" opacity="0.95">HOOKABLE</text>
+    </g>
+    <g transform="translate(740, 356)">
+      <rect x="0" y="0" width="172" height="38" rx="19" fill="#f59e0b10" stroke="#f59e0b" stroke-width="1.3" opacity="0.7"/>
+      <text x="86" y="25" text-anchor="middle" fill="#f59e0b" opacity="0.95">TREE-SHAKEABLE</text>
+    </g>
+  </g>
+
+  <!-- Dialect list -->
+  <text x="600" y="432" text-anchor="middle" fill="#94a3b8" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="2.5">POSTGRESQL · MYSQL · SQLITE · PLUGINS · HOOKS · WADLER PRINTER</text>
+
+  <!-- npm install badge -->
+  <g transform="translate(496, 460)">
+    <rect x="0" y="0" width="208" height="40" rx="8" fill="#0f172a" stroke="#1e293b" stroke-width="1.2"/>
+    <text x="20" y="26" fill="#64748b" font-family="'SF Mono','Fira Code',monospace" font-size="16">$</text>
+    <text x="38" y="26" fill="#94a3b8" font-family="'SF Mono','Fira Code',monospace" font-size="16"> npm i </text>
+    <text x="118" y="26" fill="#f8fafc" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold">lale</text>
+  </g>
+
+  <!-- GitHub link -->
+  <text x="600" y="556" text-anchor="middle" fill="#64748b" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="1.5">github.com/productdevbook/lale</text>
+
+  <!-- Grain overlay -->
+  <rect width="1200" height="628" filter="url(#grain)" opacity="0.2"/>
+
+  <!-- Vignette -->
+  <rect width="1200" height="628" fill="url(#vignetteGrad)" opacity="0.45"/>
+</svg>
