@@ -92,6 +92,11 @@ export class SelectBuilder {
     return new SelectBuilder({ ...this.node, joins: [...this.node.joins, join] })
   }
 
+  crossJoinLateral(subquery: SubqueryNode): SelectBuilder {
+    const join: JoinNode = { type: "join", joinType: "CROSS", table: subquery, lateral: true }
+    return new SelectBuilder({ ...this.node, joins: [...this.node.joins, join] })
+  }
+
   groupBy(...exprs: (string | ExpressionNode)[]): SelectBuilder {
     const nodes = exprs.map((e) => (typeof e === "string" ? col(e) : e))
     return new SelectBuilder({ ...this.node, groupBy: [...this.node.groupBy, ...nodes] })

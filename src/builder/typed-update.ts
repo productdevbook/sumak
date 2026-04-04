@@ -96,6 +96,16 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     )
   }
 
+  /** INNER JOIN for UPDATE (MySQL pattern) */
+  innerJoin(table: string, on: Expression<boolean>): TypedUpdateBuilder<DB, TB> {
+    return this._with(this._builder.innerJoin(table, unwrap(on)), this._paramIdx)
+  }
+
+  /** LEFT JOIN for UPDATE */
+  leftJoin(table: string, on: Expression<boolean>): TypedUpdateBuilder<DB, TB> {
+    return this._with(this._builder.leftJoin(table, unwrap(on)), this._paramIdx)
+  }
+
   /** FROM clause (for UPDATE ... FROM ... WHERE joins). */
   from<T extends keyof DB & string>(table: T): TypedUpdateBuilder<DB, TB> {
     return this._with(this._builder.from(table), this._paramIdx)

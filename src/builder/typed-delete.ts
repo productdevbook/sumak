@@ -41,6 +41,21 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
     return this._with(this._builder.where(unwrap(exprOrCallback)))
   }
 
+  /** USING clause (PG: DELETE FROM t USING other WHERE ...) */
+  using<T extends keyof DB & string>(table: T): TypedDeleteBuilder<DB, TB> {
+    return this._with(this._builder.using(table))
+  }
+
+  /** INNER JOIN for DELETE (MySQL pattern) */
+  innerJoin(table: string, on: Expression<boolean>): TypedDeleteBuilder<DB, TB> {
+    return this._with(this._builder.innerJoin(table, unwrap(on)))
+  }
+
+  /** LEFT JOIN for DELETE */
+  leftJoin(table: string, on: Expression<boolean>): TypedDeleteBuilder<DB, TB> {
+    return this._with(this._builder.leftJoin(table, unwrap(on)))
+  }
+
   /**
    * RETURNING specific columns.
    */
