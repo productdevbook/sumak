@@ -181,7 +181,7 @@
   <!-- ═══════════════════════════════════ -->
 
   <!-- "pamuk" wordmark -->
-  <text x="600" y="264" text-anchor="middle" fill="#f5f0eb" font-family="'Georgia','Playfair Display','Times New Roman',serif" font-size="152" font-weight="bold" letter-spacing="-4" opacity="0.97">pamuk</text>
+  <text x="600" y="264" text-anchor="middle" fill="#f5f0eb" font-family="'Georgia','Playfair Display','Times New Roman',serif" font-size="152" font-weight="bold" letter-spacing="-4" opacity="0.97">sumak</text>
 
   <!-- Rule -->
   <line x1="360" y1="290" x2="840" y2="290" stroke="#a89984" stroke-width="1.5" opacity="0.3"/>
@@ -221,11 +221,11 @@
     <rect x="0" y="0" width="220" height="40" rx="8" fill="#1a151240" stroke="#a8998430" stroke-width="1"/>
     <text x="20" y="26" fill="#a8998470" font-family="'SF Mono','Fira Code',monospace" font-size="16">$</text>
     <text x="38" y="26" fill="#c2b5a3" font-family="'SF Mono','Fira Code',monospace" font-size="16"> npm i </text>
-    <text x="120" y="26" fill="#f5f0eb" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold">pamuk</text>
+    <text x="120" y="26" fill="#f5f0eb" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold">sumak</text>
   </g>
 
   <!-- GitHub link -->
-  <text x="600" y="554" text-anchor="middle" fill="#a89984" opacity="0.4" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="1.5">github.com/productdevbook/pamuk</text>
+  <text x="600" y="554" text-anchor="middle" fill="#a89984" opacity="0.4" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="1.5">github.com/productdevbook/sumak</text>
 
   <!-- Grain -->
   <rect width="1200" height="628" filter="url(#grain)" opacity="0.18"/>

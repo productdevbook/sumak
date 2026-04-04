@@ -8,10 +8,10 @@ import { TypedUpdateBuilder } from "./builder/typed-update.ts";
 import { TypedDeleteBuilder } from "./builder/typed-delete.ts";
 import type { ASTNode } from "./ast/nodes.ts";
 import type { CompiledQuery } from "./types.ts";
-import type { PamukPlugin } from "./plugin/types.ts";
+import type { SumakPlugin } from "./plugin/types.ts";
 import { PluginManager } from "./plugin/plugin-manager.ts";
 import { Hookable } from "./plugin/hooks.ts";
-import type { HookName, PamukHooks } from "./plugin/hooks.ts";
+import type { HookName, SumakHooks } from "./plugin/hooks.ts";
 
 /**
  * Extract the DB type from a tables config object.
@@ -24,19 +24,19 @@ type InferDB<T extends Record<string, Record<string, ColumnBuilder<any, any, any
   };
 };
 
-export interface PamukConfig<
+export interface SumakConfig<
   T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>,
 > {
   dialect: Dialect;
   tables: T;
-  plugins?: PamukPlugin[];
+  plugins?: SumakPlugin[];
 }
 
 /**
- * Create a fully typed pamuk instance. DB type is inferred automatically.
+ * Create a fully typed sumak instance. DB type is inferred automatically.
  *
  * ```ts
- * const db = pamuk({
+ * const db = sumak({
  *   dialect: pgDialect(),
  *   tables: {
  *     users: { id: serial(), name: text().notNull() },
@@ -51,21 +51,21 @@ export interface PamukConfig<
  * db.selectFrom("users").select("id", "name")...
  * ```
  */
-export function pamuk<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>>(
-  config: PamukConfig<T>,
+export function sumak<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>>(
+  config: SumakConfig<T>,
 ): Lale<InferDB<T>> {
-  return new Pamuk(config.dialect, config.plugins ?? []);
+  return new Sumak(config.dialect, config.plugins ?? []);
 }
 
 /**
- * Core pamuk instance with hook system.
+ * Core sumak instance with hook system.
  */
-export class Pamuk<DB> {
+export class Sumak<DB> {
   private _dialect: Dialect;
   private _plugins: PluginManager;
   private _hooks: Hookable;
 
-  constructor(dialect: Dialect, plugins: PamukPlugin[] = []) {
+  constructor(dialect: Dialect, plugins: SumakPlugin[] = []) {
     this._dialect = dialect;
     this._plugins = new PluginManager(plugins);
     this._hooks = new Hookable();
@@ -79,7 +79,7 @@ export class Pamuk<DB> {
    * off(); // unregister
    * ```
    */
-  hook<K extends HookName>(name: K, handler: PamukHooks[K]): () => void {
+  hook<K extends HookName>(name: K, handler: SumakHooks[K]): () => void {
     return this._hooks.hook(name, handler);
   }
 

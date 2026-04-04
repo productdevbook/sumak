@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { pamuk } from "../../src/pamuk.ts";
+import { sumak } from "../../src/sumak.ts";
 import { pgDialect } from "../../src/dialect/pg.ts";
 import { serial, text, integer, boolean } from "../../src/schema/column.ts";
 import { and, or } from "../../src/builder/eb.ts";
 
-const db = pamuk({
+const db = sumak({
   dialect: pgDialect(),
   tables: {
     users: {

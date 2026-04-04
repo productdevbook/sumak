@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { pamuk } from "../../src/pamuk.ts";
+import { sumak } from "../../src/sumak.ts";
 import { pgDialect } from "../../src/dialect/pg.ts";
 import { boolean, serial, text } from "../../src/schema/column.ts";
 
-const db = pamuk({
+const db = sumak({
   dialect: pgDialect(),
   tables: {
     users: {

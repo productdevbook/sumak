@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { pamuk } from "../src/pamuk.ts";
+import { sumak } from "../src/sumak.ts";
 import { pgDialect } from "../src/dialect/pg.ts";
 import { boolean, integer, serial, text, timestamp } from "../src/schema/column.ts";
 import { WithSchemaPlugin } from "../src/plugin/with-schema.ts";
 import { SoftDeletePlugin } from "../src/plugin/soft-delete.ts";
 
-const db = pamuk({
+const db = sumak({
   dialect: pgDialect(),
   tables: {
     users: {
@@ -24,7 +24,7 @@ const db = pamuk({
   },
 });
 
-describe("pamuk() — clean API", () => {
+describe("sumak() — clean API", () => {
   it("selectFrom infers table names", () => {
     expect(db.selectFrom("users").compile(db.printer()).sql).toBe('SELECT * FROM "users"');
   });
@@ -76,7 +76,7 @@ describe("pamuk() — clean API", () => {
   });
 
   it("compile runs plugin pipeline", () => {
-    const dbP = pamuk({
+    const dbP = sumak({
       dialect: pgDialect(),
       plugins: [new WithSchemaPlugin("public")],
       tables: { users: { id: serial(), name: text().notNull() } },
@@ -86,7 +86,7 @@ describe("pamuk() — clean API", () => {
   });
 
   it("compile runs multiple plugins", () => {
-    const dbP = pamuk({
+    const dbP = sumak({
       dialect: pgDialect(),
       plugins: [new WithSchemaPlugin("app"), new SoftDeletePlugin({ tables: ["users"] })],
       tables: { users: { id: serial(), name: text().notNull() } },

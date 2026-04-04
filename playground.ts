@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import {
-  pamuk,
+  sumak,
   pgDialect,
   mysqlDialect,
   sqliteDialect,
@@ -22,7 +22,7 @@ import {
 // 1. Schema
 // ─────────────────────────────────────────────
 
-const db = pamuk({
+const db = sumak({
   dialect: pgDialect(),
   tables: {
     users: {
@@ -55,7 +55,7 @@ const db = pamuk({
 const p = db.printer();
 
 console.log("═══════════════════════════════════════");
-console.log("  pamuk playground");
+console.log("  sumak playground");
 console.log("═══════════════════════════════════════\n");
 
 // ─────────────────────────────────────────────
@@ -180,7 +180,7 @@ console.log(q14.compile(p).sql);
 
 console.log("\n── DIALECTS ──\n");
 
-const mysqlDb = pamuk({
+const mysqlDb = sumak({
   dialect: mysqlDialect(),
   tables: {
     users: {
@@ -190,7 +190,7 @@ const mysqlDb = pamuk({
   },
 });
 
-const sqliteDb = pamuk({
+const sqliteDb = sumak({
   dialect: sqliteDialect(),
   tables: {
     users: {
@@ -225,7 +225,7 @@ console.log("SQLite:", sqliteResult.sql);
 
 console.log("\n── PLUGINS ──\n");
 
-const dbPlugins = pamuk({
+const dbPlugins = sumak({
   dialect: pgDialect(),
   plugins: [new WithSchemaPlugin("app"), new SoftDeletePlugin({ tables: ["users"] })],
   tables: {
@@ -255,7 +255,7 @@ console.log(rows[0]);
 
 console.log("\n── HOOKS ──\n");
 
-const dbH = pamuk({
+const dbH = sumak({
   dialect: pgDialect(),
   tables: {
     users: {

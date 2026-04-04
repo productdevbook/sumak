@@ -16,7 +16,7 @@ export interface HookContext<T extends ASTNode = ASTNode> {
 /**
  * All available hook points in the query lifecycle.
  */
-export interface PamukHooks {
+export interface SumakHooks {
   /** Fires before any query is compiled. Can modify the AST. */
   "query:before": (ctx: HookContext) => ASTNode | void;
   /** Fires after a query is compiled to SQL. Can modify the compiled query. */
@@ -35,7 +35,7 @@ export interface PamukHooks {
   "result:transform": (rows: Record<string, unknown>[]) => Record<string, unknown>[];
 }
 
-export type HookName = keyof PamukHooks;
+export type HookName = keyof SumakHooks;
 
 /**
  * Hookable system — register and execute hooks.
@@ -55,7 +55,7 @@ export class Hookable {
    * Register a hook handler.
    * Returns an unregister function.
    */
-  hook<K extends HookName>(name: K, handler: PamukHooks[K]): () => void {
+  hook<K extends HookName>(name: K, handler: SumakHooks[K]): () => void {
     if (!this._hooks.has(name)) {
       this._hooks.set(name, []);
     }
@@ -77,8 +77,8 @@ export class Hookable {
    */
   callHook<K extends HookName>(
     name: K,
-    ...args: Parameters<PamukHooks[K]>
-  ): ReturnType<PamukHooks[K]> | undefined {
+    ...args: Parameters<SumakHooks[K]>
+  ): ReturnType<SumakHooks[K]> | undefined {
     const handlers = this._hooks.get(name);
     if (!handlers || handlers.length === 0) return undefined;
 

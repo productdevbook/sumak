@@ -1,15 +1,15 @@
 import type { ASTNode } from "../ast/nodes.ts";
 import type { CompiledQuery } from "../types.ts";
-import type { PamukPlugin } from "./types.ts";
+import type { SumakPlugin } from "./types.ts";
 
 /**
  * Manages plugin execution pipeline.
  * Plugins are applied sequentially in registration order.
  */
 export class PluginManager {
-  private readonly plugins: readonly PamukPlugin[];
+  private readonly plugins: readonly SumakPlugin[];
 
-  constructor(plugins: PamukPlugin[]) {
+  constructor(plugins: SumakPlugin[]) {
     this.plugins = Object.freeze([...plugins]);
   }
 

@@ -1,29 +1,29 @@
 <p align="center">
   <br>
-  <img src=".github/assets/cover.jpg" alt="pamuk — Type-safe SQL query builder" width="100%">
+  <img src=".github/assets/cover.jpg" alt="sumak — Type-safe SQL query builder" width="100%">
   <br><br>
-  <b style="font-size: 2em;">pamuk</b>
+  <b style="font-size: 2em;">sumak</b>
   <br><br>
   Type-safe SQL query builder with powerful SQL printers.
   <br>
   Zero dependencies, AST-first, hookable, tree-shakeable. Pure TypeScript, works everywhere.
   <br><br>
-  <a href="https://npmjs.com/package/pamuk"><img src="https://img.shields.io/npm/v/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="npm version"></a>
-  <a href="https://npmjs.com/package/pamuk"><img src="https://img.shields.io/npm/dm/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="npm downloads"></a>
-  <a href="https://bundlephobia.com/result?p=pamuk"><img src="https://img.shields.io/bundlephobia/minzip/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="bundle size"></a>
-  <a href="https://github.com/productdevbook/pamuk/blob/main/LICENSE"><img src="https://img.shields.io/github/license/productdevbook/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="license"></a>
+  <a href="https://npmjs.com/package/sumak"><img src="https://img.shields.io/npm/v/sumak?style=flat&colorA=18181B&colorB=e11d48" alt="npm version"></a>
+  <a href="https://npmjs.com/package/sumak"><img src="https://img.shields.io/npm/dm/sumak?style=flat&colorA=18181B&colorB=e11d48" alt="npm downloads"></a>
+  <a href="https://bundlephobia.com/result?p=sumak"><img src="https://img.shields.io/bundlephobia/minzip/sumak?style=flat&colorA=18181B&colorB=e11d48" alt="bundle size"></a>
+  <a href="https://github.com/productdevbook/sumak/blob/main/LICENSE"><img src="https://img.shields.io/github/license/productdevbook/sumak?style=flat&colorA=18181B&colorB=e11d48" alt="license"></a>
 </p>
 
 ## Quick Start
 
 ```sh
-npm install pamuk
+npm install sumak
 ```
 
 ```ts
-import { pamuk, pgDialect, serial, text, boolean, integer } from "pamuk";
+import { sumak, pgDialect, serial, text, boolean, integer } from "sumak";
 
-const db = pamuk({
+const db = sumak({
   dialect: pgDialect(),
   tables: {
     users: {
@@ -89,11 +89,11 @@ db.selectFrom("users")
 Import only the dialect you need:
 
 ```ts
-import { pamuk } from "pamuk";
-import { pgDialect } from "pamuk/pg";
-import { mysqlDialect } from "pamuk/mysql";
-import { sqliteDialect } from "pamuk/sqlite";
-import { serial, text } from "pamuk/schema";
+import { sumak } from "sumak";
+import { pgDialect } from "sumak/pg";
+import { mysqlDialect } from "sumak/mysql";
+import { sqliteDialect } from "sumak/sqlite";
+import { serial, text } from "sumak/schema";
 ```
 
 ## Dialects
@@ -109,9 +109,9 @@ Same query, different SQL:
 ## Plugins
 
 ```ts
-import { WithSchemaPlugin, SoftDeletePlugin, CamelCasePlugin } from "pamuk";
+import { WithSchemaPlugin, SoftDeletePlugin, CamelCasePlugin } from "sumak";
 
-const db = pamuk({
+const db = sumak({
   dialect: pgDialect(),
   plugins: [
     new WithSchemaPlugin("public"),
