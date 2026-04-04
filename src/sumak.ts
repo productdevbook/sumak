@@ -85,6 +85,27 @@ export class Sumak<DB> {
     return new TypedSelectBuilder(new SelectBuilder().from(table, alias), table)
   }
 
+  /**
+   * SELECT from a subquery (derived table).
+   *
+   * ```ts
+   * const sub = db.selectFrom("users").select("id", "name")
+   * db.selectFromSubquery(sub, "u").selectAll().compile(db.printer())
+   * // SELECT * FROM (SELECT "id", "name" FROM "users") AS "u"
+   * ```
+   */
+  selectFromSubquery<Alias extends string>(
+    subquery: { build(): import("./ast/nodes.ts").SelectNode },
+    alias: Alias,
+  ): TypedSelectBuilder<DB, keyof DB & string, Record<string, unknown>> {
+    const sub: import("./ast/nodes.ts").SubqueryNode = {
+      type: "subquery",
+      query: subquery.build(),
+      alias,
+    }
+    return new TypedSelectBuilder(new SelectBuilder().from(sub), alias as any)
+  }
+
   insertInto<T extends keyof DB & string>(table: T): TypedInsertBuilder<DB, T> {
     return new TypedInsertBuilder<DB, T>(table)
   }
