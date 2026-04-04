@@ -273,6 +273,62 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.join("CROSS", table), this._table)
   }
 
+  /** Clear WHERE clause. */
+  clearWhere(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      new SelectBuilder({ ...this._builder.build(), where: undefined }),
+      this._table,
+    )
+  }
+
+  /** Clear ORDER BY clause. */
+  clearOrderBy(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      new SelectBuilder({ ...this._builder.build(), orderBy: [] }),
+      this._table,
+    )
+  }
+
+  /** Clear LIMIT. */
+  clearLimit(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      new SelectBuilder({ ...this._builder.build(), limit: undefined }),
+      this._table,
+    )
+  }
+
+  /** Clear OFFSET. */
+  clearOffset(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      new SelectBuilder({ ...this._builder.build(), offset: undefined }),
+      this._table,
+    )
+  }
+
+  /** Clear GROUP BY clause. */
+  clearGroupBy(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      new SelectBuilder({ ...this._builder.build(), groupBy: [] }),
+      this._table,
+    )
+  }
+
+  /** Clear HAVING clause. */
+  clearHaving(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      new SelectBuilder({ ...this._builder.build(), having: undefined }),
+      this._table,
+    )
+  }
+
+  /** Clear SELECT columns (resets to empty). */
+  clearSelect(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      new SelectBuilder({ ...this._builder.build(), columns: [] }),
+      this._table,
+    )
+  }
+
   /** Conditionally apply a transformation. */
   $if<O2>(
     condition: boolean,
