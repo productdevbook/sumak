@@ -914,7 +914,38 @@ db.schema.dropIndex("idx_name").ifExists().build()
 db.schema.dropView("my_view").materialized().ifExists().build()
 ```
 
-> Compile DDL: `db.compileDDL(node)` returns `{ sql, params }`.
+### Auto-Generate from Schema
+
+The schema you pass to `sumak({ tables })` can auto-generate CREATE TABLE SQL:
+
+```ts
+const db = sumak({
+  dialect: pgDialect(),
+  tables: {
+    users: {
+      id: serial().primaryKey(),
+      name: text().notNull(),
+      email: text().notNull(),
+    },
+    posts: {
+      id: serial().primaryKey(),
+      title: text().notNull(),
+      userId: integer().references("users", "id"),
+    },
+  },
+})
+
+const ddl = db.generateDDL()
+// [
+//   { sql: 'CREATE TABLE "users" ("id" serial PRIMARY KEY NOT NULL, "name" text NOT NULL, "email" text NOT NULL)', params: [] },
+//   { sql: 'CREATE TABLE "posts" ("id" serial PRIMARY KEY NOT NULL, "title" text NOT NULL, "userId" integer REFERENCES "users"("id"))', params: [] },
+// ]
+
+// With IF NOT EXISTS
+const safeDDL = db.generateDDL({ ifNotExists: true })
+```
+
+> Compile any DDL node: `db.compileDDL(node)` returns `{ sql, params }`.
 
 ---
 

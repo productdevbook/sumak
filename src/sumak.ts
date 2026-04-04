@@ -55,7 +55,7 @@ export interface SumakConfig<T extends TablesConfig> {
  * ```
  */
 export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<T> {
-  return new Sumak(config.dialect, config.plugins ?? [])
+  return new Sumak(config.dialect, config.plugins ?? [], config.tables)
 }
 
 /**
@@ -65,11 +65,18 @@ export class Sumak<DB> {
   private _dialect: Dialect
   private _plugins: PluginManager
   private _hooks: Hookable
+  /** @internal */
+  _tables: Record<string, Record<string, ColumnBuilder<any, any, any>>>
 
-  constructor(dialect: Dialect, plugins: SumakPlugin[] = []) {
+  constructor(
+    dialect: Dialect,
+    plugins: SumakPlugin[] = [],
+    tables: Record<string, Record<string, ColumnBuilder<any, any, any>>> = {},
+  ) {
     this._dialect = dialect
     this._plugins = new PluginManager(plugins)
     this._hooks = new Hookable()
+    this._tables = tables
   }
 
   /**
@@ -230,6 +237,45 @@ export class Sumak<DB> {
   /** Schema builder for DDL operations (CREATE TABLE, ALTER TABLE, etc.) */
   get schema(): SchemaBuilder {
     return new SchemaBuilder(this._dialect.name)
+  }
+
+  /**
+   * Generate CREATE TABLE SQL for all tables in the schema.
+   *
+   * Bridges the gap between `sumak({ tables })` definition and DDL.
+   * Reads ColumnBuilder metadata (dataType, notNull, primaryKey, references)
+   * and produces CREATE TABLE statements.
+   *
+   * ```ts
+   * const db = sumak({ dialect: pgDialect(), tables: { users: { id: serial(), name: text().notNull() } } })
+   * const ddl = db.generateDDL()
+   * // [{ sql: 'CREATE TABLE "users" ("id" serial PRIMARY KEY NOT NULL, "name" text NOT NULL)', params: [] }]
+   * ```
+   */
+  generateDDL(options?: { ifNotExists?: boolean }): CompiledQuery[] {
+    const printer = new DDLPrinter(this._dialect.name)
+    const results: CompiledQuery[] = []
+
+    for (const [tableName, columns] of Object.entries(this._tables)) {
+      const builder = new CreateTableBuilder(tableName)
+      let tb = options?.ifNotExists ? builder.ifNotExists() : builder
+
+      for (const [colName, colBuilder] of Object.entries(
+        columns as Record<string, ColumnBuilder<any, any, any>>,
+      )) {
+        const def = colBuilder._def
+        tb = tb.addColumn(colName, def.dataType, (c) => {
+          let col = c
+          if (def.isPrimaryKey) col = col.primaryKey()
+          if (def.isNotNull && !def.isPrimaryKey) col = col.notNull()
+          if (def.references) col = col.references(def.references.table, def.references.column)
+          return col
+        })
+      }
+
+      results.push(printer.print(tb.build()))
+    }
+    return results
   }
 
   /** Compile a DDL node to SQL. */
