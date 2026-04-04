@@ -815,6 +815,26 @@ export function jsonBuildObject(
   return wrap(rawFn("JSON_BUILD_OBJECT", args))
 }
 
+// ── PostgreSQL array operators ──
+
+/** @> (array contains) */
+export function arrayContains(arr: Expression<any>, values: Expression<any>): Expression<boolean> {
+  return wrap(binOp("@>", (arr as any).node, (values as any).node))
+}
+
+/** <@ (array contained by) */
+export function arrayContainedBy(
+  arr: Expression<any>,
+  values: Expression<any>,
+): Expression<boolean> {
+  return wrap(binOp("<@", (arr as any).node, (values as any).node))
+}
+
+/** && (array overlaps) */
+export function arrayOverlaps(arr: Expression<any>, values: Expression<any>): Expression<boolean> {
+  return wrap(binOp("&&", (arr as any).node, (values as any).node))
+}
+
 /** FLOOR(expr) */
 export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
