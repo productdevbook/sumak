@@ -358,6 +358,31 @@ export function not(expr: Expression<boolean>): Expression<boolean> {
   return wrap(rawNot((expr as any).node))
 }
 
+/** Add: a + b */
+export function add(a: Expression<number>, b: Expression<number>): Expression<number> {
+  return wrap(binOp("+", (a as any).node, (b as any).node))
+}
+
+/** Subtract: a - b */
+export function sub(a: Expression<number>, b: Expression<number>): Expression<number> {
+  return wrap(binOp("-", (a as any).node, (b as any).node))
+}
+
+/** Multiply: a * b */
+export function mul(a: Expression<number>, b: Expression<number>): Expression<number> {
+  return wrap(binOp("*", (a as any).node, (b as any).node))
+}
+
+/** Divide: a / b */
+export function div(a: Expression<number>, b: Expression<number>): Expression<number> {
+  return wrap(binOp("/", (a as any).node, (b as any).node))
+}
+
+/** Modulo: a % b */
+export function mod(a: Expression<number>, b: Expression<number>): Expression<number> {
+  return wrap(binOp("%", (a as any).node, (b as any).node))
+}
+
 /** Unary minus: -expr */
 export function neg(expr: Expression<number>): Expression<number> {
   return wrap({

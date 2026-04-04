@@ -181,6 +181,7 @@ export type {
 // Expression builder (clean API)
 export {
   abs,
+  add,
   aggOrderBy,
   and,
   arrayAgg,
@@ -197,6 +198,7 @@ export {
   countDistinct,
   currentTimestamp,
   denseRank,
+  div,
   exists,
   filter,
   floor,
@@ -209,6 +211,8 @@ export {
   lower,
   max,
   min,
+  mod,
+  mul,
   neg,
   not,
   notExists,
@@ -223,6 +227,7 @@ export {
   rowNumber,
   sqlFn,
   stringAgg,
+  sub,
   substring,
   sum,
   sumDistinct,
