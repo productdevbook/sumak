@@ -79,6 +79,21 @@ export class Col<T> {
     return wrap(binOp("LIKE", this._node, rawLit(pattern)))
   }
 
+  /** NOT LIKE */
+  notLike(this: Col<string>, pattern: string): Expression<boolean> {
+    return wrap(binOp("NOT LIKE", this._node, rawLit(pattern)))
+  }
+
+  /** ILIKE — case-insensitive LIKE (PG) */
+  ilike(this: Col<string>, pattern: string): Expression<boolean> {
+    return wrap(binOp("ILIKE", this._node, rawLit(pattern)))
+  }
+
+  /** NOT ILIKE (PG) */
+  notIlike(this: Col<string>, pattern: string): Expression<boolean> {
+    return wrap(binOp("NOT ILIKE", this._node, rawLit(pattern)))
+  }
+
   /** IN (value1, value2, ...) */
   in(values: T[]): Expression<boolean> {
     return wrap({
@@ -117,6 +132,17 @@ export class Col<T> {
       low: autoParam(low),
       high: autoParam(high),
       negated: false,
+    })
+  }
+
+  /** NOT BETWEEN low AND high */
+  notBetween(low: T, high: T): Expression<boolean> {
+    return wrap({
+      type: "between",
+      expr: this._node,
+      low: autoParam(low),
+      high: autoParam(high),
+      negated: true,
     })
   }
 
