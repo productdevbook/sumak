@@ -1,15 +1,15 @@
 import type { ASTNode } from "../ast/nodes.ts";
 import type { CompiledQuery } from "../types.ts";
-import type { LalePlugin } from "./types.ts";
+import type { PamukPlugin } from "./types.ts";
 
 /**
  * Manages plugin execution pipeline.
  * Plugins are applied sequentially in registration order.
  */
 export class PluginManager {
-  private readonly plugins: readonly LalePlugin[];
+  private readonly plugins: readonly PamukPlugin[];
 
-  constructor(plugins: LalePlugin[]) {
+  constructor(plugins: PamukPlugin[]) {
     this.plugins = Object.freeze([...plugins]);
   }
 

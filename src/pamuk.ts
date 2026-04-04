@@ -8,10 +8,10 @@ import { TypedUpdateBuilder } from "./builder/typed-update.ts";
 import { TypedDeleteBuilder } from "./builder/typed-delete.ts";
 import type { ASTNode } from "./ast/nodes.ts";
 import type { CompiledQuery } from "./types.ts";
-import type { LalePlugin } from "./plugin/types.ts";
+import type { PamukPlugin } from "./plugin/types.ts";
 import { PluginManager } from "./plugin/plugin-manager.ts";
 import { Hookable } from "./plugin/hooks.ts";
-import type { HookName, LaleHooks } from "./plugin/hooks.ts";
+import type { HookName, PamukHooks } from "./plugin/hooks.ts";
 
 /**
  * Extract the DB type from a tables config object.
@@ -24,19 +24,19 @@ type InferDB<T extends Record<string, Record<string, ColumnBuilder<any, any, any
   };
 };
 
-export interface LaleConfig<
+export interface PamukConfig<
   T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>,
 > {
   dialect: Dialect;
   tables: T;
-  plugins?: LalePlugin[];
+  plugins?: PamukPlugin[];
 }
 
 /**
- * Create a fully typed lale instance. DB type is inferred automatically.
+ * Create a fully typed pamuk instance. DB type is inferred automatically.
  *
  * ```ts
- * const db = lale({
+ * const db = pamuk({
  *   dialect: pgDialect(),
  *   tables: {
  *     users: { id: serial(), name: text().notNull() },
@@ -51,21 +51,21 @@ export interface LaleConfig<
  * db.selectFrom("users").select("id", "name")...
  * ```
  */
-export function lale<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>>(
-  config: LaleConfig<T>,
+export function pamuk<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>>(
+  config: PamukConfig<T>,
 ): Lale<InferDB<T>> {
-  return new Lale(config.dialect, config.plugins ?? []);
+  return new Pamuk(config.dialect, config.plugins ?? []);
 }
 
 /**
- * Core lale instance with hook system.
+ * Core pamuk instance with hook system.
  */
-export class Lale<DB> {
+export class Pamuk<DB> {
   private _dialect: Dialect;
   private _plugins: PluginManager;
   private _hooks: Hookable;
 
-  constructor(dialect: Dialect, plugins: LalePlugin[] = []) {
+  constructor(dialect: Dialect, plugins: PamukPlugin[] = []) {
     this._dialect = dialect;
     this._plugins = new PluginManager(plugins);
     this._hooks = new Hookable();
@@ -79,7 +79,7 @@ export class Lale<DB> {
    * off(); // unregister
    * ```
    */
-  hook<K extends HookName>(name: K, handler: LaleHooks[K]): () => void {
+  hook<K extends HookName>(name: K, handler: PamukHooks[K]): () => void {
     return this._hooks.hook(name, handler);
   }
 

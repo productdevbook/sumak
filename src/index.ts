@@ -169,15 +169,15 @@ export { Col, and, or, val, sqlFn, count, resetParams } from "./builder/eb.ts";
 export type { ColumnProxies, WhereCallback } from "./builder/eb.ts";
 
 // Typed builders
-export { lale, Lale } from "./lale.ts";
-export type { LaleConfig } from "./lale.ts";
+export { pamuk, Pamuk } from "./pamuk.ts";
+export type { PamukConfig } from "./pamuk.ts";
 export { TypedSelectBuilder } from "./builder/typed-select.ts";
 export { TypedInsertBuilder, TypedInsertReturningBuilder } from "./builder/typed-insert.ts";
 export { TypedUpdateBuilder, TypedUpdateReturningBuilder } from "./builder/typed-update.ts";
 export { TypedDeleteBuilder, TypedDeleteReturningBuilder } from "./builder/typed-delete.ts";
 
 // Plugins
-export type { LalePlugin } from "./plugin/types.ts";
+export type { PamukPlugin } from "./plugin/types.ts";
 export { PluginManager } from "./plugin/plugin-manager.ts";
 export { WithSchemaPlugin } from "./plugin/with-schema.ts";
 export { SoftDeletePlugin } from "./plugin/soft-delete.ts";
@@ -185,12 +185,12 @@ export { CamelCasePlugin } from "./plugin/camel-case.ts";
 
 // Hooks
 export { Hookable } from "./plugin/hooks.ts";
-export type { HookContext, HookName, LaleHooks } from "./plugin/hooks.ts";
+export type { HookContext, HookName, PamukHooks } from "./plugin/hooks.ts";
 
 // Errors
 export {
   EmptyQueryError,
   InvalidExpressionError,
-  LaleError,
+  PamukError,
   UnsupportedDialectFeatureError,
 } from "./errors.ts";

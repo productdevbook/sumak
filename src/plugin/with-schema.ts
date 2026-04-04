@@ -6,7 +6,7 @@ import type {
   DeleteNode,
   TableRefNode,
 } from "../ast/nodes.ts";
-import type { LalePlugin } from "./types.ts";
+import type { PamukPlugin } from "./types.ts";
 
 /**
  * Plugin that prepends a schema name to all table references.
@@ -16,7 +16,7 @@ import type { LalePlugin } from "./types.ts";
  * // SELECT * FROM "users" → SELECT * FROM "public"."users"
  * ```
  */
-export class WithSchemaPlugin implements LalePlugin {
+export class WithSchemaPlugin implements PamukPlugin {
   readonly name = "with-schema";
   private schema: string;
 

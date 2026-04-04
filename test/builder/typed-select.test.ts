@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { lale } from "../../src/lale.ts";
+import { pamuk } from "../../src/pamuk.ts";
 import { pgDialect } from "../../src/dialect/pg.ts";
 import { mysqlDialect } from "../../src/dialect/mysql.ts";
 import { boolean, integer, serial, text, timestamp } from "../../src/schema/column.ts";
 import { and } from "../../src/builder/eb.ts";
 
-const db = lale({
+const db = pamuk({
   dialect: pgDialect(),
   tables: {
     users: {
@@ -94,7 +94,7 @@ describe("TypedSelectBuilder", () => {
   });
 
   it("works with MySQL dialect", () => {
-    const mysqlDb = lale({
+    const mysqlDb = pamuk({
       dialect: mysqlDialect(),
       tables: { users: { id: serial(), name: text().notNull() } },
     });

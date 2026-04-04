@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { lale } from "../../src/lale.ts";
+import { pamuk } from "../../src/pamuk.ts";
 import { pgDialect } from "../../src/dialect/pg.ts";
 import { boolean, serial, text } from "../../src/schema/column.ts";
 
-const db = lale({
+const db = pamuk({
   dialect: pgDialect(),
   tables: {
     users: {

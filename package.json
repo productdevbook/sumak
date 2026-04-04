@@ -1,6 +1,6 @@
 {
-  "name": "lale",
-  "version": "0.1.0",
+  "name": "pamuk",
+  "version": "0.0.1",
   "description": "Type-safe SQL query builder with powerful SQL printers. Zero dependencies, tree-shakeable. Pure TypeScript.",
   "keywords": [
     "database",
@@ -16,15 +16,15 @@
     "typescript",
     "zero-dependency"
   ],
-  "homepage": "https://github.com/productdevbook/lale",
+  "homepage": "https://github.com/productdevbook/pamuk",
   "bugs": {
-    "url": "https://github.com/productdevbook/lale/issues"
+    "url": "https://github.com/productdevbook/pamuk/issues"
   },
   "license": "MIT",
   "author": "productdevbook",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/productdevbook/lale.git"
+    "url": "git+https://github.com/productdevbook/pamuk.git"
   },
   "funding": "https://github.com/sponsors/productdevbook",
   "files": [

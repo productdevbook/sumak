@@ -1,4 +1,4 @@
-# lale
+# pamuk
 
 Type-safe SQL query builder with powerful SQL printers. Zero dependencies, tree-shakeable. Pure TypeScript, works everywhere.
 
@@ -28,12 +28,12 @@ User Code
 
 ```
 src/
-  lale.ts                   # lale() factory + Lale<DB> class
+  lale.ts                   # pamuk() factory + Lale<DB> class
   index.ts                  # Main API — all exports
-  pg.ts                     # Sub-path: lale/pg
-  mysql.ts                  # Sub-path: lale/mysql
-  sqlite.ts                 # Sub-path: lale/sqlite
-  schema.ts                 # Sub-path: lale/schema
+  pg.ts                     # Sub-path: pamuk/pg
+  mysql.ts                  # Sub-path: pamuk/mysql
+  sqlite.ts                 # Sub-path: pamuk/sqlite
+  schema.ts                 # Sub-path: pamuk/schema
   errors.ts                 # Custom error classes
   types.ts                  # Shared types (CompiledQuery, SQLDialect, etc.)
   schema/
@@ -98,7 +98,7 @@ test/
 ### Setup (single step)
 
 ```typescript
-import { lale, pgDialect, serial, text, boolean } from "lale";
+import { pamuk, pgDialect, serial, text, boolean } from "pamuk";
 
 const db = lale({
   dialect: pgDialect(),
@@ -133,7 +133,7 @@ db.hook("result:transform", (rows) => {
 
 ### Sub-paths
 
-`lale`, `lale/pg`, `lale/mysql`, `lale/sqlite`, `lale/schema`
+`lale`, `pamuk/pg`, `pamuk/mysql`, `pamuk/sqlite`, `pamuk/schema`
 
 ## Build & Scripts
 

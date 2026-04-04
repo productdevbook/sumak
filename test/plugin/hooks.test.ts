@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { lale } from "../../src/lale.ts";
+import { pamuk } from "../../src/pamuk.ts";
 import { pgDialect } from "../../src/dialect/pg.ts";
 import { serial, text } from "../../src/schema/column.ts";
 import { isNull, col, and } from "../../src/ast/expression.ts";
 
-const db = lale({
+const db = pamuk({
   dialect: pgDialect(),
   tables: {
     users: { id: serial(), name: text().notNull() },
@@ -27,7 +27,7 @@ describe("Hook system", () => {
   });
 
   it("select:before hook can modify AST", () => {
-    const db2 = lale({
+    const db2 = pamuk({
       dialect: pgDialect(),
       tables: { users: { id: serial(), name: text().notNull() } },
     });
@@ -48,7 +48,7 @@ describe("Hook system", () => {
   });
 
   it("query:after hook can modify compiled SQL", () => {
-    const db2 = lale({
+    const db2 = pamuk({
       dialect: pgDialect(),
       tables: { users: { id: serial() } },
     });
@@ -63,7 +63,7 @@ describe("Hook system", () => {
   });
 
   it("result:transform hook converts rows", () => {
-    const db2 = lale({
+    const db2 = pamuk({
       dialect: pgDialect(),
       tables: { users: { id: serial() } },
     });
@@ -78,7 +78,7 @@ describe("Hook system", () => {
   });
 
   it("multiple hooks execute in order", () => {
-    const db2 = lale({
+    const db2 = pamuk({
       dialect: pgDialect(),
       tables: { users: { id: serial() } },
     });
@@ -96,7 +96,7 @@ describe("Hook system", () => {
   });
 
   it("hook receives table name in context", () => {
-    const db2 = lale({
+    const db2 = pamuk({
       dialect: pgDialect(),
       tables: { users: { id: serial() } },
     });
@@ -111,7 +111,7 @@ describe("Hook system", () => {
   });
 
   it("insert:before hook fires for INSERT", () => {
-    const db2 = lale({
+    const db2 = pamuk({
       dialect: pgDialect(),
       tables: { users: { id: serial(), name: text().notNull() } },
     });

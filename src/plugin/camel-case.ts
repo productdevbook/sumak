@@ -1,4 +1,4 @@
-import type { LalePlugin } from "./types.ts";
+import type { PamukPlugin } from "./types.ts";
 
 /**
  * Plugin that converts snake_case result column names to camelCase.
@@ -6,7 +6,7 @@ import type { LalePlugin } from "./types.ts";
  * This plugin operates on results only — it does NOT transform the AST.
  * Use it when your database uses snake_case but your TypeScript code uses camelCase.
  */
-export class CamelCasePlugin implements LalePlugin {
+export class CamelCasePlugin implements PamukPlugin {
   readonly name = "camel-case";
 
   transformResult(rows: Record<string, unknown>[]): Record<string, unknown>[] {

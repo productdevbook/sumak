@@ -1,6 +1,6 @@
 import type { ASTNode, DeleteNode, ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts";
 import { and, col, isNull } from "../ast/expression.ts";
-import type { LalePlugin } from "./types.ts";
+import type { PamukPlugin } from "./types.ts";
 
 /**
  * Plugin that automatically adds `WHERE deleted_at IS NULL` to
@@ -11,7 +11,7 @@ import type { LalePlugin } from "./types.ts";
  * // SELECT * FROM "users" → SELECT * FROM "users" WHERE "deleted_at" IS NULL
  * ```
  */
-export class SoftDeletePlugin implements LalePlugin {
+export class SoftDeletePlugin implements PamukPlugin {
   readonly name = "soft-delete";
   private tables: ReadonlySet<string>;
   private column: string;

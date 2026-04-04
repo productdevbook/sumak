@@ -2,14 +2,14 @@ import type { ASTNode } from "../ast/nodes.ts";
 import type { CompiledQuery } from "../types.ts";
 
 /**
- * Plugin interface for lale.
+ * Plugin interface for pamuk.
  *
  * Plugins can intercept at three points:
  * 1. transformNode — modify the AST before compilation
  * 2. transformQuery — modify the compiled SQL after generation
  * 3. transformResult — modify result rows after execution
  */
-export interface LalePlugin {
+export interface PamukPlugin {
   readonly name: string;
 
   /** Transform AST before compilation. Return a new node (never mutate). */

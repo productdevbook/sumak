@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 import {
-  lale,
+  pamuk,
   pgDialect,
   mysqlDialect,
   sqliteDialect,
@@ -22,7 +22,7 @@ import {
 // 1. Schema
 // ─────────────────────────────────────────────
 
-const db = lale({
+const db = pamuk({
   dialect: pgDialect(),
   tables: {
     users: {
@@ -55,7 +55,7 @@ const db = lale({
 const p = db.printer();
 
 console.log("═══════════════════════════════════════");
-console.log("  lale playground");
+console.log("  pamuk playground");
 console.log("═══════════════════════════════════════\n");
 
 // ─────────────────────────────────────────────
@@ -180,7 +180,7 @@ console.log(q14.compile(p).sql);
 
 console.log("\n── DIALECTS ──\n");
 
-const mysqlDb = lale({
+const mysqlDb = pamuk({
   dialect: mysqlDialect(),
   tables: {
     users: {
@@ -190,7 +190,7 @@ const mysqlDb = lale({
   },
 });
 
-const sqliteDb = lale({
+const sqliteDb = pamuk({
   dialect: sqliteDialect(),
   tables: {
     users: {
@@ -225,7 +225,7 @@ console.log("SQLite:", sqliteResult.sql);
 
 console.log("\n── PLUGINS ──\n");
 
-const dbPlugins = lale({
+const dbPlugins = pamuk({
   dialect: pgDialect(),
   plugins: [new WithSchemaPlugin("app"), new SoftDeletePlugin({ tables: ["users"] })],
   tables: {
@@ -255,7 +255,7 @@ console.log(rows[0]);
 
 console.log("\n── HOOKS ──\n");
 
-const dbH = lale({
+const dbH = pamuk({
   dialect: pgDialect(),
   tables: {
     users: {

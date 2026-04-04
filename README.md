@@ -1,29 +1,29 @@
 <p align="center">
   <br>
-  <img src=".github/assets/cover.png" alt="lale — Type-safe SQL query builder" width="100%">
+  <img src=".github/assets/cover.png" alt="pamuk — Type-safe SQL query builder" width="100%">
   <br><br>
-  <b style="font-size: 2em;">lale</b>
+  <b style="font-size: 2em;">pamuk</b>
   <br><br>
   Type-safe SQL query builder with powerful SQL printers.
   <br>
   Zero dependencies, AST-first, hookable, tree-shakeable. Pure TypeScript, works everywhere.
   <br><br>
-  <a href="https://npmjs.com/package/lale"><img src="https://img.shields.io/npm/v/lale?style=flat&colorA=18181B&colorB=e11d48" alt="npm version"></a>
-  <a href="https://npmjs.com/package/lale"><img src="https://img.shields.io/npm/dm/lale?style=flat&colorA=18181B&colorB=e11d48" alt="npm downloads"></a>
-  <a href="https://bundlephobia.com/result?p=lale"><img src="https://img.shields.io/bundlephobia/minzip/lale?style=flat&colorA=18181B&colorB=e11d48" alt="bundle size"></a>
-  <a href="https://github.com/productdevbook/lale/blob/main/LICENSE"><img src="https://img.shields.io/github/license/productdevbook/lale?style=flat&colorA=18181B&colorB=e11d48" alt="license"></a>
+  <a href="https://npmjs.com/package/pamuk"><img src="https://img.shields.io/npm/v/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="npm version"></a>
+  <a href="https://npmjs.com/package/pamuk"><img src="https://img.shields.io/npm/dm/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="npm downloads"></a>
+  <a href="https://bundlephobia.com/result?p=pamuk"><img src="https://img.shields.io/bundlephobia/minzip/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="bundle size"></a>
+  <a href="https://github.com/productdevbook/pamuk/blob/main/LICENSE"><img src="https://img.shields.io/github/license/productdevbook/pamuk?style=flat&colorA=18181B&colorB=e11d48" alt="license"></a>
 </p>
 
 ## Quick Start
 
 ```sh
-npm install lale
+npm install pamuk
 ```
 
 ```ts
-import { lale, pgDialect, serial, text, boolean, integer } from "lale";
+import { pamuk, pgDialect, serial, text, boolean, integer } from "pamuk";
 
-const db = lale({
+const db = pamuk({
   dialect: pgDialect(),
   tables: {
     users: {
@@ -89,11 +89,11 @@ db.selectFrom("users")
 Import only the dialect you need:
 
 ```ts
-import { lale } from "lale";
-import { pgDialect } from "lale/pg";
-import { mysqlDialect } from "lale/mysql";
-import { sqliteDialect } from "lale/sqlite";
-import { serial, text } from "lale/schema";
+import { pamuk } from "pamuk";
+import { pgDialect } from "pamuk/pg";
+import { mysqlDialect } from "pamuk/mysql";
+import { sqliteDialect } from "pamuk/sqlite";
+import { serial, text } from "pamuk/schema";
 ```
 
 ## Dialects
@@ -109,9 +109,9 @@ Same query, different SQL:
 ## Plugins
 
 ```ts
-import { WithSchemaPlugin, SoftDeletePlugin, CamelCasePlugin } from "lale";
+import { WithSchemaPlugin, SoftDeletePlugin, CamelCasePlugin } from "pamuk";
 
-const db = lale({
+const db = pamuk({
   dialect: pgDialect(),
   plugins: [
     new WithSchemaPlugin("public"),
