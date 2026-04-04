@@ -150,6 +150,19 @@ db.selectFrom("users").crossJoin("posts").compile(db.printer())
 .where(({ name }) =>
   name.like("%ali%"),
 )
+
+.where(({ name }) =>
+  name.notLike("%bob%"),
+)
+
+// Case-insensitive (PG)
+.where(({ name }) =>
+  name.ilike("%alice%"),
+)
+
+.where(({ email }) =>
+  email.notIlike("%spam%"),
+)
 ```
 
 ### Range & List
@@ -157,6 +170,15 @@ db.selectFrom("users").crossJoin("posts").compile(db.printer())
 ```ts
 .where(({ age }) =>
   age.between(18, 65),
+)
+
+.where(({ age }) =>
+  age.notBetween(18, 65),
+)
+
+// Order-independent (PG)
+.where(({ age }) =>
+  age.betweenSymmetric(65, 18),
 )
 
 .where(({ id }) =>
@@ -618,6 +640,58 @@ db.deleteFrom("orders")
 db.update("orders")
   .set({ total: 0 })
   .innerJoin("users", eq(col("user_id", "orders"), col("id", "users")))
+  .compile(db.printer())
+```
+
+## Lateral JOIN
+
+```ts
+// INNER JOIN LATERAL — correlated subquery join
+const recentPosts = db
+  .selectFrom("posts")
+  .select("id", "title")
+  .where(({ userId }) => userId.eq(1))
+  .limit(3)
+
+db.selectFrom("users").innerJoinLateral(recentPosts, "rp", onExpr).compile(db.printer())
+// SELECT * FROM "users" INNER JOIN LATERAL (SELECT ...) AS "rp" ON ...
+
+// LEFT JOIN LATERAL
+db.selectFrom("users").leftJoinLateral(recentPosts, "rp", onExpr).compile(db.printer())
+```
+
+## Tuple Comparisons
+
+```ts
+import { tuple, val } from "sumak"
+
+// Row-value comparison: (id, age) = (1, 25)
+db.selectFrom("users")
+  .selectExpr(tuple(val(1), val(2), val(3)), "triple")
+  .compile(db.printer())
+// (1, 2, 3)
+```
+
+## SQL Template Literal
+
+```ts
+import { sql, val } from "sumak"
+
+// Tagged template with auto-parameterization
+sql`SELECT * FROM users WHERE name = ${"Alice"}`
+// params: ["Alice"]
+
+// Inline Expression values
+sql`SELECT * FROM users WHERE active = ${val(true)}`
+// → SELECT * FROM users WHERE active = TRUE
+
+// Helpers
+sql`SELECT ${sql.ref("id")} FROM ${sql.table("users", "public")}`
+// → SELECT "id" FROM "public"."users"
+
+// Use in selectExpr
+db.selectFrom("users")
+  .selectExpr(sql`CURRENT_DATE`, "today")
   .compile(db.printer())
 ```
 
