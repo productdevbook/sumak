@@ -68,6 +68,11 @@ export class InsertBuilder {
     return new InsertBuilder({ ...this.node, onConflict: conflict }, this.paramIndex)
   }
 
+  /** MySQL: ON DUPLICATE KEY UPDATE */
+  onDuplicateKeyUpdate(set: { column: string; value: ExpressionNode }[]): InsertBuilder {
+    return new InsertBuilder({ ...this.node, onDuplicateKeyUpdate: set }, this.paramIndex)
+  }
+
   /** INSERT INTO ... SELECT ... */
   fromSelect(query: SelectNode): InsertBuilder {
     return new InsertBuilder({ ...this.node, source: query }, this.paramIndex)

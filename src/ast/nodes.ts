@@ -245,6 +245,7 @@ export interface InsertNode {
   values: ExpressionNode[][]
   returning: ExpressionNode[]
   onConflict?: OnConflictNode
+  onDuplicateKeyUpdate?: { column: string; value: ExpressionNode }[]
   ctes: CTENode[]
   source?: SelectNode
   defaultValues?: boolean

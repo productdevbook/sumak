@@ -12,7 +12,23 @@ export class MysqlPrinter extends BasePrinter {
     if (node.returning.length > 0) {
       throw new UnsupportedDialectFeatureError("mysql", "RETURNING")
     }
-    return super.printInsert(node)
+    if (node.onConflict) {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "ON CONFLICT (use onDuplicateKeyUpdate for MySQL)",
+      )
+    }
+
+    let sql = super.printInsert(node)
+
+    if (node.onDuplicateKeyUpdate && node.onDuplicateKeyUpdate.length > 0) {
+      const sets = node.onDuplicateKeyUpdate
+        .map((s) => `${quoteIdentifier(s.column, this.dialect)} = ${this.printExpression(s.value)}`)
+        .join(", ")
+      sql += ` ON DUPLICATE KEY UPDATE ${sets}`
+    }
+
+    return sql
   }
 
   protected override printSelect(node: SelectNode): string {

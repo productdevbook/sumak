@@ -102,6 +102,18 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     )
   }
 
+  /** MySQL: ON DUPLICATE KEY UPDATE */
+  onDuplicateKeyUpdate(
+    set: { column: keyof DB[TB] & string; value: Expression<any> }[],
+  ): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(
+      this._builder.onDuplicateKeyUpdate(
+        set.map((s) => ({ column: s.column, value: unwrap(s.value) })),
+      ),
+      this._paramIdx,
+    )
+  }
+
   /** INSERT INTO ... SELECT ... */
   fromSelect(query: SelectNode): TypedInsertBuilder<DB, TB> {
     return this._withBuilder(this._builder.fromSelect(query), this._paramIdx)
