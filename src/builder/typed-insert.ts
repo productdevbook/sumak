@@ -98,7 +98,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * ON CONFLICT DO UPDATE.
+   * ON CONFLICT DO UPDATE — with Expression values.
    */
   onConflictDoUpdate(
     columns: (keyof DB[TB] & string)[],
@@ -111,6 +111,28 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
       ),
       this._paramIdx,
     )
+  }
+
+  /**
+   * ON CONFLICT DO UPDATE — with plain object (auto-parameterized).
+   *
+   * ```ts
+   * .onConflictDoUpdateSet(["email"], { name: "Alice Updated" })
+   * ```
+   */
+  onConflictDoUpdateSet(
+    columns: (keyof DB[TB] & string)[],
+    values: Partial<Insertable<DB[TB]>>,
+  ): TypedInsertBuilder<DB, TB> {
+    const set: { column: string; value: import("../ast/nodes.ts").ExpressionNode }[] = []
+    let idx = this._paramIdx
+    for (const [col, val] of Object.entries(values as Record<string, unknown>)) {
+      if (val !== undefined) {
+        set.push({ column: col, value: param(idx, val) })
+        idx++
+      }
+    }
+    return this._withBuilder(this._builder.onConflictDoUpdate(columns, set), idx)
   }
 
   /** ON CONFLICT ON CONSTRAINT name DO NOTHING */
