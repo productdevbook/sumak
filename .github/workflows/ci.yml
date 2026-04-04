@@ -1,0 +1,39 @@
+name: CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: corepack enable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+          cache: pnpm
+      - name: 📦 Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: 👀 Lint
+        run: pnpm lint
+      - name: 🔍 Typecheck
+        run: pnpm typecheck
+      - name: 🧪 Test
+        run: pnpm vitest run
+      - name: 🚀 Build
+        run: pnpm build
