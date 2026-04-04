@@ -79,8 +79,11 @@ export class MssqlPrinter extends BasePrinter {
       parts.push(node.setOp.op, this.printSelect(node.setOp.query))
     }
 
-    if (node.forUpdate) {
-      throw new UnsupportedDialectFeatureError("mssql", "FOR UPDATE (use WITH (UPDLOCK) instead)")
+    if (node.lock) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "FOR UPDATE/SHARE (use WITH (UPDLOCK) hints instead)",
+      )
     }
 
     return parts.join(" ")

@@ -134,8 +134,13 @@ export class BasePrinter implements Printer {
       parts.push(node.setOp.op, this.printSelect(node.setOp.query))
     }
 
-    if (node.forUpdate) {
-      parts.push("FOR UPDATE")
+    if (node.lock) {
+      parts.push(`FOR ${node.lock.mode}`)
+      if (node.lock.noWait) {
+        parts.push("NOWAIT")
+      } else if (node.lock.skipLocked) {
+        parts.push("SKIP LOCKED")
+      }
     }
 
     return parts.join(" ")

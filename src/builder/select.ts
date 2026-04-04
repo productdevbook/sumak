@@ -116,7 +116,29 @@ export class SelectBuilder {
   }
 
   forUpdate(): SelectBuilder {
-    return new SelectBuilder({ ...this.node, forUpdate: true })
+    return new SelectBuilder({ ...this.node, lock: { mode: "UPDATE" } })
+  }
+
+  forShare(): SelectBuilder {
+    return new SelectBuilder({ ...this.node, lock: { mode: "SHARE" } })
+  }
+
+  forNoKeyUpdate(): SelectBuilder {
+    return new SelectBuilder({ ...this.node, lock: { mode: "NO KEY UPDATE" } })
+  }
+
+  forKeyShare(): SelectBuilder {
+    return new SelectBuilder({ ...this.node, lock: { mode: "KEY SHARE" } })
+  }
+
+  skipLocked(): SelectBuilder {
+    if (!this.node.lock) return this
+    return new SelectBuilder({ ...this.node, lock: { ...this.node.lock, skipLocked: true } })
+  }
+
+  noWait(): SelectBuilder {
+    if (!this.node.lock) return this
+    return new SelectBuilder({ ...this.node, lock: { ...this.node.lock, noWait: true } })
   }
 
   with(name: string, query: SelectNode, recursive = false): SelectBuilder {

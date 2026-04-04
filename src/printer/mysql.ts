@@ -16,9 +16,7 @@ export class MysqlPrinter extends BasePrinter {
   }
 
   protected override printSelect(node: SelectNode): string {
-    if (node.forUpdate) {
-      // MySQL supports FOR UPDATE, handled in base
-    }
+    // MySQL supports FOR UPDATE and FOR SHARE (handled in base)
     return super.printSelect(node)
   }
 

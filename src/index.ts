@@ -24,6 +24,8 @@ export type {
   JoinNode,
   JsonAccessNode,
   LiteralNode,
+  LockClause,
+  LockMode,
   MergeNode,
   MergeWhenMatched,
   MergeWhenNotMatched,

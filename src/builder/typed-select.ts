@@ -156,6 +156,31 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.forUpdate(), this._table)
   }
 
+  /** FOR SHARE */
+  forShare(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.forShare(), this._table)
+  }
+
+  /** FOR NO KEY UPDATE (PG) */
+  forNoKeyUpdate(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.forNoKeyUpdate(), this._table)
+  }
+
+  /** FOR KEY SHARE (PG) */
+  forKeyShare(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.forKeyShare(), this._table)
+  }
+
+  /** SKIP LOCKED — must follow a FOR lock mode */
+  skipLocked(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.skipLocked(), this._table)
+  }
+
+  /** NOWAIT — must follow a FOR lock mode */
+  noWait(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.noWait(), this._table)
+  }
+
   /** WITH (CTE) */
   with(name: string, query: SelectNode, recursive = false): TypedSelectBuilder<DB, TB, O> {
     return new TypedSelectBuilder(this._builder.with(name, query, recursive), this._table)

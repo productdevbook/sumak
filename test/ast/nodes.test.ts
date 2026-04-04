@@ -18,7 +18,7 @@ describe("AST Node Factories", () => {
       expect(node.groupBy).toEqual([])
       expect(node.orderBy).toEqual([])
       expect(node.ctes).toEqual([])
-      expect(node.forUpdate).toBe(false)
+      expect(node.lock).toBeUndefined()
       expect(node.from).toBeUndefined()
       expect(node.where).toBeUndefined()
       expect(node.having).toBeUndefined()

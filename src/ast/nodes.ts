@@ -213,6 +213,14 @@ export interface WindowNode {
   orderBy: OrderByNode[]
 }
 
+export type LockMode = "UPDATE" | "SHARE" | "NO KEY UPDATE" | "KEY SHARE"
+
+export interface LockClause {
+  mode: LockMode
+  skipLocked?: boolean
+  noWait?: boolean
+}
+
 export interface SelectNode {
   type: "select"
   distinct: boolean
@@ -227,7 +235,7 @@ export interface SelectNode {
   offset?: ExpressionNode
   ctes: CTENode[]
   setOp?: { op: SetOperator; query: SelectNode }
-  forUpdate: boolean
+  lock?: LockClause
 }
 
 export interface InsertNode {
@@ -320,7 +328,6 @@ export function createSelectNode(): SelectNode {
     groupBy: [],
     orderBy: [],
     ctes: [],
-    forUpdate: false,
   }
 }
 

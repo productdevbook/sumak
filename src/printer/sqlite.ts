@@ -9,8 +9,8 @@ export class SqlitePrinter extends BasePrinter {
   }
 
   protected override printSelect(node: SelectNode): string {
-    if (node.forUpdate) {
-      throw new UnsupportedDialectFeatureError("sqlite", "FOR UPDATE")
+    if (node.lock) {
+      throw new UnsupportedDialectFeatureError("sqlite", "FOR UPDATE/SHARE")
     }
     return super.printSelect(node)
   }

@@ -89,7 +89,7 @@ describe("MssqlPrinter", () => {
         ...createSelectNode(),
         columns: [star()],
         from: { type: "table_ref", name: "users" },
-        forUpdate: true,
+        lock: { mode: "UPDATE" },
       }
       expect(() => printer().print(node)).toThrow("FOR UPDATE")
     })
