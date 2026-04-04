@@ -80,6 +80,29 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /**
+   * RETURNING with expression and alias.
+   */
+  returningExpr<Alias extends string>(
+    expr: Expression<any>,
+    alias: Alias,
+  ): TypedInsertReturningBuilder<DB, TB, SelectRow<DB, TB> & Record<Alias, any>> {
+    const node = unwrap(expr)
+    const aliased: import("../ast/nodes.ts").AliasedExprNode = {
+      type: "aliased_expr",
+      expr: node,
+      alias,
+    }
+    const builder = new InsertBuilder(
+      {
+        ...this._builder.build(),
+        returning: [...this._builder.build().returning, aliased],
+      },
+      this._paramIdx,
+    )
+    return new TypedInsertReturningBuilder(builder)
+  }
+
+  /**
    * RETURNING all columns.
    */
   returningAll(): TypedInsertReturningBuilder<DB, TB, SelectRow<DB, TB>> {

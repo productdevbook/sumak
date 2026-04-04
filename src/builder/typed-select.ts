@@ -279,6 +279,68 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.leftJoinLateral(sub, unwrap(on)), this._table)
   }
 
+  /**
+   * INNER JOIN with alias — for self-joins.
+   *
+   * ```ts
+   * .innerJoinAs("users", "u2", ({ users, u2 }) => users.managerId.eqCol(u2.id))
+   * ```
+   */
+  innerJoinAs<T extends keyof DB & string, A extends string>(
+    table: T,
+    alias: A,
+    onCallback: (cols: {
+      [Table in (TB | A) & string]: import("./eb.ts").ColumnProxies<DB, TB>
+    }) => Expression<boolean>,
+  ): TypedSelectBuilder<DB, TB | T, O & SelectRow<DB, T>> {
+    const proxies = new Proxy({} as any, {
+      get(_target: any, tableName: string) {
+        return new Proxy(
+          {},
+          {
+            get(_t2: any, colName: string) {
+              return new Col(colName, tableName)
+            },
+          },
+        )
+      },
+    })
+    const on = onCallback(proxies)
+    return new TypedSelectBuilder(
+      this._builder.join("INNER", { type: "table_ref", name: table, alias }, unwrap(on)),
+      this._table,
+    )
+  }
+
+  /**
+   * LEFT JOIN with alias — for self-joins.
+   */
+  leftJoinAs<T extends keyof DB & string, A extends string>(
+    table: T,
+    alias: A,
+    onCallback: (cols: {
+      [Table in (TB | A) & string]: import("./eb.ts").ColumnProxies<DB, TB>
+    }) => Expression<boolean>,
+  ): TypedSelectBuilder<DB, TB | T, O & Nullable<SelectRow<DB, T>>> {
+    const proxies = new Proxy({} as any, {
+      get(_target: any, tableName: string) {
+        return new Proxy(
+          {},
+          {
+            get(_t2: any, colName: string) {
+              return new Col(colName, tableName)
+            },
+          },
+        )
+      },
+    })
+    const on = onCallback(proxies)
+    return new TypedSelectBuilder(
+      this._builder.join("LEFT", { type: "table_ref", name: table, alias }, unwrap(on)),
+      this._table,
+    )
+  }
+
   /** CROSS JOIN — cartesian product. */
   crossJoin<T extends keyof DB & string>(
     table: T,

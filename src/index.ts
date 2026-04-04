@@ -234,6 +234,7 @@ export {
   rowNumber,
   sqlFn,
   stringAgg,
+  subqueryExpr,
   sub,
   substring,
   sum,

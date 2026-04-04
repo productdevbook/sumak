@@ -253,6 +253,16 @@ export class Col<T> {
   toExpr(): Expression<T> {
     return wrap<T>(this._node)
   }
+
+  /** ASC ordering — for use with orderBy(col.asc()) */
+  asc(): { expr: Expression<T>; direction: "ASC" } {
+    return { expr: wrap<T>(this._node), direction: "ASC" }
+  }
+
+  /** DESC ordering — for use with orderBy(col.desc()) */
+  desc(): { expr: Expression<T>; direction: "DESC" } {
+    return { expr: wrap<T>(this._node), direction: "DESC" }
+  }
 }
 
 // ── Internal helpers ──
@@ -457,6 +467,11 @@ export function neg(expr: Expression<number>): Expression<number> {
     operand: (expr as any).node,
     position: "prefix" as const,
   })
+}
+
+/** Wrap a SELECT query as a scalar subquery expression. */
+export function subqueryExpr<T>(query: SelectNode): Expression<T> {
+  return wrap<T>({ type: "subquery", query })
 }
 
 /** EXISTS (subquery) */
