@@ -1098,45 +1098,14 @@ The query is never a string until the very last step. This means:
 
 ---
 
-## sumak vs Drizzle vs Kysely
+## Acknowledgments
 
-### What Drizzle doesn't have
+sumak wouldn't exist without the incredible work of these projects:
 
-- No AST — template-based SQL, plugins can't rewrite queries
-- No hook system — no `query:before`, `select:before` lifecycle
-- No `MERGE` statement
-- No `EXPLAIN` builder
-- No `DISTINCT ON`
-- No `BETWEEN SYMMETRIC`
-- No temporal tables (`FOR SYSTEM_TIME`)
-- No full-text search abstraction across dialects
-- No `FILTER (WHERE)` on aggregates
-- No `sql` tagged template with auto-parameterization
-- No `$if()` / `$call()` on query builders
-- No `clear*()` methods to reset clauses
-- Schema and query builder are tightly coupled — can't use one without the other
-
-### What Kysely doesn't have
-
-- No hook system — only plugins, no lifecycle events
-- No `MERGE` statement (added late, limited)
-- No temporal tables (`FOR SYSTEM_TIME`)
-- No full-text search abstraction
-- No dialect-aware FTS (PG tsvector, MySQL MATCH, SQLite FTS5, MSSQL CONTAINS)
-- No `FILTER (WHERE)` on aggregates
-- No `generateDDL()` from schema definition
-- No `orWhere()` — must manually wrap in `eb.or()`
-- No `$call()` pipe pattern
-- No `TRUNCATE TABLE` builder
-- No `sql` tagged template (uses `sql` but different API)
-- 98 AST node types vs sumak's ~40 focused nodes
-
-### What sumak doesn't have (yet)
-
-- No execution layer (no `execute()`, no driver adapters) — sumak is a **query builder**, not an ORM
-- No migration system — use `generateDDL()` or external tools
-- No relational query builder (Drizzle's `db.query.users.findMany()`)
-- No `json_agg` with lateral join sugar (Kysely)
+- **[Kysely](https://github.com/kysely-org/kysely)** — Pioneered the AST-first approach for TypeScript query builders. The `DB/TB/O` generic threading pattern, immutable builder design, and visitor-based printer architecture are directly inspired by Kysely.
+- **[Drizzle ORM](https://github.com/drizzle-team/drizzle-orm)** — Proved that schema-as-code (no codegen) is the right developer experience. The `defineTable()` + column builder pattern in sumak follows Drizzle's lead.
+- **[JOOQ](https://github.com/jOOQ/jOOQ)** — The original AST-first SQL builder (Java). Showed that a clean AST layer makes multi-dialect support elegant.
+- **[SQLAlchemy](https://github.com/sqlalchemy/sqlalchemy)** — Demonstrated that separating the expression layer from the ORM layer gives maximum flexibility.
 
 ---
 
