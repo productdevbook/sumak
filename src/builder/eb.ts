@@ -10,7 +10,14 @@ import {
   cast as rawCast,
   not as rawNot,
 } from "../ast/expression.ts"
-import type { CaseNode, ExpressionNode, JsonAccessNode, SelectNode } from "../ast/nodes.ts"
+import type {
+  CaseNode,
+  ExpressionNode,
+  FullTextSearchMode,
+  FullTextSearchNode,
+  JsonAccessNode,
+  SelectNode,
+} from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import type { SelectType } from "../schema/types.ts"
 
@@ -267,6 +274,35 @@ export function jsonRef<T = unknown>(
     operator,
   }
   return wrap<T>(node)
+}
+
+/**
+ * Full-text search expression.
+ *
+ * Dialect-aware: PG uses tsvector/tsquery, MySQL uses MATCH/AGAINST,
+ * SQLite uses FTS5 MATCH, MSSQL uses CONTAINS/FREETEXT.
+ *
+ * ```ts
+ * // PostgreSQL: to_tsvector("name") @@ to_tsquery($1)
+ * .where(() => textSearch([cols.name], val("alice")))
+ *
+ * // MySQL: MATCH(`name`) AGAINST(? IN BOOLEAN MODE)
+ * .where(() => textSearch([cols.name], val("alice"), { mode: "boolean" }))
+ * ```
+ */
+export function textSearch(
+  columns: Expression<any>[],
+  query: Expression<any>,
+  options?: { mode?: FullTextSearchMode; language?: string },
+): Expression<boolean> {
+  const node: FullTextSearchNode = {
+    type: "full_text_search",
+    columns: columns.map((c) => (c as any).node),
+    query: (query as any).node,
+    mode: options?.mode,
+    language: options?.language,
+  }
+  return wrap<boolean>(node)
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   notExists,
   or,
   sum,
+  textSearch,
   val,
 } from "../../src/builder/eb.ts"
 import { select } from "../../src/builder/select.ts"
@@ -292,6 +293,35 @@ describe("Clean callback API", () => {
       const r = q.compile(p)
       const whenCount = (r.sql.match(/WHEN/g) || []).length
       expect(whenCount).toBe(2)
+    })
+  })
+
+  describe("textSearch()", () => {
+    it("PostgreSQL full-text search", () => {
+      const q = db
+        .selectFrom("users")
+        .where(({ name }) => textSearch([name.toExpr()], val("alice")))
+      const r = q.compile(p)
+      expect(r.sql).toContain("to_tsvector")
+      expect(r.sql).toContain("@@")
+      expect(r.sql).toContain("to_tsquery")
+    })
+
+    it("with language option", () => {
+      const q = db
+        .selectFrom("users")
+        .where(({ name }) => textSearch([name.toExpr()], val("alice"), { language: "english" }))
+      const r = q.compile(p)
+      expect(r.sql).toContain("'english'")
+    })
+
+    it("with mode option", () => {
+      const q = db
+        .selectFrom("users")
+        .where(({ name }) => textSearch([name.toExpr()], val("alice"), { mode: "boolean" }))
+      const r = q.compile(p)
+      // Mode is dialect-specific; PG ignores it (tsvector/tsquery always)
+      expect(r.sql).toContain("to_tsvector")
     })
   })
 })

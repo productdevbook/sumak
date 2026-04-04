@@ -1,4 +1,4 @@
-import type { AliasedExprNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
+import type { AliasedExprNode, ExpressionNode, SelectNode, TemporalClause } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -144,6 +144,11 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   /** OFFSET */
   offset(n: number): TypedSelectBuilder<DB, TB, O> {
     return new TypedSelectBuilder(this._builder.offset({ type: "literal", value: n }), this._table)
+  }
+
+  /** FOR SYSTEM_TIME (SQL:2011 temporal query) */
+  forSystemTime(clause: TemporalClause): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.forSystemTime(clause), this._table)
   }
 
   /** FOR UPDATE */

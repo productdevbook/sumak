@@ -395,6 +395,56 @@ db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(so
   .compile(db.printer())
 ```
 
+## Full-Text Search
+
+Dialect-aware FTS — same API, different SQL per dialect:
+
+```ts
+import { textSearch } from "sumak"
+
+// PostgreSQL: to_tsvector("name") @@ to_tsquery('alice')
+db.selectFrom("users")
+  .where(({ name }) => textSearch([name.toExpr()], val("alice")))
+  .compile(db.printer())
+
+// With language config
+db.selectFrom("users")
+  .where(({ name }) => textSearch([name.toExpr()], val("alice"), { language: "english" }))
+  .compile(db.printer())
+
+// MySQL: MATCH(`name`) AGAINST(? IN BOOLEAN MODE)
+// SQLite: ("name" MATCH ?)
+// MSSQL: CONTAINS(([name]), @p0)
+```
+
+## Temporal Tables (SQL:2011)
+
+Query historical data with `FOR SYSTEM_TIME`:
+
+```ts
+// AS OF — point-in-time query
+db.selectFrom("users")
+  .forSystemTime({
+    kind: "as_of",
+    timestamp: lit("2024-01-01"),
+  })
+  .compile(db.printer())
+
+// BETWEEN — time range
+db.selectFrom("users")
+  .forSystemTime({
+    kind: "between",
+    start: lit("2024-01-01"),
+    end: lit("2024-12-31"),
+  })
+  .compile(db.printer())
+
+// ALL — full history
+db.selectFrom("users").forSystemTime({ kind: "all" }).compile(db.printer())
+```
+
+Supported modes: `as_of`, `from_to`, `between`, `contained_in`, `all`.
+
 ## Tree Shaking
 
 Import only the dialect you need:

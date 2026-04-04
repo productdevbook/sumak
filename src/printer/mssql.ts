@@ -1,4 +1,10 @@
-import type { DeleteNode, InsertNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
+import type {
+  DeleteNode,
+  FullTextSearchNode,
+  InsertNode,
+  SelectNode,
+  UpdateNode,
+} from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { BasePrinter } from "./base.ts"
@@ -176,5 +182,16 @@ export class MssqlPrinter extends BasePrinter {
     }
 
     return parts.join(" ")
+  }
+
+  protected override printFullTextSearch(node: FullTextSearchNode): string {
+    const cols = node.columns.map((c) => this.printExpression(c)).join(", ")
+    const query = this.printExpression(node.query)
+    const fn = node.mode === "natural" ? "FREETEXT" : "CONTAINS"
+    let result = `${fn}((${cols}), ${query})`
+    if (node.alias) {
+      result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+    }
+    return result
   }
 }

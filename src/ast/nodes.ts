@@ -22,6 +22,7 @@ export type ExpressionNode =
   | ArrayExprNode
   | WindowFunctionNode
   | AliasedExprNode
+  | FullTextSearchNode
 
 export interface ColumnRefNode {
   type: "column_ref"
@@ -119,17 +120,36 @@ export interface StarNode {
   table?: string
 }
 
+export type FullTextSearchMode = "natural" | "boolean" | "expansion"
+
+export interface FullTextSearchNode {
+  type: "full_text_search"
+  columns: ExpressionNode[]
+  query: ExpressionNode
+  mode?: FullTextSearchMode
+  language?: string
+  alias?: string
+}
+
 export interface AliasedExprNode {
   type: "aliased_expr"
   expr: ExpressionNode
   alias: string
 }
 
+export type TemporalClause =
+  | { kind: "as_of"; timestamp: ExpressionNode }
+  | { kind: "from_to"; start: ExpressionNode; end: ExpressionNode }
+  | { kind: "between"; start: ExpressionNode; end: ExpressionNode }
+  | { kind: "contained_in"; start: ExpressionNode; end: ExpressionNode }
+  | { kind: "all" }
+
 export interface TableRefNode {
   type: "table_ref"
   name: string
   alias?: string
   schema?: string
+  temporal?: TemporalClause
 }
 
 export interface JoinNode {

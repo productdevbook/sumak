@@ -157,6 +157,12 @@ export class ASTTransformer {
           ...node,
           expr: this.transformExpression(node.expr),
         }
+      case "full_text_search":
+        return {
+          ...node,
+          columns: node.columns.map((c) => this.transformExpression(c)),
+          query: this.transformExpression(node.query),
+        }
       default:
         return node
     }

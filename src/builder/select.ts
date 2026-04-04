@@ -7,6 +7,7 @@ import type {
   SelectNode,
   SubqueryNode,
   TableRefNode,
+  TemporalClause,
 } from "../ast/nodes.ts"
 import { createSelectNode } from "../ast/nodes.ts"
 import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
@@ -98,6 +99,14 @@ export class SelectBuilder {
 
   offset(expr: ExpressionNode): SelectBuilder {
     return new SelectBuilder({ ...this.node, offset: expr })
+  }
+
+  forSystemTime(clause: TemporalClause): SelectBuilder {
+    if (!this.node.from || this.node.from.type !== "table_ref") return this
+    return new SelectBuilder({
+      ...this.node,
+      from: { ...this.node.from, temporal: clause },
+    })
   }
 
   forUpdate(): SelectBuilder {

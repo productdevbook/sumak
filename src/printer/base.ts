@@ -32,7 +32,12 @@ import type {
   UpdateNode,
   WindowFunctionNode,
 } from "../ast/nodes.ts"
-import type { MergeNode, MergeWhenMatched, MergeWhenNotMatched } from "../ast/nodes.ts"
+import type {
+  FullTextSearchNode,
+  MergeNode,
+  MergeWhenMatched,
+  MergeWhenNotMatched,
+} from "../ast/nodes.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { formatParam } from "../utils/param.ts"
@@ -277,6 +282,8 @@ export class BasePrinter implements Printer {
         return this.printWindowFunction(node)
       case "aliased_expr":
         return this.printAliasedExpr(node)
+      case "full_text_search":
+        return this.printFullTextSearch(node)
     }
   }
 
@@ -388,10 +395,28 @@ export class BasePrinter implements Printer {
 
   protected printTableRef(ref: TableRefNode): string {
     let result = quoteTableRef(ref.name, this.dialect, ref.schema)
+    if (ref.temporal) {
+      result += ` ${this.printTemporalClause(ref.temporal)}`
+    }
     if (ref.alias) {
       result += ` AS ${quoteIdentifier(ref.alias, this.dialect)}`
     }
     return result
+  }
+
+  protected printTemporalClause(clause: import("../ast/nodes.ts").TemporalClause): string {
+    switch (clause.kind) {
+      case "as_of":
+        return `FOR SYSTEM_TIME AS OF ${this.printExpression(clause.timestamp)}`
+      case "from_to":
+        return `FOR SYSTEM_TIME FROM ${this.printExpression(clause.start)} TO ${this.printExpression(clause.end)}`
+      case "between":
+        return `FOR SYSTEM_TIME BETWEEN ${this.printExpression(clause.start)} AND ${this.printExpression(clause.end)}`
+      case "contained_in":
+        return `FOR SYSTEM_TIME CONTAINED IN (${this.printExpression(clause.start)}, ${this.printExpression(clause.end)})`
+      case "all":
+        return "FOR SYSTEM_TIME ALL"
+    }
   }
 
   protected printJoin(node: JoinNode): string {
@@ -549,5 +574,16 @@ export class BasePrinter implements Printer {
 
   protected printAliasedExpr(node: AliasedExprNode): string {
     return `${this.printExpression(node.expr)} AS ${quoteIdentifier(node.alias, this.dialect)}`
+  }
+
+  protected printFullTextSearch(node: FullTextSearchNode): string {
+    // Default: PostgreSQL style — to_tsvector(cols) @@ to_tsquery(query)
+    const cols = node.columns.map((c) => this.printExpression(c)).join(" || ' ' || ")
+    const lang = node.language ? `'${node.language}', ` : ""
+    let result = `(to_tsvector(${lang}${cols}) @@ to_tsquery(${lang}${this.printExpression(node.query)}))`
+    if (node.alias) {
+      result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+    }
+    return result
   }
 }

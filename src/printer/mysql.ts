@@ -1,5 +1,6 @@
-import type { InsertNode, SelectNode } from "../ast/nodes.ts"
+import type { FullTextSearchNode, InsertNode, SelectNode } from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
+import { quoteIdentifier } from "../utils/identifier.ts"
 import { BasePrinter } from "./base.ts"
 
 export class MysqlPrinter extends BasePrinter {
@@ -19,5 +20,19 @@ export class MysqlPrinter extends BasePrinter {
       // MySQL supports FOR UPDATE, handled in base
     }
     return super.printSelect(node)
+  }
+
+  protected override printFullTextSearch(node: FullTextSearchNode): string {
+    const cols = node.columns.map((c) => this.printExpression(c)).join(", ")
+    const query = this.printExpression(node.query)
+    let mode = ""
+    if (node.mode === "boolean") mode = " IN BOOLEAN MODE"
+    else if (node.mode === "expansion") mode = " WITH QUERY EXPANSION"
+    else if (node.mode === "natural") mode = " IN NATURAL LANGUAGE MODE"
+    let result = `MATCH(${cols}) AGAINST(${query}${mode})`
+    if (node.alias) {
+      result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+    }
+    return result
   }
 }

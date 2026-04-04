@@ -15,6 +15,8 @@ export type {
   FrameBound,
   FrameKind,
   FrameSpec,
+  FullTextSearchMode,
+  FullTextSearchNode,
   FunctionCallNode,
   InNode,
   InsertNode,
@@ -33,6 +35,7 @@ export type {
   StarNode,
   SubqueryNode,
   TableRefNode,
+  TemporalClause,
   UnaryOpNode,
   UpdateNode,
   WindowFunctionNode,
@@ -190,6 +193,7 @@ export {
   resetParams,
   sqlFn,
   sum,
+  textSearch,
   val,
 } from "./builder/eb.ts"
 export type { ColumnProxies, WhereCallback } from "./builder/eb.ts"
