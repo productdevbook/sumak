@@ -41,6 +41,9 @@
 - [Schema Builder (DDL)](#schema-builder-ddl)
 - [Full-Text Search](#full-text-search)
 - [Temporal Tables](#temporal-tables-sql2011)
+- [JSON Optics](#json-optics)
+- [Compiled Queries](#compiled-queries)
+- [Query Optimization](#query-optimization)
 - [Plugins](#plugins)
 - [Hooks](#hooks)
 - [Dialects](#dialects)
@@ -427,6 +430,8 @@ db.selectFrom("users")
   .selectExpr(jsonBuildObject(["name", col.name], ["age", col.age]), "obj")
   .toSQL()
 ```
+
+> For composable, type-tracked JSON navigation, see [JSON Optics](#json-optics).
 
 ### PostgreSQL Array Operators
 
@@ -1012,6 +1017,136 @@ Modes: `as_of`, `from_to`, `between`, `contained_in`, `all`.
 
 ---
 
+## JSON Optics
+
+Composable, type-tracked JSON column navigation. Each `.at()` step tracks the type at that level.
+
+```ts
+import { jsonCol } from "sumak"
+
+// Navigate into JSON: -> (returns JSON)
+db.selectFrom("users")
+  .selectExprs(jsonCol("data").at("address").at("city").asText().as("city"))
+  .toSQL()
+// SELECT "data"->'address'->>'city' AS "city" FROM "users"
+
+// Text extraction: ->> (returns text)
+db.selectFrom("users").selectExprs(jsonCol("meta").text("name").as("metaName")).toSQL()
+// SELECT "meta"->>'name' AS "metaName" FROM "users"
+
+// PG path operators: #> and #>>
+jsonCol("data").atPath("address.city") // #>  (returns JSON)
+jsonCol("data").textPath("address.city") // #>> (returns text)
+
+// With table prefix
+jsonCol("data", "users").at("settings").asText()
+```
+
+Type-safe with generics:
+
+```ts
+interface UserProfile {
+  address: { city: string; zip: string }
+  preferences: { theme: string }
+}
+
+// Type narrows at each level
+jsonCol<UserProfile>("profile")
+  .at("address") // JsonOptic<{ city: string; zip: string }>
+  .at("city") // JsonOptic<string>
+  .asText() // JsonExpr<string>
+```
+
+---
+
+## Compiled Queries
+
+Pre-bake SQL at setup time. At runtime, only fill parameters — zero AST traversal.
+
+```ts
+import { placeholder, compileQuery } from "sumak"
+
+// Define query with named placeholders
+const findUser = compileQuery<{ userId: number }>(
+  db
+    .selectFrom("users")
+    .select("id", "name")
+    .where(({ id }) => id.eq(placeholder("userId")))
+    .build(),
+  db.printer(),
+)
+
+// Runtime — same SQL string, different params:
+findUser({ userId: 42 })
+// → { sql: 'SELECT "id", "name" FROM "users" WHERE "id" = $1', params: [42] }
+
+findUser({ userId: 99 })
+// → { sql: 'SELECT "id", "name" FROM "users" WHERE "id" = $1', params: [99] }
+
+// Inspect the pre-baked SQL
+findUser.sql // 'SELECT "id", "name" FROM "users" WHERE "id" = $1'
+```
+
+---
+
+## Query Optimization
+
+sumak automatically normalizes and optimizes queries through two new pipeline layers.
+
+### Normalization (NbE)
+
+Enabled by default. Reduces expressions to canonical form:
+
+- **Flatten AND/OR:** `(a AND (b AND c))` → `(a AND b AND c)`
+- **Deduplicate:** `a = 1 AND b = 2 AND a = 1` → `a = 1 AND b = 2`
+- **Simplify tautologies:** `x AND true` → `x`, `x OR false` → `x`
+- **Constant folding:** `1 + 2` → `3`
+- **Double negation:** `NOT NOT x` → `x`
+- **Comparison normalization:** `1 = x` → `x = 1`
+
+### Optimization (Rewrite Rules)
+
+Built-in rules applied after normalization:
+
+- **Predicate pushdown:** Moves WHERE conditions into JOIN ON when they reference a single table
+- **Subquery flattening:** `SELECT * FROM (SELECT * FROM t)` → `SELECT * FROM t`
+- **WHERE true removal:** Cleans up `WHERE true` left by plugins
+
+### Configuration
+
+```ts
+// Default: both enabled
+const db = sumak({ dialect: pgDialect(), tables: { ... } })
+
+// Disable normalization
+const db = sumak({ dialect: pgDialect(), normalize: false, tables: { ... } })
+
+// Disable optimization
+const db = sumak({ dialect: pgDialect(), optimizeQueries: false, tables: { ... } })
+```
+
+### Custom Rewrite Rules
+
+```ts
+import { createRule } from "sumak"
+
+const defaultLimit = createRule({
+  name: "default-limit",
+  match: (node) => node.type === "select" && !node.limit,
+  apply: (node) => ({ ...node, limit: { type: "literal", value: 1000 } }),
+})
+
+const db = sumak({
+  dialect: pgDialect(),
+  rules: [defaultLimit],
+  tables: { ... },
+})
+```
+
+Rules are applied bottom-up until a fixpoint (no more changes). Max 10 iterations by default.
+
+---
+
 ## Plugins
 
 ### WithSchemaPlugin
@@ -1217,7 +1352,7 @@ import { serial, text } from "sumak/schema"
 
 ## Architecture
 
-sumak uses a 5-layer pipeline. Your code never touches SQL strings — everything flows through an AST.
+sumak uses a 7-layer pipeline. Your code never touches SQL strings — everything flows through an AST.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1237,7 +1372,15 @@ sumak uses a 5-layer pipeline. Your code never touches SQL strings — everythin
 │     Plugin.transformNode() → Hook "query:before"                │
 │     → AST rewriting, tenant isolation, soft delete, logging     │
 ├─────────────────────────────────────────────────────────────────┤
-│  5. PRINTER                                                     │
+│  5. NORMALIZE (NbE)                                             │
+│     Predicate simplification, constant folding, deduplication   │
+│     → Canonical form via Normalization by Evaluation            │
+├─────────────────────────────────────────────────────────────────┤
+│  6. OPTIMIZE (Rewrite Rules)                                    │
+│     Predicate pushdown, subquery flattening, user rules         │
+│     → Declarative rules applied to fixpoint                     │
+├─────────────────────────────────────────────────────────────────┤
+│  7. PRINTER                                                     │
 │     .toSQL() → { sql: "SELECT ...", params: [...] }             │
 │     → Dialect-specific: PG ($1), MySQL (?), MSSQL (@p0)        │
 └─────────────────────────────────────────────────────────────────┘
@@ -1249,6 +1392,8 @@ The query is never a string until the very last step. This means:
 
 - **Plugins can rewrite queries** — add WHERE clauses, prefix schemas, transform joins
 - **Hooks can inspect/modify** — logging, tracing, tenant isolation
+- **Normalize simplifies** — duplicate predicates, tautologies, constant expressions
+- **Optimize rewrites** — predicate pushdown, subquery flattening, custom rules
 - **Printers are swappable** — same AST, different SQL per dialect
 - **No SQL injection** — values are always parameterized
 
@@ -1258,6 +1403,8 @@ The query is never a string until the very last step. This means:
 - **Immutable builders** — every method returns a new instance
 - **Proxy-based column access** — `({ age }) => age.gt(18)` with full type safety
 - **Phantom types** — `Expression<T>` carries type info with zero runtime cost
+- **NbE normalization** — expressions reduced to canonical form before printing
+- **Compiled queries** — pre-bake SQL at setup, zero AST walk at runtime
 
 ---
 
