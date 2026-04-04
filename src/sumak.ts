@@ -129,6 +129,25 @@ export class Sumak<DB> {
     return new TypedSelectBuilder(new SelectBuilder().from(sub), alias as any)
   }
 
+  /**
+   * SELECT COUNT(*) FROM table — convenience shorthand.
+   */
+  selectCount<T extends keyof DB & string>(table: T): TypedSelectBuilder<DB, T, { count: number }> {
+    const star: import("./ast/nodes.ts").ExpressionNode = { type: "star" }
+    const countFn: import("./ast/nodes.ts").ExpressionNode = {
+      type: "function_call",
+      name: "COUNT",
+      args: [star],
+      alias: "count",
+    }
+    return new TypedSelectBuilder<DB, T, { count: number }>(
+      new SelectBuilder().columns(countFn).from(table),
+      table,
+      this._dialect.createPrinter(),
+      (node: ASTNode) => this.compile(node),
+    )
+  }
+
   insertInto<T extends keyof DB & string>(table: T): TypedInsertBuilder<DB, T> {
     const b = new TypedInsertBuilder<DB, T>(table)
     ;(b as any)._printer = this._dialect.createPrinter()
