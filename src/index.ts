@@ -316,6 +316,33 @@ export type {
   UniqueConstraintNode,
 } from "./ast/ddl-nodes.ts"
 
+// Normalize (NbE)
+export { normalizeExpression, normalizeQuery, toCNF, fromCNF } from "./normalize/index.ts"
+export type { CNF, NormalizeOptions } from "./normalize/index.ts"
+
+// Optimize (rewrite rules)
+export {
+  optimize,
+  createRule,
+  predicatePushdown,
+  subqueryFlattening,
+  removeWhereTrue,
+  BUILTIN_RULES,
+} from "./optimize/index.ts"
+export type { RewriteRule, OptimizeOptions } from "./optimize/index.ts"
+
+// Compiled queries (partial evaluation)
+export {
+  placeholder,
+  compileQuery,
+  collectPlaceholders,
+  isPlaceholder,
+} from "./builder/compiled.ts"
+export type { CompiledQueryFn, PlaceholderMarker } from "./builder/compiled.ts"
+
+// JSON optics
+export { JsonOptic, JsonExpr, jsonCol, jsonExpr } from "./builder/json-optics.ts"
+
 // Errors
 export {
   EmptyQueryError,

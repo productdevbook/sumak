@@ -18,6 +18,10 @@ import { TypedMergeBuilder } from "./builder/typed-merge.ts"
 import { TypedSelectBuilder } from "./builder/typed-select.ts"
 import { TypedUpdateBuilder } from "./builder/typed-update.ts"
 import type { Dialect } from "./dialect/types.ts"
+import { normalizeQuery } from "./normalize/query.ts"
+import type { NormalizeOptions } from "./normalize/types.ts"
+import { optimize } from "./optimize/optimizer.ts"
+import type { OptimizeOptions, RewriteRule } from "./optimize/types.ts"
 import { Hookable } from "./plugin/hooks.ts"
 import type { HookName, SumakHooks } from "./plugin/hooks.ts"
 import { PluginManager } from "./plugin/plugin-manager.ts"
@@ -38,6 +42,12 @@ export interface SumakConfig<T extends TablesConfig> {
   dialect: Dialect
   tables: T
   plugins?: SumakPlugin[]
+  /** Enable AST normalization (NbE). Default: true */
+  normalize?: boolean | NormalizeOptions
+  /** Enable AST optimization (rewrite rules). Default: true */
+  optimizeQueries?: boolean | OptimizeOptions
+  /** Custom rewrite rules (in addition to built-in rules). */
+  rules?: RewriteRule[]
 }
 
 /**
@@ -60,7 +70,11 @@ export interface SumakConfig<T extends TablesConfig> {
  * ```
  */
 export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<T> {
-  return new Sumak(config.dialect, config.plugins ?? [], config.tables)
+  return new Sumak(config.dialect, config.plugins ?? [], config.tables, {
+    normalize: config.normalize,
+    optimizeQueries: config.optimizeQueries,
+    rules: config.rules,
+  })
 }
 
 /**
@@ -70,6 +84,9 @@ export class Sumak<DB> {
   private _dialect: Dialect
   private _plugins: PluginManager
   private _hooks: Hookable
+  private _normalizeOpts: NormalizeOptions | false
+  private _optimizeOpts: OptimizeOptions | false
+  private _customRules: RewriteRule[]
   /** @internal */
   _tables: Record<string, Record<string, ColumnBuilder<any, any, any>>>
 
@@ -77,11 +94,29 @@ export class Sumak<DB> {
     dialect: Dialect,
     plugins: SumakPlugin[] = [],
     tables: Record<string, Record<string, ColumnBuilder<any, any, any>>> = {},
+    pipelineOpts: {
+      normalize?: boolean | NormalizeOptions
+      optimizeQueries?: boolean | OptimizeOptions
+      rules?: RewriteRule[]
+    } = {},
   ) {
     this._dialect = dialect
     this._plugins = new PluginManager(plugins)
     this._hooks = new Hookable()
     this._tables = tables
+    this._normalizeOpts =
+      pipelineOpts.normalize === false
+        ? false
+        : typeof pipelineOpts.normalize === "object"
+          ? pipelineOpts.normalize
+          : {}
+    this._optimizeOpts =
+      pipelineOpts.optimizeQueries === false
+        ? false
+        : typeof pipelineOpts.optimizeQueries === "object"
+          ? pipelineOpts.optimizeQueries
+          : {}
+    this._customRules = pipelineOpts.rules ?? []
   }
 
   /**
@@ -208,8 +243,11 @@ export class Sumak<DB> {
   }
 
   /**
-   * Compile an AST node through the full pipeline:
-   * plugins.transformNode → type-specific hooks → printer → plugins.transformQuery → query hooks
+   * Compile an AST node through the full 7-layer pipeline:
+   *
+   * ```
+   * AST → Plugin transform → Hooks → Normalize (NbE) → Optimize (rewrite rules) → Print → Plugin query transform → Hooks
+   * ```
    */
   compile(node: ASTNode): CompiledQuery {
     // 1. Plugin AST transform
@@ -244,14 +282,31 @@ export class Sumak<DB> {
     const beforeResult = this._hooks.callHook("query:before", { node: ast, table })
     if (beforeResult) ast = beforeResult
 
-    // 4. Print to SQL
+    // 4. Normalize (NbE) — flatten AND/OR, deduplicate predicates, fold constants
+    if (this._normalizeOpts !== false) {
+      ast = normalizeQuery(ast, this._normalizeOpts)
+    }
+
+    // 5. Optimize (rewrite rules) — predicate pushdown, subquery flattening
+    if (this._optimizeOpts !== false) {
+      const rules =
+        this._customRules.length > 0
+          ? [...((this._optimizeOpts as OptimizeOptions).rules ?? []), ...this._customRules]
+          : undefined
+      ast = optimize(ast, {
+        ...(this._optimizeOpts as OptimizeOptions),
+        rules,
+      }) as ASTNode
+    }
+
+    // 6. Print to SQL
     const printer = this._dialect.createPrinter()
     let query = printer.print(ast)
 
-    // 5. Plugin query transform
+    // 7. Plugin query transform
     query = this._plugins.transformQuery(query)
 
-    // 6. After hook
+    // 8. After hook
     const afterResult = this._hooks.callHook("query:after", { node: ast, table, query })
     if (afterResult) query = afterResult
 

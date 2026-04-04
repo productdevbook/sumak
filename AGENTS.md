@@ -7,7 +7,7 @@ Type-safe SQL query builder with powerful SQL printers. Zero dependencies, tree-
 
 ## Architecture
 
-5-layer pipeline: **Schema → Builder → AST → Plugin/Hook → Printer → SQL**
+7-layer pipeline: **Schema → Builder → AST → Plugin/Hook → Normalize (NbE) → Optimize (rewrite rules) → Printer → SQL**
 
 ```
 User Code
@@ -19,7 +19,14 @@ User Code
   │    .where(typedEq(...))        ← Expression<boolean> enforced
   │    .build()                    ← SelectNode (frozen AST)
   │
-  ├─ db.compile(node)             ← Plugin transforms → Hooks → Printer
+  ├─ db.compile(node)             ← Full pipeline:
+  │    1. Plugin AST transforms
+  │    2. Lifecycle hooks (before)
+  │    3. Normalize (NbE)           ← Predicate simplification, constant folding
+  │    4. Optimize (rewrite rules)  ← Predicate pushdown, subquery flattening
+  │    5. Printer → SQL
+  │    6. Plugin query transforms
+  │    7. Lifecycle hooks (after)
   │
   └─ { sql, params }              ← Parameterized output
 ```
@@ -84,13 +91,25 @@ src/
     with-schema.ts          # WithSchemaPlugin — auto schema prefix
     soft-delete.ts          # SoftDeletePlugin — auto WHERE deleted_at IS NULL
     camel-case.ts           # CamelCasePlugin — snake_case → camelCase results
+  normalize/
+    types.ts                # CNF type, NormalizeOptions
+    expression.ts           # NbE: normalizeExpression, toCNF, fromCNF
+    query.ts                # normalizeQuery — applies NbE to all query types
+    index.ts                # Re-exports
+  optimize/
+    types.ts                # RewriteRule interface, OptimizeOptions
+    rules.ts                # Built-in rules: predicate pushdown, subquery flattening
+    optimizer.ts            # optimize() — normalize + rewrite rules to fixpoint
+    index.ts                # Re-exports
   utils/
     identifier.ts           # Identifier quoting per dialect
     param.ts                # Parameter formatting per dialect
 test/
   sumak.test.ts              # Integration: sumak() clean API, plugins, hooks
   ast/                      # 4 files: nodes, visitor, transformer, typed-expression
-  builder/                  # 9 files: select, insert, update, delete, expression + typed variants
+  builder/                  # 11 files: select, insert, update, delete, expression, compiled, json-optics + typed variants
+  normalize/                # 2 files: expression, query
+  optimize/                 # 2 files: rules, optimizer
   printer/                  # 7 files: base, pg, mysql, sqlite, formatter, document, new-nodes
   dialect/                  # 3 files: pg, mysql, sqlite
   plugin/                   # 4 files: plugin-manager, with-schema, soft-delete, camel-case, hooks
@@ -185,4 +204,4 @@ pnpm release        # pnpm test && pnpm build && bumpp && npm publish && git pus
 - **No code without tests** — PR must include tests for all new/changed code
 - Run all: `pnpm test`
 - Run single: `pnpm vitest run test/<path>.test.ts`
-- **Current:** 90 test files, 755 tests, 0 lint errors, 0 tsgo errors
+- **Current:** 97 test files, 829 tests, 0 lint errors, 0 tsgo errors
