@@ -43,7 +43,7 @@ export {
 } from "./ast/nodes.ts";
 
 export {
-  and,
+  and as rawAnd,
   between,
   binOp,
   cast,
@@ -62,7 +62,7 @@ export {
   lte,
   neq,
   not,
-  or,
+  or as rawOr,
   param,
   raw,
   star,
@@ -104,7 +104,7 @@ export { select, SelectBuilder } from "./builder/select.ts";
 export { insert, InsertBuilder } from "./builder/insert.ts";
 export { update, UpdateBuilder } from "./builder/update.ts";
 export { deleteFrom, DeleteBuilder } from "./builder/delete.ts";
-export { val, resetParamCounter } from "./builder/expression.ts";
+export { val as rawVal, resetParamCounter } from "./builder/expression.ts";
 
 // Printers
 export { BasePrinter } from "./printer/base.ts";
@@ -189,6 +189,10 @@ export type {
   Updateable,
   UpdateType,
 } from "./schema/index.ts";
+
+// Expression builder (clean API)
+export { Col, and, or, val, sqlFn, count, resetParams } from "./builder/eb.ts";
+export type { ColumnProxies, WhereCallback } from "./builder/eb.ts";
 
 // Typed builders
 export { lale, Lale } from "./lale.ts";

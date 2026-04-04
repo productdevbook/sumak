@@ -1,6 +1,8 @@
 import type { Expression } from "../ast/typed-expression.ts";
 import { unwrap } from "../ast/typed-expression.ts";
 import { star } from "../ast/expression.ts";
+import type { WhereCallback } from "./eb.ts";
+import { createColumnProxies, resetParams } from "./eb.ts";
 import type { ExpressionNode } from "../ast/nodes.ts";
 import type { CompiledQuery } from "../types.ts";
 import type { Printer } from "../printer/types.ts";
@@ -26,10 +28,17 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * WHERE clause.
+   * WHERE — callback or raw Expression.
    */
-  where(expr: Expression<boolean>): TypedDeleteBuilder<DB, TB> {
-    return this._with(this._builder.where(unwrap(expr)));
+  where(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedDeleteBuilder<DB, TB> {
+    if (typeof exprOrCallback === "function") {
+      resetParams();
+      const table = this._builder.build().table.name as TB & string;
+      const cols = createColumnProxies<DB, TB>(table);
+      const result = exprOrCallback(cols);
+      return this._with(this._builder.where(unwrap(result)));
+    }
+    return this._with(this._builder.where(unwrap(exprOrCallback)));
   }
 
   /**

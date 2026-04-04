@@ -11,15 +11,8 @@ import {
   timestamp,
   jsonb,
   varchar,
-  typedCol,
-  typedEq,
-  typedGt,
-  typedLit,
-  typedParam,
-  typedAnd,
-  typedIsNull,
-  typedLike,
-  typedIn,
+  and,
+  or,
   WithSchemaPlugin,
   SoftDeletePlugin,
   CamelCasePlugin,
@@ -37,8 +30,9 @@ const db = lale({
       name: text().notNull(),
       email: varchar(255).notNull(),
       bio: text().nullable(),
+      age: integer(),
       active: boolean().defaultTo(true),
-      metadata: jsonb<{ role: string; level: number }>(),
+      metadata: jsonb<{ role: string }>(),
       createdAt: timestamp().defaultTo("now()"),
     },
     posts: {
@@ -61,138 +55,108 @@ const db = lale({
 const p = db.printer();
 
 console.log("═══════════════════════════════════════");
-console.log("  lale playground");
+console.log("  lale playground — clean API");
 console.log("═══════════════════════════════════════\n");
 
 // ─────────────────────────────────────────────
-// 2. SELECT
+// 2. SELECT — callback where
 // ─────────────────────────────────────────────
 
 console.log("── SELECT ──\n");
 
-// Basit select
-const q1 = db.selectFrom("users").select("id", "name", "email");
-console.log(q1.compile(p).sql);
-// SELECT "id", "name", "email" FROM "users"
+// Basit
+console.log(db.selectFrom("users").select("id", "name").compile(p).sql);
 
-// WHERE ile
+// Where callback — kolonda tip otomatik
+const q1 = db.selectFrom("users").where(({ id }) => id.eq(42));
+console.log(q1.compile(p).sql, " params:", q1.compile(p).params);
+
+// And/Or combinatorleri
 const q2 = db
   .selectFrom("users")
-  .select("id", "name")
-  .where(typedEq(typedCol<number>("id"), typedParam(0, 42)));
-const r2 = q2.compile(p);
-console.log(r2.sql, "  params:", r2.params);
-// SELECT "id", "name" FROM "users" WHERE ("id" = $1)  params: [42]
-
-// Karmaşık WHERE
-const q3 = db
-  .selectFrom("users")
   .select("id", "name", "email")
-  .where(
-    typedAnd(
-      typedEq(typedCol<boolean>("active"), typedLit(true)),
-      typedLike(typedCol<string>("name"), typedLit("%ali%")),
-    ),
-  )
-  .orderBy("name", "ASC")
-  .limit(10)
-  .offset(0);
+  .where(({ age, active }) => and(age.gte(18), active.eq(true)))
+  .orderBy("name")
+  .limit(10);
+console.log(q2.compile(p).sql);
+
+// Like
+const q3 = db.selectFrom("users").where(({ name }) => name.like("%ali%"));
 console.log(q3.compile(p).sql);
 
-// DISTINCT
-const q4 = db.selectFrom("users").select("name").distinct();
+// In list
+const q4 = db.selectFrom("users").where(({ id }) => id.in([1, 2, 3]));
 console.log(q4.compile(p).sql);
 
-// JOIN
-const q5 = db
-  .selectFrom("posts")
-  .innerJoin("users", typedEq(typedCol<number>("posts.userId"), typedCol<number>("users.id")));
+// Between
+const q5 = db.selectFrom("users").where(({ age }) => age.between(18, 65));
 console.log(q5.compile(p).sql);
 
-// LEFT JOIN
-const q6 = db
-  .selectFrom("users")
-  .leftJoin("posts", typedEq(typedCol<number>("users.id"), typedCol<number>("posts.userId")));
+// IsNull / IsNotNull
+const q6 = db.selectFrom("users").where(({ bio }) => bio.isNull());
 console.log(q6.compile(p).sql);
+
+// Or
+const q7 = db
+  .selectFrom("users")
+  .where(({ name, email }) => or(name.like("%test%"), email.like("%test%")));
+console.log(q7.compile(p).sql);
+
+// ─────────────────────────────────────────────
+// 3. JOIN — table-qualified callback
+// ─────────────────────────────────────────────
+
+console.log("\n── JOIN ──\n");
+
+const q8 = db
+  .selectFrom("users")
+  .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
+console.log(q8.compile(p).sql);
+
+const q9 = db
+  .selectFrom("users")
+  .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
+console.log(q9.compile(p).sql);
+
+// ─────────────────────────────────────────────
+// 4. INSERT
+// ─────────────────────────────────────────────
 
 console.log("\n── INSERT ──\n");
 
+const q10 = db.insertInto("users").values({ name: "Alice", email: "alice@example.com" });
+const r10 = q10.compile(p);
+console.log(r10.sql, " params:", r10.params);
+
+const q11 = db.insertInto("posts").values({ title: "Hello World", userId: 1 }).returningAll();
+console.log(q11.compile(p).sql);
+
 // ─────────────────────────────────────────────
-// 3. INSERT
+// 5. UPDATE — callback where
 // ─────────────────────────────────────────────
-
-// Basit insert — id, active, createdAt opsiyonel (Generated/default)
-const q7 = db.insertInto("users").values({
-  name: "Alice",
-  email: "alice@example.com",
-});
-const r7 = q7.compile(p);
-console.log(r7.sql, "  params:", r7.params);
-
-// RETURNING
-const q8 = db
-  .insertInto("users")
-  .values({ name: "Bob", email: "bob@test.com", active: false })
-  .returningAll();
-console.log(q8.compile(p).sql);
-
-// ON CONFLICT
-const q9 = db
-  .insertInto("users")
-  .values({ name: "Charlie", email: "charlie@test.com" })
-  .onConflictDoNothing("email");
-console.log(q9.compile(p).sql);
-
-// Post insert
-const q10 = db.insertInto("posts").values({
-  title: "Hello World",
-  userId: 1,
-});
-console.log(q10.compile(p).sql);
 
 console.log("\n── UPDATE ──\n");
 
-// ─────────────────────────────────────────────
-// 4. UPDATE
-// ─────────────────────────────────────────────
-
-const q11 = db
-  .update("users")
-  .set({ name: "Alice Updated", active: false })
-  .where(typedEq(typedCol<number>("id"), typedParam(2, 1)));
-const r11 = q11.compile(p);
-console.log(r11.sql, "  params:", r11.params);
-
-// RETURNING
 const q12 = db
-  .update("posts")
-  .set({ published: true })
-  .where(typedGt(typedCol<number>("userId"), typedLit(0)))
-  .returningAll();
+  .update("users")
+  .set({ name: "Bob", active: false })
+  .where(({ id }) => id.eq(1));
 console.log(q12.compile(p).sql);
+
+// ─────────────────────────────────────────────
+// 6. DELETE — callback where
+// ─────────────────────────────────────────────
 
 console.log("\n── DELETE ──\n");
 
-// ─────────────────────────────────────────────
-// 5. DELETE
-// ─────────────────────────────────────────────
+const q13 = db.deleteFrom("comments").where(({ postId }) => postId.eq(99));
+console.log(q13.compile(p).sql);
 
-const q13 = db.deleteFrom("comments").where(typedEq(typedCol<number>("postId"), typedParam(0, 99)));
-const r13 = q13.compile(p);
-console.log(r13.sql, "  params:", r13.params);
-
-// RETURNING
-const q14 = db
-  .deleteFrom("users")
-  .where(typedIsNull(typedCol<boolean | null>("active")))
-  .returning("id", "email");
-console.log(q14.compile(p).sql);
+// ─────────────────────────────────────────────
+// 7. Dialect karşılaştırma
+// ─────────────────────────────────────────────
 
 console.log("\n── DIALECTS ──\n");
-
-// ─────────────────────────────────────────────
-// 6. Aynı query, farklı dialect'ler
-// ─────────────────────────────────────────────
 
 const mysqlDb = lale({
   dialect: mysqlDialect(),
@@ -203,89 +167,66 @@ const sqliteDb = lale({
   tables: { users: { id: serial(), name: text().notNull() } },
 });
 
-const sameQuery = (d: typeof db | typeof mysqlDb | typeof sqliteDb) =>
-  d
+console.log(
+  "PG:    ",
+  db
     .selectFrom("users")
-    .select("id", "name")
-    .where(typedEq(typedCol<number>("id"), typedParam(0, 1)));
+    .where(({ id }) => id.eq(1))
+    .compile(p).sql,
+);
+console.log(
+  "MySQL: ",
+  mysqlDb
+    .selectFrom("users")
+    .where(({ id }) => id.eq(1))
+    .compile(mysqlDb.printer()).sql,
+);
+console.log(
+  "SQLite:",
+  sqliteDb
+    .selectFrom("users")
+    .where(({ id }) => id.eq(1))
+    .compile(sqliteDb.printer()).sql,
+);
 
-console.log("PG:     ", sameQuery(db).compile(p).sql);
-console.log("MySQL:  ", sameQuery(mysqlDb).compile(mysqlDb.printer()).sql);
-console.log("SQLite: ", sameQuery(sqliteDb).compile(sqliteDb.printer()).sql);
+// ─────────────────────────────────────────────
+// 8. Plugin'ler
+// ─────────────────────────────────────────────
 
 console.log("\n── PLUGINS ──\n");
 
-// ─────────────────────────────────────────────
-// 7. Plugin'ler
-// ─────────────────────────────────────────────
-
-const dbWithPlugins = lale({
+const dbPlugins = lale({
   dialect: pgDialect(),
-  plugins: [new WithSchemaPlugin("app"), new SoftDeletePlugin({ tables: ["users", "posts"] })],
-  tables: {
-    users: { id: serial(), name: text().notNull() },
-    posts: { id: serial(), title: text().notNull() },
-  },
+  plugins: [new WithSchemaPlugin("app"), new SoftDeletePlugin({ tables: ["users"] })],
+  tables: { users: { id: serial(), name: text().notNull() } },
 });
+console.log(dbPlugins.compile(dbPlugins.selectFrom("users").build()).sql);
 
-const pluginQuery = dbWithPlugins.selectFrom("users").build();
-console.log("WithSchema + SoftDelete:");
-console.log(dbWithPlugins.compile(pluginQuery).sql);
-// SELECT * FROM "app"."users" WHERE ("deleted_at" IS NULL)
-
-// CamelCase plugin
 const camel = new CamelCasePlugin();
-const rows = camel.transformResult!([
-  { user_name: "Alice", created_at: "2026-01-01", is_active: true },
-]);
-console.log("\nCamelCase transform:", rows[0]);
+console.log(camel.transformResult!([{ first_name: "Alice", created_at: "2026-01-01" }])[0]);
+
+// ─────────────────────────────────────────────
+// 9. Hooks
+// ─────────────────────────────────────────────
 
 console.log("\n── HOOKS ──\n");
 
-// ─────────────────────────────────────────────
-// 8. Hook sistemi
-// ─────────────────────────────────────────────
-
-const dbHooked = lale({
-  dialect: pgDialect(),
-  tables: {
-    users: { id: serial(), name: text().notNull() },
-  },
+const dbH = lale({ dialect: pgDialect(), tables: { users: { id: serial() } } });
+dbH.hook("query:after", (ctx) => {
+  console.log(`[LOG] ${ctx.query.sql}`);
+  return { ...ctx.query, sql: `${ctx.query.sql} /* traced */` };
 });
-
-// Query logging hook
-dbHooked.hook("query:after", (ctx) => {
-  console.log(`[LOG] ${ctx.table}: ${ctx.query.sql}`);
-});
-
-// SQL comment ekleme
-dbHooked.hook("query:after", (ctx) => {
-  return { ...ctx.query, sql: `${ctx.query.sql} /* request_id=abc123 */` };
-});
-
-const hookedResult = dbHooked.compile(dbHooked.selectFrom("users").build());
-console.log("Final:", hookedResult.sql);
-
-// Unregister
-const off = dbHooked.hook("query:before", () => {
-  console.log("[TEMP] This fires once");
-});
-dbHooked.compile(dbHooked.selectFrom("users").build());
-off(); // artık çalışmaz
-dbHooked.compile(dbHooked.selectFrom("users").build());
-
-console.log("\n── IN / BETWEEN / EXISTS ──\n");
-
-// ─────────────────────────────────────────────
-// 9. Gelişmiş expression'lar
-// ─────────────────────────────────────────────
-
-const qIn = db
-  .selectFrom("users")
-  .select("id", "name")
-  .where(typedIn(typedCol<number>("id"), [typedLit(1), typedLit(2), typedLit(3)]));
-console.log(qIn.compile(p).sql);
+console.log("Result:", dbH.compile(dbH.selectFrom("users").build()).sql);
 
 console.log("\n═══════════════════════════════════════");
-console.log("  281 test | 0 lint error | 6527 LOC");
-console.log("═══════════════════════════════════════");
+console.log("  ESKİ API vs YENİ API");
+console.log("═══════════════════════════════════════\n");
+
+console.log("ESKİ: typedEq(typedCol<number>('id'), typedParam(0, 42))");
+console.log("YENİ: ({ id }) => id.eq(42)");
+console.log("\nESKİ: typedAnd(typedGt(typedCol<number>('age'), typedLit(18)), typedEq(...))");
+console.log("YENİ: ({ age, active }) => and(age.gte(18), active.eq(true))");
+console.log(
+  "\nESKİ: innerJoin('posts', typedEq(typedCol<number>('users.id'), typedCol<number>('posts.userId')))",
+);
+console.log("YENİ: innerJoin('posts', ({ users, posts }) => users.id.eqCol(posts.userId))");

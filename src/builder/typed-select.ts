@@ -5,6 +5,8 @@ import type { CompiledQuery, OrderDirection } from "../types.ts";
 import type { Printer } from "../printer/types.ts";
 import type { Nullable, SelectType } from "../schema/types.ts";
 import { SelectBuilder } from "./select.ts";
+import type { WhereCallback } from "./eb.ts";
+import { createColumnProxies, resetParams } from "./eb.ts";
 
 /**
  * Type-safe SELECT query builder.
@@ -16,28 +18,24 @@ import { SelectBuilder } from "./select.ts";
 export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   /** @internal */
   readonly _builder: SelectBuilder;
+  private _table: TB & string;
 
-  constructor(builder: SelectBuilder) {
+  constructor(builder: SelectBuilder, table?: string) {
     this._builder = builder;
+    this._table = (table ?? "") as TB & string;
   }
 
-  /**
-   * Select specific columns. Narrows O to only selected columns.
-   */
+  /** Select specific columns. Narrows O. */
   select<K extends keyof O & string>(...cols: K[]): TypedSelectBuilder<DB, TB, Pick<O, K>> {
-    return new TypedSelectBuilder(this._builder.columns(...cols));
+    return new TypedSelectBuilder(this._builder.columns(...cols), this._table);
   }
 
-  /**
-   * Select all columns (no narrowing).
-   */
+  /** Select all columns. */
   selectAll(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.allColumns());
+    return new TypedSelectBuilder(this._builder.allColumns(), this._table);
   }
 
-  /**
-   * Select with Expression<T> for computed columns.
-   */
+  /** Select with Expression<T> for computed columns. */
   selectExpr<Alias extends string, T>(
     expr: Expression<T>,
     alias: Alias,
@@ -48,132 +46,177 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
         ? { ...node, alias }
         : node.type === "function_call"
           ? { ...node, alias }
-          : { type: "raw", sql: "", params: [] }; // fallback — should not happen normally
-    return new TypedSelectBuilder(this._builder.columns(aliased));
+          : { type: "raw", sql: "", params: [] };
+    return new TypedSelectBuilder(this._builder.columns(aliased), this._table);
   }
 
-  /**
-   * Add DISTINCT.
-   */
+  /** DISTINCT */
   distinct(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.distinct());
+    return new TypedSelectBuilder(this._builder.distinct(), this._table);
   }
 
   /**
-   * WHERE clause with type-safe expression.
+   * WHERE — accepts callback with typed column proxies OR raw Expression.
+   *
+   * ```ts
+   * // Callback style (recommended)
+   * .where(({ id, name }) => id.eq(42))
+   * .where(({ age }) => age.between(18, 65))
+   *
+   * // Raw Expression style
+   * .where(typedEq(typedCol<number>("id"), typedParam(0, 42)))
+   * ```
    */
-  where(expr: Expression<boolean>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.where(unwrap(expr)));
+  where(
+    exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>,
+  ): TypedSelectBuilder<DB, TB, O> {
+    if (typeof exprOrCallback === "function") {
+      resetParams();
+      const cols = createColumnProxies<DB, TB>(this._table);
+      const result = exprOrCallback(cols);
+      return new TypedSelectBuilder(this._builder.where(unwrap(result)), this._table);
+    }
+    return new TypedSelectBuilder(this._builder.where(unwrap(exprOrCallback)), this._table);
   }
 
   /**
-   * INNER JOIN — adds table columns to output (non-nullable).
+   * INNER JOIN.
+   *
+   * ```ts
+   * .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+   * ```
    */
   innerJoin<T extends keyof DB & string>(
     table: T,
-    on: Expression<boolean>,
+    onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
   ): TypedSelectBuilder<DB, TB | T, O & { [K in keyof DB[T]]: SelectType<DB[T][K]> }> {
-    return new TypedSelectBuilder(this._builder.innerJoin(table, unwrap(on)));
+    const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table);
+    return new TypedSelectBuilder(this._builder.innerJoin(table, unwrap(on)), this._table);
   }
 
   /**
-   * LEFT JOIN — adds table columns as nullable.
+   * LEFT JOIN — joined columns become nullable.
    */
   leftJoin<T extends keyof DB & string>(
     table: T,
-    on: Expression<boolean>,
+    onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
   ): TypedSelectBuilder<DB, TB | T, O & Nullable<{ [K in keyof DB[T]]: SelectType<DB[T][K]> }>> {
-    return new TypedSelectBuilder(this._builder.leftJoin(table, unwrap(on)));
+    const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table);
+    return new TypedSelectBuilder(this._builder.leftJoin(table, unwrap(on)), this._table);
   }
 
-  /**
-   * RIGHT JOIN — adds table columns (non-nullable), existing become nullable.
-   */
+  /** RIGHT JOIN */
   rightJoin<T extends keyof DB & string>(
     table: T,
-    on: Expression<boolean>,
+    onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
   ): TypedSelectBuilder<DB, TB | T, Nullable<O> & { [K in keyof DB[T]]: SelectType<DB[T][K]> }> {
-    return new TypedSelectBuilder(this._builder.rightJoin(table, unwrap(on)));
+    const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table);
+    return new TypedSelectBuilder(this._builder.rightJoin(table, unwrap(on)), this._table);
   }
 
-  /**
-   * GROUP BY columns.
-   */
+  /** GROUP BY */
   groupBy(...cols: (keyof O & string)[]): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.groupBy(...cols));
+    return new TypedSelectBuilder(this._builder.groupBy(...cols), this._table);
   }
 
-  /**
-   * HAVING clause.
-   */
-  having(expr: Expression<boolean>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.having(unwrap(expr)));
+  /** HAVING */
+  having(
+    exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>,
+  ): TypedSelectBuilder<DB, TB, O> {
+    if (typeof exprOrCallback === "function") {
+      resetParams();
+      const cols = createColumnProxies<DB, TB>(this._table);
+      const result = exprOrCallback(cols);
+      return new TypedSelectBuilder(this._builder.having(unwrap(result)), this._table);
+    }
+    return new TypedSelectBuilder(this._builder.having(unwrap(exprOrCallback)), this._table);
   }
 
-  /**
-   * ORDER BY.
-   */
+  /** ORDER BY */
   orderBy(
     col: keyof O & string,
     direction: OrderDirection = "ASC",
     nulls?: "FIRST" | "LAST",
   ): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.orderBy(col, direction, nulls));
+    return new TypedSelectBuilder(this._builder.orderBy(col, direction, nulls), this._table);
   }
 
-  /**
-   * LIMIT.
-   */
+  /** LIMIT */
   limit(n: number): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.limit({ type: "literal", value: n }));
+    return new TypedSelectBuilder(this._builder.limit({ type: "literal", value: n }), this._table);
   }
 
-  /**
-   * OFFSET.
-   */
+  /** OFFSET */
   offset(n: number): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.offset({ type: "literal", value: n }));
+    return new TypedSelectBuilder(this._builder.offset({ type: "literal", value: n }), this._table);
   }
 
-  /**
-   * FOR UPDATE (PostgreSQL/MySQL).
-   */
+  /** FOR UPDATE */
   forUpdate(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.forUpdate());
+    return new TypedSelectBuilder(this._builder.forUpdate(), this._table);
   }
 
-  /**
-   * WITH (CTE).
-   */
+  /** WITH (CTE) */
   with(name: string, query: SelectNode, recursive = false): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.with(name, query, recursive));
+    return new TypedSelectBuilder(this._builder.with(name, query, recursive), this._table);
   }
 
-  /**
-   * UNION.
-   */
+  /** UNION */
   union(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.union(query.build()));
+    return new TypedSelectBuilder(this._builder.union(query.build()), this._table);
   }
 
-  /**
-   * UNION ALL.
-   */
+  /** UNION ALL */
   unionAll(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.unionAll(query.build()));
+    return new TypedSelectBuilder(this._builder.unionAll(query.build()), this._table);
   }
 
-  /**
-   * Build the AST node (discards type info).
-   */
+  /** Build the AST node. */
   build(): SelectNode {
     return this._builder.build();
   }
 
-  /**
-   * Compile to SQL using a printer.
-   */
+  /** Compile to SQL. */
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build());
   }
+}
+
+// ── Join helpers ──
+
+import type { ColumnProxies } from "./eb.ts";
+import { Col } from "./eb.ts";
+
+type JoinProxies<DB, TB extends keyof DB, T extends keyof DB> = {
+  [Table in (TB | T) & string]: ColumnProxies<DB, Table & keyof DB>;
+};
+
+function createJoinProxies<DB, TB extends keyof DB, T extends keyof DB>(
+  _leftTable: TB & string,
+  _rightTable: T & string,
+): JoinProxies<DB, TB, T> {
+  return new Proxy({} as JoinProxies<DB, TB, T>, {
+    get(_target, tableName: string) {
+      return new Proxy(
+        {},
+        {
+          get(_t2, colName: string) {
+            return new Col(colName, tableName);
+          },
+        },
+      );
+    },
+  });
+}
+
+function resolveJoinOn<DB, TB extends keyof DB, T extends keyof DB>(
+  onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
+  leftTable: TB & string,
+  rightTable: T & string,
+): Expression<boolean> {
+  if (typeof onOrCallback === "function") {
+    const proxies = createJoinProxies<DB, TB, T>(leftTable, rightTable);
+    return onOrCallback(proxies);
+  }
+  return onOrCallback;
 }

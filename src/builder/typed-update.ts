@@ -1,6 +1,8 @@
 import type { Expression } from "../ast/typed-expression.ts";
 import { unwrap } from "../ast/typed-expression.ts";
 import { param, star } from "../ast/expression.ts";
+import type { WhereCallback } from "./eb.ts";
+import { createColumnProxies, resetParams } from "./eb.ts";
 import type { ExpressionNode } from "../ast/nodes.ts";
 import type { CompiledQuery } from "../types.ts";
 import type { Printer } from "../printer/types.ts";
@@ -51,10 +53,20 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * WHERE clause.
+   * WHERE — callback or raw Expression.
    */
-  where(expr: Expression<boolean>): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.where(unwrap(expr)), this._paramIdx);
+  where(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedUpdateBuilder<DB, TB> {
+    if (typeof exprOrCallback === "function") {
+      resetParams();
+      const cols = createColumnProxies<DB, TB>(this._table);
+      const result = exprOrCallback(cols);
+      return this._with(this._builder.where(unwrap(result)), this._paramIdx);
+    }
+    return this._with(this._builder.where(unwrap(exprOrCallback)), this._paramIdx);
+  }
+
+  private get _table(): TB & string {
+    return this._builder.build().table.name as TB & string;
   }
 
   /**

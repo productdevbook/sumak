@@ -87,7 +87,7 @@ export class Lale<DB> {
     table: T,
     alias?: string,
   ): TypedSelectBuilder<DB, T, { [K in keyof DB[T]]: SelectType<DB[T][K]> }> {
-    return new TypedSelectBuilder(new SelectBuilder().from(table, alias));
+    return new TypedSelectBuilder(new SelectBuilder().from(table, alias), table);
   }
 
   insertInto<T extends keyof DB & string>(table: T): TypedInsertBuilder<DB, T> {
