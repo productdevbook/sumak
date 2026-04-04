@@ -214,6 +214,31 @@ export class Col<T> {
     return wrap(binOp("=", this._node, other._node))
   }
 
+  /** != another column */
+  neqCol(other: Col<T>): Expression<boolean> {
+    return wrap(binOp("!=", this._node, other._node))
+  }
+
+  /** > another column */
+  gtCol(other: Col<T>): Expression<boolean> {
+    return wrap(binOp(">", this._node, other._node))
+  }
+
+  /** < another column */
+  ltCol(other: Col<T>): Expression<boolean> {
+    return wrap(binOp("<", this._node, other._node))
+  }
+
+  /** >= another column */
+  gteCol(other: Col<T>): Expression<boolean> {
+    return wrap(binOp(">=", this._node, other._node))
+  }
+
+  /** <= another column */
+  lteCol(other: Col<T>): Expression<boolean> {
+    return wrap(binOp("<=", this._node, other._node))
+  }
+
   /** As raw Expression<T> for advanced use */
   toExpr(): Expression<T> {
     return wrap<T>(this._node)

@@ -55,6 +55,17 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /**
+   * Insert multiple rows at once.
+   */
+  valuesMany(rows: Insertable<DB[TB]>[]): TypedInsertBuilder<DB, TB> {
+    let current: TypedInsertBuilder<DB, TB> = this
+    for (const row of rows) {
+      current = current.values(row)
+    }
+    return current
+  }
+
+  /**
    * RETURNING specific columns.
    */
   returning<K extends keyof DB[TB] & string>(
