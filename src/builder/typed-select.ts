@@ -1,4 +1,4 @@
-import type { ExpressionNode, SelectNode } from "../ast/nodes.ts"
+import type { AliasedExprNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -41,12 +41,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     alias: Alias,
   ): TypedSelectBuilder<DB, TB, O & Record<Alias, T>> {
     const node = unwrap(expr)
-    const aliased: ExpressionNode =
-      node.type === "column_ref"
-        ? { ...node, alias }
-        : node.type === "function_call"
-          ? { ...node, alias }
-          : { type: "raw", sql: "", params: [] }
+    const aliased = aliasExpr(node, alias)
     return new TypedSelectBuilder(this._builder.columns(aliased), this._table)
   }
 
@@ -171,6 +166,32 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.unionAll(query.build()), this._table)
   }
 
+  /** INTERSECT */
+  intersect(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.intersect(query.build()), this._table)
+  }
+
+  /** EXCEPT */
+  except(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.except(query.build()), this._table)
+  }
+
+  /** FULL JOIN — both sides become nullable. */
+  fullJoin<T extends keyof DB & string>(
+    table: T,
+    onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
+  ): TypedSelectBuilder<DB, TB | T, Nullable<O> & Nullable<SelectRow<DB, T>>> {
+    const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table)
+    return new TypedSelectBuilder(this._builder.join("FULL", table, unwrap(on)), this._table)
+  }
+
+  /** CROSS JOIN — cartesian product. */
+  crossJoin<T extends keyof DB & string>(
+    table: T,
+  ): TypedSelectBuilder<DB, TB | T, O & SelectRow<DB, T>> {
+    return new TypedSelectBuilder(this._builder.join("CROSS", table), this._table)
+  }
+
   /** Build the AST node. */
   build(): SelectNode {
     return this._builder.build()
@@ -207,6 +228,21 @@ function createJoinProxies<DB, TB extends keyof DB, T extends keyof DB>(
       )
     },
   })
+}
+
+function aliasExpr(node: ExpressionNode, alias: string): ExpressionNode {
+  // Node types that support alias directly
+  if (
+    node.type === "column_ref" ||
+    node.type === "function_call" ||
+    node.type === "json_access" ||
+    node.type === "window_function"
+  ) {
+    return { ...node, alias }
+  }
+  // Generic aliased wrapper for everything else
+  const aliased: AliasedExprNode = { type: "aliased_expr", expr: node, alias }
+  return aliased
 }
 
 function resolveJoinOn<DB, TB extends keyof DB, T extends keyof DB>(

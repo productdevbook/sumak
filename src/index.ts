@@ -1,5 +1,6 @@
 // AST
 export type {
+  AliasedExprNode,
   ArrayExprNode,
   ASTNode,
   BetweenNode,
@@ -46,11 +47,9 @@ export {
 export {
   between,
   binOp,
-  cast,
   col,
   colAs,
   eq,
-  exists,
   fn,
   gt,
   gte,
@@ -61,7 +60,6 @@ export {
   lt,
   lte,
   neq,
-  not,
   param,
   raw,
   star,
@@ -166,7 +164,27 @@ export type {
 } from "./schema/index.ts"
 
 // Expression builder (clean API)
-export { Col, and, or, val, sqlFn, count, resetParams } from "./builder/eb.ts"
+export {
+  and,
+  avg,
+  case_,
+  CaseBuilder,
+  cast,
+  coalesce,
+  Col,
+  count,
+  exists,
+  jsonRef,
+  max,
+  min,
+  not,
+  notExists,
+  or,
+  resetParams,
+  sqlFn,
+  sum,
+  val,
+} from "./builder/eb.ts"
 export type { ColumnProxies, WhereCallback } from "./builder/eb.ts"
 
 // Typed builders

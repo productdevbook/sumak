@@ -128,6 +128,11 @@ export class ASTTransformer {
             expr: this.transformExpression(o.expr),
           })),
         }
+      case "aliased_expr":
+        return {
+          ...node,
+          expr: this.transformExpression(node.expr),
+        }
       default:
         return node
     }

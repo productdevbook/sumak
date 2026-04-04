@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { select } from "../../src/builder/select.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { boolean, serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
@@ -57,5 +58,17 @@ describe("TypedInsertBuilder", () => {
       .values({ name: "Alice", email: "a@b.com" })
       .onConflictDoNothing("email")
     expect(q.compile(printer).sql).toContain("DO NOTHING")
+  })
+
+  it("inserts with CTE (WITH)", () => {
+    const cteQuery = select("name", "email").from("old_users").build()
+    const q = db
+      .insertInto("users")
+      .with("source", cteQuery)
+      .values({ name: "Alice", email: "a@b.com" })
+    const result = q.compile(printer)
+    expect(result.sql).toContain("WITH")
+    expect(result.sql).toContain('"source"')
+    expect(result.sql).toContain("INSERT INTO")
   })
 })

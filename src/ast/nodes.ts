@@ -21,6 +21,7 @@ export type ExpressionNode =
   | JsonAccessNode
   | ArrayExprNode
   | WindowFunctionNode
+  | AliasedExprNode
 
 export interface ColumnRefNode {
   type: "column_ref"
@@ -116,6 +117,12 @@ export interface ExistsNode {
 export interface StarNode {
   type: "star"
   table?: string
+}
+
+export interface AliasedExprNode {
+  type: "aliased_expr"
+  expr: ExpressionNode
+  alias: string
 }
 
 export interface TableRefNode {

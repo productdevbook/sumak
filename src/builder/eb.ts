@@ -6,8 +6,11 @@ import {
   or as rawOr,
   fn as rawFn,
   star as rawStar,
+  exists as rawExists,
+  cast as rawCast,
+  not as rawNot,
 } from "../ast/expression.ts"
-import type { ExpressionNode } from "../ast/nodes.ts"
+import type { CaseNode, ExpressionNode, JsonAccessNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import type { SelectType } from "../schema/types.ts"
 
@@ -198,4 +201,126 @@ export function sqlFn(name: string, ...args: Expression<any>[]): Expression<any>
 /** COUNT(*) */
 export function count(): Expression<number> {
   return wrap(rawFn("COUNT", [rawStar()]))
+}
+
+/** SUM(expr) */
+export function sum(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("SUM", [(expr as any).node]))
+}
+
+/** AVG(expr) */
+export function avg(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("AVG", [(expr as any).node]))
+}
+
+/** MIN(expr) */
+export function min<T>(expr: Expression<T>): Expression<T> {
+  return wrap(rawFn("MIN", [(expr as any).node]))
+}
+
+/** MAX(expr) */
+export function max<T>(expr: Expression<T>): Expression<T> {
+  return wrap(rawFn("MAX", [(expr as any).node]))
+}
+
+/** COALESCE(expr, fallback) */
+export function coalesce<T>(expr: Expression<T | null>, fallback: Expression<T>): Expression<T> {
+  return wrap(rawFn("COALESCE", [(expr as any).node, (fallback as any).node]))
+}
+
+/** NOT expr */
+export function not(expr: Expression<boolean>): Expression<boolean> {
+  return wrap(rawNot((expr as any).node))
+}
+
+/** EXISTS (subquery) */
+export function exists(query: SelectNode): Expression<boolean> {
+  return wrap(rawExists(query))
+}
+
+/** NOT EXISTS (subquery) */
+export function notExists(query: SelectNode): Expression<boolean> {
+  return wrap(rawExists(query, true))
+}
+
+/** CAST(expr AS type) */
+export function cast<T>(expr: Expression<any>, dataType: string): Expression<T> {
+  return wrap<T>(rawCast((expr as any).node, dataType))
+}
+
+/**
+ * JSON access operator: expr->path, expr->>path, etc.
+ *
+ * ```ts
+ * jsonRef(cols.data, "name", "->>")  // data->>'name'
+ * ```
+ */
+export function jsonRef<T = unknown>(
+  expr: Expression<any>,
+  path: string,
+  operator: "->" | "->>" | "#>" | "#>>" = "->",
+): Expression<T> {
+  const node: JsonAccessNode = {
+    type: "json_access",
+    expr: (expr as any).node,
+    path,
+    operator,
+  }
+  return wrap<T>(node)
+}
+
+/**
+ * CASE expression builder.
+ *
+ * ```ts
+ * case_()
+ *   .when(cols.status.eq("active"), val(1))
+ *   .when(cols.status.eq("inactive"), val(0))
+ *   .else_(val(-1))
+ *   .end()
+ * ```
+ */
+export function case_(operand?: Expression<any>): CaseBuilder<never> {
+  return new CaseBuilder(operand ? (operand as any).node : undefined, [])
+}
+
+export class CaseBuilder<T> {
+  /** @internal */
+  private _operand: ExpressionNode | undefined
+  /** @internal */
+  private _whens: { condition: ExpressionNode; result: ExpressionNode }[]
+  /** @internal */
+  private _else: ExpressionNode | undefined
+
+  /** @internal */
+  constructor(
+    operand: ExpressionNode | undefined,
+    whens: { condition: ExpressionNode; result: ExpressionNode }[],
+    else_?: ExpressionNode,
+  ) {
+    this._operand = operand
+    this._whens = whens
+    this._else = else_
+  }
+
+  when<R>(condition: Expression<boolean>, result: Expression<R>): CaseBuilder<T | R> {
+    return new CaseBuilder<T | R>(this._operand, [
+      ...this._whens,
+      { condition: (condition as any).node, result: (result as any).node },
+    ])
+  }
+
+  else_<R>(result: Expression<R>): CaseBuilder<T | R> {
+    return new CaseBuilder<T | R>(this._operand, this._whens, (result as any).node)
+  }
+
+  end(): Expression<T> {
+    const node: CaseNode = {
+      type: "case",
+      operand: this._operand,
+      whens: this._whens,
+      else_: this._else,
+    }
+    return wrap<T>(node)
+  }
 }

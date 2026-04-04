@@ -1,5 +1,5 @@
 import { param, star } from "../ast/expression.ts"
-import type { ExpressionNode } from "../ast/nodes.ts"
+import type { ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -94,6 +94,16 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
         returning: [star()],
       }),
     )
+  }
+
+  /** FROM clause (for UPDATE ... FROM ... WHERE joins). */
+  from<T extends keyof DB & string>(table: T): TypedUpdateBuilder<DB, TB> {
+    return this._with(this._builder.from(table), this._paramIdx)
+  }
+
+  /** WITH (CTE) */
+  with(name: string, query: SelectNode, recursive = false): TypedUpdateBuilder<DB, TB> {
+    return this._with(this._builder.with(name, query, recursive), this._paramIdx)
   }
 
   build() {

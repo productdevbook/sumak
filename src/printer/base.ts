@@ -1,4 +1,5 @@
 import type {
+  AliasedExprNode,
   ArrayExprNode,
   ASTNode,
   BetweenNode,
@@ -271,6 +272,8 @@ export class BasePrinter implements Printer {
         return this.printArrayExpr(node)
       case "window_function":
         return this.printWindowFunction(node)
+      case "aliased_expr":
+        return this.printAliasedExpr(node)
     }
   }
 
@@ -481,5 +484,9 @@ export class BasePrinter implements Printer {
       case "unbounded_following":
         return "UNBOUNDED FOLLOWING"
     }
+  }
+
+  protected printAliasedExpr(node: AliasedExprNode): string {
+    return `${this.printExpression(node.expr)} AS ${quoteIdentifier(node.alias, this.dialect)}`
   }
 }

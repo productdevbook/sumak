@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 
+import { select } from "../../src/builder/select.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
-import { boolean, serial, text } from "../../src/schema/column.ts"
+import { boolean, integer, serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 
 const db = sumak({
@@ -12,6 +13,11 @@ const db = sumak({
       name: text().notNull(),
       email: text().notNull(),
       active: boolean().defaultTo(true),
+    },
+    posts: {
+      id: serial().primaryKey(),
+      title: text().notNull(),
+      userId: integer(),
     },
   },
 })
@@ -45,5 +51,25 @@ describe("TypedUpdateBuilder", () => {
   it("updates with RETURNING specific columns", () => {
     const q = db.update("users").set({ name: "Bob" }).returning("id", "name")
     expect(q.compile(printer).sql).toContain("RETURNING")
+  })
+
+  it("updates with FROM clause", () => {
+    const q = db
+      .update("users")
+      .set({ name: "Bob" })
+      .from("posts")
+      .where(({ id }) => id.eq(1))
+    const result = q.compile(printer)
+    expect(result.sql).toContain("FROM")
+    expect(result.sql).toContain('"posts"')
+  })
+
+  it("updates with CTE (WITH)", () => {
+    const cteQuery = select("id").from("users").build()
+    const q = db.update("users").with("target", cteQuery).set({ active: false })
+    const result = q.compile(printer)
+    expect(result.sql).toContain("WITH")
+    expect(result.sql).toContain('"target"')
+    expect(result.sql).toContain("UPDATE")
   })
 })

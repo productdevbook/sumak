@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest"
 
-import { and, or } from "../../src/builder/eb.ts"
+import {
+  and,
+  avg,
+  case_,
+  cast,
+  coalesce,
+  count,
+  exists,
+  jsonRef,
+  max,
+  min,
+  not,
+  notExists,
+  or,
+  sum,
+  val,
+} from "../../src/builder/eb.ts"
+import { select } from "../../src/builder/select.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
-import { serial, text, integer, boolean } from "../../src/schema/column.ts"
+import { serial, text, integer, boolean, jsonb } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 
 const db = sumak({
@@ -14,6 +31,7 @@ const db = sumak({
       email: text().notNull(),
       age: integer(),
       active: boolean().defaultTo(true),
+      meta: jsonb(),
     },
     posts: {
       id: serial().primaryKey(),
@@ -157,6 +175,123 @@ describe("Clean callback API", () => {
       expect(r.sql).toContain("ORDER BY")
       expect(r.sql).toContain("LIMIT")
       expect(r.params).toEqual([18, true])
+    })
+  })
+
+  describe("aggregate functions", () => {
+    it("count()", () => {
+      const q = db.selectFrom("users").selectExpr(count(), "total")
+      const r = q.compile(p)
+      expect(r.sql).toContain("COUNT(*)")
+    })
+
+    it("sum()", () => {
+      const q = db.selectFrom("users").selectExpr(sum(val(1) as any), "s")
+      const r = q.compile(p)
+      expect(r.sql).toContain("SUM(")
+    })
+
+    it("avg()", () => {
+      const q = db.selectFrom("users").selectExpr(avg(val(1) as any), "a")
+      const r = q.compile(p)
+      expect(r.sql).toContain("AVG(")
+    })
+
+    it("min()", () => {
+      const q = db.selectFrom("users").selectExpr(min(val(1) as any), "m")
+      const r = q.compile(p)
+      expect(r.sql).toContain("MIN(")
+    })
+
+    it("max()", () => {
+      const q = db.selectFrom("users").selectExpr(max(val(1) as any), "m")
+      const r = q.compile(p)
+      expect(r.sql).toContain("MAX(")
+    })
+
+    it("coalesce()", () => {
+      const q = db.selectFrom("users").selectExpr(coalesce(val(null) as any, val(0) as any), "c")
+      const r = q.compile(p)
+      expect(r.sql).toContain("COALESCE(")
+    })
+  })
+
+  describe("not()", () => {
+    it("NOT expression", () => {
+      const q = db.selectFrom("users").where(({ active }) => not(active.eq(true)))
+      const r = q.compile(p)
+      expect(r.sql).toContain("NOT")
+    })
+  })
+
+  describe("exists / notExists", () => {
+    it("EXISTS subquery", () => {
+      const sub = select("id").from("posts").where({ type: "literal", value: true }).build()
+      const q = db.selectFrom("users").where(() => exists(sub))
+      const r = q.compile(p)
+      expect(r.sql).toContain("EXISTS")
+      expect(r.sql).toContain("SELECT")
+    })
+
+    it("NOT EXISTS subquery", () => {
+      const sub = select("id").from("posts").where({ type: "literal", value: true }).build()
+      const q = db.selectFrom("users").where(() => notExists(sub))
+      const r = q.compile(p)
+      expect(r.sql).toContain("NOT EXISTS")
+    })
+  })
+
+  describe("cast()", () => {
+    it("CAST expression", () => {
+      const q = db.selectFrom("users").selectExpr(cast(val(42), "text"), "t")
+      const r = q.compile(p)
+      expect(r.sql).toContain("CAST(")
+      expect(r.sql).toContain("AS text")
+    })
+  })
+
+  describe("jsonRef()", () => {
+    it("-> operator", () => {
+      const q = db.selectFrom("users").selectExpr(jsonRef(val(null) as any, "name", "->"), "j")
+      const r = q.compile(p)
+      expect(r.sql).toContain("->")
+    })
+
+    it("->> operator", () => {
+      const q = db.selectFrom("users").selectExpr(jsonRef(val(null) as any, "name", "->>"), "j")
+      const r = q.compile(p)
+      expect(r.sql).toContain("->>")
+    })
+  })
+
+  describe("case_()", () => {
+    it("simple CASE WHEN THEN ELSE END", () => {
+      const q = db.selectFrom("users").selectExpr(
+        case_()
+          .when(val(true) as any, val(1))
+          .else_(val(0))
+          .end(),
+        "result",
+      )
+      const r = q.compile(p)
+      expect(r.sql).toContain("CASE")
+      expect(r.sql).toContain("WHEN")
+      expect(r.sql).toContain("THEN")
+      expect(r.sql).toContain("ELSE")
+      expect(r.sql).toContain("END")
+    })
+
+    it("CASE with multiple WHEN clauses", () => {
+      const q = db.selectFrom("users").selectExpr(
+        case_()
+          .when(val(true) as any, val("a"))
+          .when(val(false) as any, val("b"))
+          .end(),
+        "result",
+      )
+      const r = q.compile(p)
+      const whenCount = (r.sql.match(/WHEN/g) || []).length
+      expect(whenCount).toBe(2)
     })
   })
 })

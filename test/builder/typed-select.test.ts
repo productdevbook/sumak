@@ -119,4 +119,28 @@ describe("TypedSelectBuilder", () => {
     expect(result.sql).toContain("AND")
     expect(result.sql).toContain("LIKE")
   })
+
+  it("builds INTERSECT query", () => {
+    const q1 = db.selectFrom("users").select("id")
+    const q2 = db.selectFrom("users").select("id")
+    expect(q1.intersect(q2).compile(printer).sql).toContain("INTERSECT")
+  })
+
+  it("builds EXCEPT query", () => {
+    const q1 = db.selectFrom("users").select("id")
+    const q2 = db.selectFrom("users").select("id")
+    expect(q1.except(q2).compile(printer).sql).toContain("EXCEPT")
+  })
+
+  it("builds FULL JOIN", () => {
+    const q = db
+      .selectFrom("users")
+      .fullJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+    expect(q.compile(printer).sql).toContain("FULL JOIN")
+  })
+
+  it("builds CROSS JOIN", () => {
+    const q = db.selectFrom("users").crossJoin("posts")
+    expect(q.compile(printer).sql).toContain("CROSS JOIN")
+  })
 })

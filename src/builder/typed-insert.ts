@@ -1,6 +1,6 @@
 import { param } from "../ast/expression.ts"
 import { star } from "../ast/expression.ts"
-import type { ExpressionNode } from "../ast/nodes.ts"
+import type { ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -100,6 +100,11 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
       ),
       this._paramIdx,
     )
+  }
+
+  /** WITH (CTE) */
+  with(name: string, query: SelectNode, recursive = false): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(this._builder.with(name, query, recursive), this._paramIdx)
   }
 
   build() {

@@ -21,7 +21,7 @@ npm install sumak
 ```
 
 ```ts
-import { sumak, pgDialect, serial, text, boolean, integer } from "sumak"
+import { sumak, pgDialect, serial, text, boolean, integer, jsonb } from "sumak"
 
 const db = sumak({
   dialect: pgDialect(),
@@ -30,7 +30,9 @@ const db = sumak({
       id: serial().primaryKey(),
       name: text().notNull(),
       email: text().notNull(),
+      age: integer(),
       active: boolean().defaultTo(true),
+      meta: jsonb(),
     },
     posts: {
       id: serial().primaryKey(),
@@ -43,16 +45,20 @@ const db = sumak({
 
 ## Query Building
 
+### SELECT
+
 ```ts
-// SELECT
 db.selectFrom("users")
   .select("id", "name")
   .where(({ age, active }) => and(age.gte(18), active.eq(true)))
   .orderBy("name")
   .limit(10)
   .compile(db.printer())
+```
 
-// INSERT
+### INSERT
+
+```ts
 db.insertInto("users")
   .values({
     name: "Alice",
@@ -60,14 +66,20 @@ db.insertInto("users")
   })
   .returningAll()
   .compile(db.printer())
+```
 
-// UPDATE
+### UPDATE
+
+```ts
 db.update("users")
   .set({ active: false })
   .where(({ id }) => id.eq(1))
   .compile(db.printer())
+```
 
-// DELETE
+### DELETE
+
+```ts
 db.deleteFrom("users")
   .where(({ id }) => id.eq(1))
   .returning("id")
@@ -77,8 +89,292 @@ db.deleteFrom("users")
 ## Joins
 
 ```ts
+// INNER JOIN
 db.selectFrom("users")
   .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .select("id", "title")
+  .compile(db.printer())
+
+// LEFT JOIN — joined columns become nullable
+db.selectFrom("users")
+  .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .compile(db.printer())
+
+// RIGHT JOIN
+db.selectFrom("users")
+  .rightJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .compile(db.printer())
+
+// FULL JOIN — both sides become nullable
+db.selectFrom("users")
+  .fullJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .compile(db.printer())
+
+// CROSS JOIN — cartesian product
+db.selectFrom("users").crossJoin("posts").compile(db.printer())
+```
+
+## Expression API
+
+### Comparisons
+
+```ts
+.where(({ id }) =>
+  id.eq(42),
+)
+
+.where(({ age }) =>
+  age.gt(18),
+)
+
+.where(({ age }) =>
+  age.gte(18),
+)
+
+.where(({ age }) =>
+  age.lt(65),
+)
+
+.where(({ age }) =>
+  age.lte(65),
+)
+
+.where(({ active }) =>
+  active.neq(false),
+)
+```
+
+### String Matching
+
+```ts
+.where(({ name }) =>
+  name.like("%ali%"),
+)
+```
+
+### Range & List
+
+```ts
+.where(({ age }) =>
+  age.between(18, 65),
+)
+
+.where(({ id }) =>
+  id.in([1, 2, 3]),
+)
+
+.where(({ id }) =>
+  id.notIn([99, 100]),
+)
+```
+
+### Null Checks
+
+```ts
+.where(({ bio }) =>
+  bio.isNull(),
+)
+
+.where(({ email }) =>
+  email.isNotNull(),
+)
+```
+
+### Logical Combinators
+
+```ts
+// AND
+.where(({ age, active }) =>
+  and(
+    age.gt(0),
+    active.eq(true),
+  ),
+)
+
+// OR
+.where(({ name, email }) =>
+  or(
+    name.like("%alice%"),
+    email.like("%alice%"),
+  ),
+)
+
+// NOT
+.where(({ active }) =>
+  not(active.eq(true)),
+)
+```
+
+### Aggregates
+
+```ts
+import { count, sum, avg, min, max, coalesce } from "sumak"
+
+db.selectFrom("users").selectExpr(count(), "total").compile(db.printer())
+
+db.selectFrom("orders").selectExpr(sum(col.amount), "totalAmount").compile(db.printer())
+
+db.selectFrom("orders").selectExpr(avg(col.amount), "avgAmount").compile(db.printer())
+
+db.selectFrom("orders")
+  .selectExpr(coalesce(col.discount, val(0)), "safeDiscount")
+  .compile(db.printer())
+```
+
+### EXISTS / NOT EXISTS
+
+```ts
+import { exists, notExists } from "sumak"
+
+db.selectFrom("users")
+  .where(() =>
+    exists(
+      db
+        .selectFrom("posts")
+        .where(({ userId }) => userId.eq(1))
+        .build(),
+    ),
+  )
+  .compile(db.printer())
+
+db.selectFrom("users")
+  .where(() =>
+    notExists(
+      db
+        .selectFrom("posts")
+        .where(({ userId }) => userId.eq(1))
+        .build(),
+    ),
+  )
+  .compile(db.printer())
+```
+
+### CASE Expression
+
+```ts
+import { case_, val } from "sumak"
+
+db.selectFrom("users")
+  .selectExpr(
+    case_()
+      .when(col.active.eq(true), val("active"))
+      .when(col.active.eq(false), val("inactive"))
+      .else_(val("unknown"))
+      .end(),
+    "status",
+  )
+  .compile(db.printer())
+```
+
+### CAST
+
+```ts
+import { cast, val } from "sumak"
+
+db.selectFrom("users")
+  .selectExpr(cast(val(42), "text"), "idAsText")
+  .compile(db.printer())
+```
+
+### JSON Operations
+
+```ts
+import { jsonRef } from "sumak"
+
+// ->  (JSON object)
+db.selectFrom("users")
+  .selectExpr(jsonRef(col.meta, "address", "->"), "address")
+  .compile(db.printer())
+
+// ->> (text value)
+db.selectFrom("users")
+  .selectExpr(jsonRef(col.meta, "name", "->>"), "metaName")
+  .compile(db.printer())
+```
+
+## Set Operations
+
+```ts
+const active = db
+  .selectFrom("users")
+  .select("id")
+  .where(({ active }) => active.eq(true))
+
+const premium = db
+  .selectFrom("users")
+  .select("id")
+  .where(({ active }) => active.eq(true))
+
+// UNION
+active.union(premium).compile(db.printer())
+
+// UNION ALL
+active.unionAll(premium).compile(db.printer())
+
+// INTERSECT
+active.intersect(premium).compile(db.printer())
+
+// EXCEPT
+active.except(premium).compile(db.printer())
+```
+
+## CTEs (WITH)
+
+```ts
+// SELECT with CTE
+db.selectFrom("users")
+  .with(
+    "active_users",
+    db
+      .selectFrom("users")
+      .where(({ active }) => active.eq(true))
+      .build(),
+  )
+  .compile(db.printer())
+
+// INSERT with CTE
+db.insertInto("users")
+  .with("source", sourceCte)
+  .values({ name: "Alice", email: "a@b.com" })
+  .compile(db.printer())
+
+// UPDATE with CTE
+db.update("users").with("target", targetCte).set({ active: false }).compile(db.printer())
+
+// DELETE with CTE
+db.deleteFrom("users")
+  .with("to_delete", deleteCte)
+  .where(({ id }) => id.eq(1))
+  .compile(db.printer())
+
+// Recursive CTE
+db.selectFrom("users").with("tree", recursiveQuery, true).compile(db.printer())
+```
+
+## UPDATE FROM
+
+```ts
+db.update("users")
+  .set({ name: "Bob" })
+  .from("posts")
+  .where(({ id }) => id.eq(1))
+  .compile(db.printer())
+// UPDATE "users" SET "name" = $1 FROM "posts" WHERE ("id" = $2)
+```
+
+## ON CONFLICT
+
+```ts
+// DO NOTHING
+db.insertInto("users")
+  .values({ name: "Alice", email: "a@b.com" })
+  .onConflictDoNothing("email")
+  .compile(db.printer())
+
+// DO UPDATE
+db.insertInto("users")
+  .values({ name: "Alice", email: "a@b.com" })
+  .onConflictDoUpdate(["email"], [{ column: "name", value: val("Alice") }])
   .compile(db.printer())
 ```
 
@@ -107,7 +403,11 @@ Same query, different SQL:
 ## Plugins
 
 ```ts
-import { WithSchemaPlugin, SoftDeletePlugin, CamelCasePlugin } from "sumak";
+import {
+  WithSchemaPlugin,
+  SoftDeletePlugin,
+  CamelCasePlugin,
+} from "sumak"
 
 const db = sumak({
   dialect: pgDialect(),
@@ -116,7 +416,7 @@ const db = sumak({
     new SoftDeletePlugin({ tables: ["users"] }),
   ],
   tables: { ... },
-});
+})
 
 // SELECT * FROM "public"."users" WHERE ("deleted_at" IS NULL)
 ```
@@ -150,54 +450,6 @@ db.hook("result:transform", (rows) => {
 // Unregister
 const off = db.hook("query:before", handler)
 off()
-```
-
-## Expression API
-
-```ts
-// Equality
-.where(({ id }) =>
-  id.eq(42),
-)
-
-// String matching
-.where(({ name }) =>
-  name.like("%ali%"),
-)
-
-// Range
-.where(({ age }) =>
-  age.between(18, 65),
-)
-
-// List
-.where(({ id }) =>
-  id.in([1, 2, 3]),
-)
-
-// Null checks
-.where(({ bio }) =>
-  bio.isNull(),
-)
-.where(({ email }) =>
-  email.isNotNull(),
-)
-
-// AND
-.where(({ a, b }) =>
-  and(
-    a.gt(0),
-    b.neq("x"),
-  ),
-)
-
-// OR
-.where(({ a, b }) =>
-  or(
-    a.eq(1),
-    b.eq(2),
-  ),
-)
 ```
 
 ## Why sumak?
