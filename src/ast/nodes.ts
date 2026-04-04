@@ -71,6 +71,7 @@ export interface FunctionCallNode {
   args: ExpressionNode[]
   distinct?: boolean
   filter?: ExpressionNode
+  orderBy?: OrderByNode[]
   alias?: string
 }
 

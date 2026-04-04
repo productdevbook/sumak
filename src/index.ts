@@ -181,7 +181,9 @@ export type {
 // Expression builder (clean API)
 export {
   abs,
+  aggOrderBy,
   and,
+  arrayAgg,
   avg,
   avgDistinct,
   case_,
@@ -219,6 +221,7 @@ export {
   round,
   rowNumber,
   sqlFn,
+  stringAgg,
   substring,
   sum,
   sumDistinct,

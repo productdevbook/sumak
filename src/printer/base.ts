@@ -354,7 +354,11 @@ export class BasePrinter implements Printer {
 
   protected printFunctionCall(node: FunctionCallNode): string {
     const distinctPrefix = node.distinct ? "DISTINCT " : ""
-    let result = `${node.name}(${distinctPrefix}${node.args.map((a) => this.printExpression(a)).join(", ")})`
+    let inner = `${distinctPrefix}${node.args.map((a) => this.printExpression(a)).join(", ")}`
+    if (node.orderBy && node.orderBy.length > 0) {
+      inner += ` ORDER BY ${node.orderBy.map((o) => this.printOrderBy(o)).join(", ")}`
+    }
+    let result = `${node.name}(${inner})`
     if (node.filter) {
       result += ` FILTER (WHERE ${this.printExpression(node.filter)})`
     }

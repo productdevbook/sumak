@@ -673,6 +673,56 @@ export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
 }
 
+/** STRING_AGG(expr, delimiter) — aggregate strings with separator */
+export function stringAgg(
+  expr: Expression<string>,
+  delimiter: string,
+  orderBy?: { expr: Expression<any>; direction?: "ASC" | "DESC" }[],
+): Expression<string> {
+  const node: FunctionCallNode = {
+    type: "function_call",
+    name: "STRING_AGG",
+    args: [(expr as any).node, rawLit(delimiter)],
+    orderBy: orderBy?.map((o) => ({
+      expr: (o.expr as any).node,
+      direction: o.direction ?? "ASC",
+    })),
+  }
+  return wrap(node)
+}
+
+/** ARRAY_AGG(expr) — aggregate values into array */
+export function arrayAgg<T>(
+  expr: Expression<T>,
+  orderBy?: { expr: Expression<any>; direction?: "ASC" | "DESC" }[],
+): Expression<T[]> {
+  const node: FunctionCallNode = {
+    type: "function_call",
+    name: "ARRAY_AGG",
+    args: [(expr as any).node],
+    orderBy: orderBy?.map((o) => ({
+      expr: (o.expr as any).node,
+      direction: o.direction ?? "ASC",
+    })),
+  }
+  return wrap(node)
+}
+
+/** Attach ORDER BY to an existing aggregate expression. */
+export function aggOrderBy<T>(
+  agg: Expression<T>,
+  orderBy: { expr: Expression<any>; direction?: "ASC" | "DESC" }[],
+): Expression<T> {
+  const fnNode = (agg as any).node as FunctionCallNode
+  return wrap<T>({
+    ...fnNode,
+    orderBy: orderBy.map((o) => ({
+      expr: (o.expr as any).node,
+      direction: o.direction ?? "ASC",
+    })),
+  })
+}
+
 /**
  * Row-value tuple for comparisons.
  *
