@@ -1,4 +1,3 @@
-import type { ExpressionNode } from "./nodes.ts"
 import {
   and as rawAnd,
   between as rawBetween,
@@ -18,6 +17,7 @@ import {
   or as rawOr,
   param as rawParam,
 } from "./expression.ts"
+import type { ExpressionNode } from "./nodes.ts"
 
 /**
  * Type-safe expression wrapper. The T parameter tracks the expression's

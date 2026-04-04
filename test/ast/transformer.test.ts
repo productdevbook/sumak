@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { ASTTransformer } from "../../src/ast/transformer.ts"
+
+import { col, eq, lit } from "../../src/ast/expression.ts"
 import { createSelectNode } from "../../src/ast/nodes.ts"
 import type { ColumnRefNode, ExpressionNode } from "../../src/ast/nodes.ts"
-import { col, eq, lit } from "../../src/ast/expression.ts"
+import { ASTTransformer } from "../../src/ast/transformer.ts"
 
 class UpperCaseColumnTransformer extends ASTTransformer {
   override transformExpression(node: ExpressionNode): ExpressionNode {

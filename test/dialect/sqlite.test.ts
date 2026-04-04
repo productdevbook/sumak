@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { sqliteDialect } from "../../src/dialect/sqlite.ts"
+
 import { select } from "../../src/builder/select.ts"
+import { sqliteDialect } from "../../src/dialect/sqlite.ts"
 
 describe("sqliteDialect", () => {
   it("creates a dialect with name sqlite", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { PgPrinter } from "../../src/printer/pg.ts"
+
 import { col, lit } from "../../src/ast/expression.ts"
 import { createSelectNode } from "../../src/ast/nodes.ts"
 import type {
@@ -8,6 +8,7 @@ import type {
   SelectNode,
   WindowFunctionNode,
 } from "../../src/ast/nodes.ts"
+import { PgPrinter } from "../../src/printer/pg.ts"
 
 const pg = new PgPrinter()
 

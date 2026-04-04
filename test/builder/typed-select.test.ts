@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { sumak } from "../../src/sumak.ts"
-import { pgDialect } from "../../src/dialect/pg.ts"
-import { mysqlDialect } from "../../src/dialect/mysql.ts"
-import { boolean, integer, serial, text, timestamp } from "../../src/schema/column.ts"
+
 import { and } from "../../src/builder/eb.ts"
+import { mysqlDialect } from "../../src/dialect/mysql.ts"
+import { pgDialect } from "../../src/dialect/pg.ts"
+import { boolean, integer, serial, text, timestamp } from "../../src/schema/column.ts"
+import { sumak } from "../../src/sumak.ts"
 
 const db = sumak({
   dialect: pgDialect(),

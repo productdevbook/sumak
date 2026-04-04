@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
-import { sumak } from "../../src/sumak.ts"
+
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { boolean, serial, text } from "../../src/schema/column.ts"
+import { sumak } from "../../src/sumak.ts"
 
 const db = sumak({
   dialect: pgDialect(),

@@ -1,3 +1,4 @@
+import { col, star } from "../ast/expression.ts"
 import type {
   CTENode,
   ExpressionNode,
@@ -8,7 +9,6 @@ import type {
   TableRefNode,
 } from "../ast/nodes.ts"
 import { createSelectNode } from "../ast/nodes.ts"
-import { col, star } from "../ast/expression.ts"
 import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
 
 export class SelectBuilder {

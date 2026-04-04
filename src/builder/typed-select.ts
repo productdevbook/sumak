@@ -1,12 +1,12 @@
 import type { ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import type { CompiledQuery, OrderDirection } from "../types.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Nullable, SelectRow } from "../schema/types.ts"
-import { SelectBuilder } from "./select.ts"
+import type { CompiledQuery, OrderDirection } from "../types.ts"
 import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies, resetParams } from "./eb.ts"
+import { SelectBuilder } from "./select.ts"
 
 /**
  * Type-safe SELECT query builder.

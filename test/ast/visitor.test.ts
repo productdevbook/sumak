@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from "vitest"
-import { visitNode } from "../../src/ast/visitor.ts"
-import type { ASTVisitor } from "../../src/ast/visitor.ts"
+
+import { col } from "../../src/ast/expression.ts"
 import {
   createSelectNode,
   createInsertNode,
   createUpdateNode,
   createDeleteNode,
 } from "../../src/ast/nodes.ts"
-import { col } from "../../src/ast/expression.ts"
+import { visitNode } from "../../src/ast/visitor.ts"
+import type { ASTVisitor } from "../../src/ast/visitor.ts"
 
 function createMockVisitor(): ASTVisitor<string> {
   return {

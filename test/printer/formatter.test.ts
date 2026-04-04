@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+
 import { formatSQL } from "../../src/printer/formatter.ts"
 
 describe("formatSQL", () => {

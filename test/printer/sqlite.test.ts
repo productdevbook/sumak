@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { SqlitePrinter } from "../../src/printer/sqlite.ts"
-import { select } from "../../src/builder/select.ts"
-import { insert } from "../../src/builder/insert.ts"
+
 import { col, eq, param, star } from "../../src/ast/expression.ts"
+import { insert } from "../../src/builder/insert.ts"
+import { select } from "../../src/builder/select.ts"
 import { UnsupportedDialectFeatureError } from "../../src/errors.ts"
+import { SqlitePrinter } from "../../src/printer/sqlite.ts"
 
 describe("SqlitePrinter", () => {
   const printer = new SqlitePrinter()

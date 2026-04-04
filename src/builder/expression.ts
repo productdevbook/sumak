@@ -1,4 +1,3 @@
-import type { ExpressionNode } from "../ast/nodes.ts"
 import {
   and,
   between,
@@ -19,6 +18,7 @@ import {
   or,
   param,
 } from "../ast/expression.ts"
+import type { ExpressionNode } from "../ast/nodes.ts"
 
 let paramCounter = 0
 

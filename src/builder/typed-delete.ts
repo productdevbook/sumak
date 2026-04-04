@@ -1,13 +1,13 @@
+import { star } from "../ast/expression.ts"
+import type { ExpressionNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import { star } from "../ast/expression.ts"
-import type { WhereCallback } from "./eb.ts"
-import { createColumnProxies, resetParams } from "./eb.ts"
-import type { ExpressionNode } from "../ast/nodes.ts"
-import type { CompiledQuery } from "../types.ts"
 import type { Printer } from "../printer/types.ts"
 import type { SelectRow } from "../schema/types.ts"
+import type { CompiledQuery } from "../types.ts"
 import { DeleteBuilder } from "./delete.ts"
+import type { WhereCallback } from "./eb.ts"
+import { createColumnProxies, resetParams } from "./eb.ts"
 
 /**
  * Type-safe DELETE query builder.

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { WithSchemaPlugin } from "../../src/plugin/with-schema.ts"
-import { select } from "../../src/builder/select.ts"
-import { insert } from "../../src/builder/insert.ts"
-import { update } from "../../src/builder/update.ts"
-import { deleteFrom } from "../../src/builder/delete.ts"
+
 import { col, eq, param } from "../../src/ast/expression.ts"
-import { PgPrinter } from "../../src/printer/pg.ts"
 import type { ASTNode } from "../../src/ast/nodes.ts"
+import { deleteFrom } from "../../src/builder/delete.ts"
+import { insert } from "../../src/builder/insert.ts"
+import { select } from "../../src/builder/select.ts"
+import { update } from "../../src/builder/update.ts"
+import { WithSchemaPlugin } from "../../src/plugin/with-schema.ts"
+import { PgPrinter } from "../../src/printer/pg.ts"
 
 const pg = new PgPrinter()
 const plugin = new WithSchemaPlugin("public")

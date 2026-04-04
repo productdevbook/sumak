@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+
 import { quoteIdentifier, quoteTableRef } from "../../src/utils/identifier.ts"
 
 describe("quoteIdentifier", () => {

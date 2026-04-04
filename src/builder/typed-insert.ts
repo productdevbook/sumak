@@ -1,12 +1,12 @@
-import type { ExpressionNode } from "../ast/nodes.ts"
 import { param } from "../ast/expression.ts"
+import { star } from "../ast/expression.ts"
+import type { ExpressionNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import type { CompiledQuery } from "../types.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Insertable, SelectRow } from "../schema/types.ts"
+import type { CompiledQuery } from "../types.ts"
 import { InsertBuilder } from "./insert.ts"
-import { star } from "../ast/expression.ts"
 
 /**
  * Type-safe INSERT query builder.

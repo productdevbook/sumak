@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { deleteFrom } from "../../src/builder/delete.ts"
+
 import { col, eq, lit, param, star } from "../../src/ast/expression.ts"
-import { PgPrinter } from "../../src/printer/pg.ts"
+import { deleteFrom } from "../../src/builder/delete.ts"
 import { MysqlPrinter } from "../../src/printer/mysql.ts"
+import { PgPrinter } from "../../src/printer/pg.ts"
 import { SqlitePrinter } from "../../src/printer/sqlite.ts"
 
 const pg = new PgPrinter()

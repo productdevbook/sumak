@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+
 import { concat, empty, group, join, line, nest, render, text } from "../../src/printer/document.ts"
 
 describe("Document algebra", () => {

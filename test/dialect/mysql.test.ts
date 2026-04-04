@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
-import { mysqlDialect } from "../../src/dialect/mysql.ts"
+
 import { select } from "../../src/builder/select.ts"
+import { mysqlDialect } from "../../src/dialect/mysql.ts"
 
 describe("mysqlDialect", () => {
   it("creates a dialect with name mysql", () => {

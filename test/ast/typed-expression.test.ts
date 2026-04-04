@@ -1,4 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest"
+
+import { createSelectNode } from "../../src/ast/nodes.ts"
+import type { SelectNode } from "../../src/ast/nodes.ts"
 import {
   typedAdd,
   typedAnd,
@@ -25,8 +28,6 @@ import {
 } from "../../src/ast/typed-expression.ts"
 import type { Expression } from "../../src/ast/typed-expression.ts"
 import { PgPrinter } from "../../src/printer/pg.ts"
-import { createSelectNode } from "../../src/ast/nodes.ts"
-import type { SelectNode } from "../../src/ast/nodes.ts"
 
 const pg = new PgPrinter()
 

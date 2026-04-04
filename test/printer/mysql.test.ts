@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { MysqlPrinter } from "../../src/printer/mysql.ts"
-import { select } from "../../src/builder/select.ts"
-import { insert } from "../../src/builder/insert.ts"
+
 import { col, eq, param } from "../../src/ast/expression.ts"
-import { UnsupportedDialectFeatureError } from "../../src/errors.ts"
 import { star } from "../../src/ast/expression.ts"
+import { insert } from "../../src/builder/insert.ts"
+import { select } from "../../src/builder/select.ts"
+import { UnsupportedDialectFeatureError } from "../../src/errors.ts"
+import { MysqlPrinter } from "../../src/printer/mysql.ts"
 
 describe("MysqlPrinter", () => {
   const printer = new MysqlPrinter()

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { sumak } from "../src/sumak.ts"
+
 import { pgDialect } from "../src/dialect/pg.ts"
-import { boolean, integer, serial, text, timestamp } from "../src/schema/column.ts"
-import { WithSchemaPlugin } from "../src/plugin/with-schema.ts"
 import { SoftDeletePlugin } from "../src/plugin/soft-delete.ts"
+import { WithSchemaPlugin } from "../src/plugin/with-schema.ts"
+import { boolean, integer, serial, text, timestamp } from "../src/schema/column.ts"
+import { sumak } from "../src/sumak.ts"
 
 const db = sumak({
   dialect: pgDialect(),

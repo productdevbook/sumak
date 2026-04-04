@@ -1,5 +1,5 @@
-import type { ASTNode, DeleteNode, ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import { and, col, isNull } from "../ast/expression.ts"
+import type { ASTNode, DeleteNode, ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**

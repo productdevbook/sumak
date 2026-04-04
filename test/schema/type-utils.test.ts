@@ -1,7 +1,8 @@
 import { describe, expectTypeOf, it } from "vitest"
+
+import { boolean, serial, text, timestamp } from "../../src/schema/column.ts"
 import { defineTable } from "../../src/schema/table.ts"
 import type { InferTable } from "../../src/schema/table.ts"
-import { boolean, serial, text, timestamp } from "../../src/schema/column.ts"
 import type {
   AnyColumn,
   ColumnName,

@@ -1,7 +1,8 @@
 import { describe, expect, it, expectTypeOf } from "vitest"
+
+import { boolean, serial, text, timestamp } from "../../src/schema/column.ts"
 import { defineTable } from "../../src/schema/table.ts"
 import type { InferTable } from "../../src/schema/table.ts"
-import { boolean, serial, text, timestamp } from "../../src/schema/column.ts"
 import type { Insertable, Selectable, Updateable } from "../../src/schema/types.ts"
 
 const usersTable = defineTable("users", {

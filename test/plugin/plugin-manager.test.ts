@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { PluginManager } from "../../src/plugin/plugin-manager.ts"
-import type { LalePlugin } from "../../src/plugin/types.ts"
+
 import { createSelectNode } from "../../src/ast/nodes.ts"
 import type { ASTNode } from "../../src/ast/nodes.ts"
+import { PluginManager } from "../../src/plugin/plugin-manager.ts"
+import type { LalePlugin } from "../../src/plugin/types.ts"
 
 describe("PluginManager", () => {
   it("applies transformNode plugins in order", () => {

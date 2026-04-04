@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { insert } from "../../src/builder/insert.ts"
+
 import { col, star } from "../../src/ast/expression.ts"
-import { PgPrinter } from "../../src/printer/pg.ts"
-import { MysqlPrinter } from "../../src/printer/mysql.ts"
-import { SqlitePrinter } from "../../src/printer/sqlite.ts"
+import { insert } from "../../src/builder/insert.ts"
 import { UnsupportedDialectFeatureError } from "../../src/errors.ts"
+import { MysqlPrinter } from "../../src/printer/mysql.ts"
+import { PgPrinter } from "../../src/printer/pg.ts"
+import { SqlitePrinter } from "../../src/printer/sqlite.ts"
 
 const pg = new PgPrinter()
 const mysql = new MysqlPrinter()

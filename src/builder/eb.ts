@@ -1,6 +1,3 @@
-import type { ExpressionNode } from "../ast/nodes.ts"
-import type { Expression } from "../ast/typed-expression.ts"
-import type { SelectType } from "../schema/types.ts"
 import {
   col as rawCol,
   lit as rawLit,
@@ -10,6 +7,9 @@ import {
   fn as rawFn,
   star as rawStar,
 } from "../ast/expression.ts"
+import type { ExpressionNode } from "../ast/nodes.ts"
+import type { Expression } from "../ast/typed-expression.ts"
+import type { SelectType } from "../schema/types.ts"
 
 /**
  * A typed column reference that exposes comparison methods.

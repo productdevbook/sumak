@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { PgPrinter } from "../../src/printer/pg.ts"
-import { select } from "../../src/builder/select.ts"
-import { insert } from "../../src/builder/insert.ts"
+
 import { col, eq, param, star } from "../../src/ast/expression.ts"
+import { insert } from "../../src/builder/insert.ts"
+import { select } from "../../src/builder/select.ts"
+import { PgPrinter } from "../../src/printer/pg.ts"
 
 describe("PgPrinter", () => {
   const printer = new PgPrinter()

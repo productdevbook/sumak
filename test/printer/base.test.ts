@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { BasePrinter } from "../../src/printer/base.ts"
+
+import { cast, col, fn, lit, raw, star } from "../../src/ast/expression.ts"
 import { createSelectNode } from "../../src/ast/nodes.ts"
 import type { SelectNode } from "../../src/ast/nodes.ts"
-import { cast, col, fn, lit, raw, star } from "../../src/ast/expression.ts"
+import { BasePrinter } from "../../src/printer/base.ts"
 
 describe("BasePrinter", () => {
   const printer = new BasePrinter("pg")

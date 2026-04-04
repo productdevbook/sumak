@@ -1,3 +1,4 @@
+import { param } from "../ast/expression.ts"
 import type {
   CTENode,
   ExpressionNode,
@@ -7,7 +8,6 @@ import type {
   TableRefNode,
 } from "../ast/nodes.ts"
 import { createInsertNode } from "../ast/nodes.ts"
-import { param } from "../ast/expression.ts"
 
 export class InsertBuilder {
   private node: InsertNode
