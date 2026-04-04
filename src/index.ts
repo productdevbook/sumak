@@ -42,8 +42,8 @@ export {
   tableRef,
 } from "./ast/nodes.ts";
 
+// Low-level AST expression factories (advanced use)
 export {
-  and as rawAnd,
   between,
   binOp,
   cast,
@@ -62,7 +62,6 @@ export {
   lte,
   neq,
   not,
-  or as rawOr,
   param,
   raw,
   star,
@@ -74,37 +73,12 @@ export { ASTTransformer } from "./ast/transformer.ts";
 export { visitNode } from "./ast/visitor.ts";
 export type { ASTVisitor } from "./ast/visitor.ts";
 export type { Expression } from "./ast/typed-expression.ts";
-export {
-  typedAdd,
-  typedAnd,
-  typedBetween,
-  typedCol,
-  typedDiv,
-  typedEq,
-  typedGt,
-  typedGte,
-  typedIn,
-  typedIsNotNull,
-  typedIsNull,
-  typedLike,
-  typedLit,
-  typedLt,
-  typedLte,
-  typedMul,
-  typedNeq,
-  typedNot,
-  typedOr,
-  typedParam,
-  typedSub,
-  unwrap,
-} from "./ast/typed-expression.ts";
 
 // Builders
 export { select, SelectBuilder } from "./builder/select.ts";
 export { insert, InsertBuilder } from "./builder/insert.ts";
 export { update, UpdateBuilder } from "./builder/update.ts";
 export { deleteFrom, DeleteBuilder } from "./builder/delete.ts";
-export { val as rawVal, resetParamCounter } from "./builder/expression.ts";
 
 // Printers
 export { BasePrinter } from "./printer/base.ts";

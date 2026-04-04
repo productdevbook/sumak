@@ -1,56 +1,39 @@
 import { describe, expect, it } from "vitest";
-import { Lale } from "../../src/lale.ts";
+import { lale } from "../../src/lale.ts";
 import { pgDialect } from "../../src/dialect/pg.ts";
 import { mysqlDialect } from "../../src/dialect/mysql.ts";
-import { defineTable } from "../../src/schema/table.ts";
-import type { InferTable } from "../../src/schema/table.ts";
-import { boolean, serial, text, timestamp } from "../../src/schema/column.ts";
-import {
-  typedCol,
-  typedEq,
-  typedGt,
-  typedLit,
-  typedParam,
-} from "../../src/ast/typed-expression.ts";
-// Schema
-const users = defineTable("users", {
-  id: serial().primaryKey(),
-  name: text().notNull(),
-  email: text().notNull(),
-  active: boolean().defaultTo(true),
-  createdAt: timestamp().defaultTo("now()"),
+import { boolean, integer, serial, text, timestamp } from "../../src/schema/column.ts";
+import { and } from "../../src/builder/eb.ts";
+
+const db = lale({
+  dialect: pgDialect(),
+  tables: {
+    users: {
+      id: serial().primaryKey(),
+      name: text().notNull(),
+      email: text().notNull(),
+      active: boolean().defaultTo(true),
+      createdAt: timestamp().defaultTo("now()"),
+    },
+    posts: {
+      id: serial().primaryKey(),
+      title: text().notNull(),
+      userId: integer(),
+    },
+  },
 });
 
-const posts = defineTable("posts", {
-  id: serial().primaryKey(),
-  title: text().notNull(),
-  userId: serial(),
-});
-
-type DB = {
-  users: InferTable<typeof users>;
-  posts: InferTable<typeof posts>;
-};
-
-const db = new Lale<DB>(pgDialect());
 const printer = db.printer();
 
 describe("TypedSelectBuilder", () => {
   it("builds SELECT * FROM table", () => {
     const q = db.selectFrom("users");
-    const result = q.compile(printer);
-    expect(result.sql).toBe('SELECT * FROM "users"');
+    expect(q.compile(printer).sql).toBe('SELECT * FROM "users"');
   });
 
   it("builds SELECT with specific columns", () => {
     const q = db.selectFrom("users").select("id", "name");
-    const result = q.compile(printer);
-    expect(result.sql).toBe('SELECT "id", "name" FROM "users"');
-  });
-
-  it("infers correct output type for select", () => {
-    const q = db.selectFrom("users").select("id", "name");
-    expect(q.compile(printer).sql).toContain('"id"');
+    expect(q.compile(printer).sql).toBe('SELECT "id", "name" FROM "users"');
   });
 
   it("builds SELECT DISTINCT", () => {
@@ -58,31 +41,29 @@ describe("TypedSelectBuilder", () => {
     expect(q.compile(printer).sql).toContain("DISTINCT");
   });
 
-  it("builds SELECT with WHERE", () => {
+  it("builds SELECT with WHERE callback", () => {
     const q = db
       .selectFrom("users")
       .select("id", "name")
-      .where(typedEq(typedCol<number>("id"), typedParam(0, 42)));
+      .where(({ id }) => id.eq(42));
     const result = q.compile(printer);
     expect(result.sql).toContain("WHERE");
     expect(result.sql).toContain("$1");
     expect(result.params).toEqual([42]);
   });
 
-  it("builds SELECT with INNER JOIN", () => {
+  it("builds SELECT with INNER JOIN callback", () => {
     const q = db
       .selectFrom("users")
-      .innerJoin("posts", typedEq(typedCol<number>("users.id"), typedCol<number>("posts.userId")));
-    const result = q.compile(printer);
-    expect(result.sql).toContain("INNER JOIN");
+      .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
+    expect(q.compile(printer).sql).toContain("INNER JOIN");
   });
 
-  it("builds SELECT with LEFT JOIN", () => {
+  it("builds SELECT with LEFT JOIN callback", () => {
     const q = db
       .selectFrom("users")
-      .leftJoin("posts", typedEq(typedCol<number>("users.id"), typedCol<number>("posts.userId")));
-    const result = q.compile(printer);
-    expect(result.sql).toContain("LEFT JOIN");
+      .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId));
+    expect(q.compile(printer).sql).toContain("LEFT JOIN");
   });
 
   it("builds SELECT with ORDER BY", () => {
@@ -101,7 +82,7 @@ describe("TypedSelectBuilder", () => {
     const q = db
       .selectFrom("users")
       .groupBy("active")
-      .having(typedGt(typedCol<number>("id"), typedLit(5)));
+      .having(({ id }) => id.gt(5));
     const result = q.compile(printer);
     expect(result.sql).toContain("GROUP BY");
     expect(result.sql).toContain("HAVING");
@@ -113,7 +94,10 @@ describe("TypedSelectBuilder", () => {
   });
 
   it("works with MySQL dialect", () => {
-    const mysqlDb = new Lale<DB>(mysqlDialect());
+    const mysqlDb = lale({
+      dialect: mysqlDialect(),
+      tables: { users: { id: serial(), name: text().notNull() } },
+    });
     const q = mysqlDb.selectFrom("users").select("id");
     const result = q.compile(mysqlDb.printer());
     expect(result.sql).toContain("`id`");
@@ -123,7 +107,15 @@ describe("TypedSelectBuilder", () => {
   it("builds UNION query", () => {
     const q1 = db.selectFrom("users").select("id");
     const q2 = db.selectFrom("users").select("id");
-    const result = q1.union(q2).compile(printer);
-    expect(result.sql).toContain("UNION");
+    expect(q1.union(q2).compile(printer).sql).toContain("UNION");
+  });
+
+  it("composes and/or in where", () => {
+    const q = db
+      .selectFrom("users")
+      .where(({ active, name }) => and(active.eq(true), name.like("%ali%")));
+    const result = q.compile(printer);
+    expect(result.sql).toContain("AND");
+    expect(result.sql).toContain("LIKE");
   });
 });
