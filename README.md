@@ -1,6 +1,6 @@
 <p align="center">
   <br>
-  <img src=".github/assets/cover.png" alt="pamuk — Type-safe SQL query builder" width="100%">
+  <img src=".github/assets/cover.jpg" alt="pamuk — Type-safe SQL query builder" width="100%">
   <br><br>
   <b style="font-size: 2em;">pamuk</b>
   <br><br>
