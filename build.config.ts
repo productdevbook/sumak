@@ -2,17 +2,11 @@ import { defineBuildConfig } from "obuild/config"
 
 export default defineBuildConfig({
   entries: [
-    {
-      type: "bundle",
-      input: [
-        "./src/index.ts",
-        "./src/pg.ts",
-        "./src/mssql.ts",
-        "./src/mysql.ts",
-        "./src/sqlite.ts",
-        "./src/schema.ts",
-      ],
-      minify: true,
-    },
+    { type: "bundle", input: "./src/index.ts" },
+    { type: "bundle", input: "./src/pg.ts" },
+    { type: "bundle", input: "./src/mssql.ts" },
+    { type: "bundle", input: "./src/mysql.ts" },
+    { type: "bundle", input: "./src/sqlite.ts" },
+    { type: "bundle", input: "./src/schema.ts" },
   ],
 })
