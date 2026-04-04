@@ -5,93 +5,102 @@
       <feColorMatrix type="saturate" values="0"/>
       <feBlend in="SourceGraphic" mode="overlay" result="blend"/>
       <feComponentTransfer>
-        <feFuncA type="linear" slope="0.04"/>
+        <feFuncA type="linear" slope="0.05"/>
       </feComponentTransfer>
       <feBlend in="SourceGraphic" mode="normal"/>
     </filter>
 
-    <filter id="glow-rose" x="-50%" y="-50%" width="200%" height="200%">
+    <filter id="glow-crimson" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="14" result="blur"/>
-      <feFlood flood-color="#e11d48" flood-opacity="0.35"/>
-      <feComposite in2="blur" operator="in"/>
-      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-
-    <filter id="glow-pink" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="12" result="blur"/>
-      <feFlood flood-color="#ec4899" flood-opacity="0.3"/>
-      <feComposite in2="blur" operator="in"/>
-      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-
-    <filter id="glow-violet" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="12" result="blur"/>
-      <feFlood flood-color="#8b5cf6" flood-opacity="0.3"/>
-      <feComposite in2="blur" operator="in"/>
-      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-
-    <filter id="glow-fuchsia" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="10" result="blur"/>
-      <feFlood flood-color="#d946ef" flood-opacity="0.25"/>
+      <feFlood flood-color="#fef2f2" flood-opacity="0.5"/>
       <feComposite in2="blur" operator="in"/>
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
 
     <filter id="glow-amber" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="10" result="blur"/>
-      <feFlood flood-color="#f59e0b" flood-opacity="0.25"/>
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feFlood flood-color="#fffbeb" flood-opacity="0.4"/>
       <feComposite in2="blur" operator="in"/>
       <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
 
-    <radialGradient id="ambientRose" cx="0.05" cy="0.2" r="0.45">
-      <stop offset="0%" stop-color="#e11d48" stop-opacity="0.08"/>
-      <stop offset="100%" stop-color="#e11d48" stop-opacity="0"/>
+    <filter id="glow-rose" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feFlood flood-color="#fff1f2" flood-opacity="0.4"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <filter id="glow-orange" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feFlood flood-color="#fff7ed" flood-opacity="0.35"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <filter id="glow-yellow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feFlood flood-color="#fefce8" flood-opacity="0.3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Tulip gradient background — deep red to warm orange -->
+    <linearGradient id="tulipBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4c0519"/>
+      <stop offset="30%" stop-color="#881337"/>
+      <stop offset="60%" stop-color="#9f1239"/>
+      <stop offset="100%" stop-color="#7c2d12"/>
+    </linearGradient>
+
+    <!-- Ambient color washes -->
+    <radialGradient id="warmRed" cx="0.1" cy="0.2" r="0.5">
+      <stop offset="0%" stop-color="#dc2626" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#dc2626" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="ambientPink" cx="0.95" cy="0.15" r="0.4">
-      <stop offset="0%" stop-color="#ec4899" stop-opacity="0.06"/>
-      <stop offset="100%" stop-color="#ec4899" stop-opacity="0"/>
+    <radialGradient id="warmOrange" cx="0.9" cy="0.15" r="0.45">
+      <stop offset="0%" stop-color="#ea580c" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#ea580c" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="ambientViolet" cx="0.05" cy="0.85" r="0.4">
-      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.05"/>
-      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+    <radialGradient id="warmYellow" cx="0.85" cy="0.85" r="0.4">
+      <stop offset="0%" stop-color="#ca8a04" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#ca8a04" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="ambientFuchsia" cx="0.95" cy="0.85" r="0.4">
-      <stop offset="0%" stop-color="#d946ef" stop-opacity="0.04"/>
-      <stop offset="100%" stop-color="#d946ef" stop-opacity="0"/>
+    <radialGradient id="deepRose" cx="0.1" cy="0.85" r="0.4">
+      <stop offset="0%" stop-color="#be123c" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#be123c" stop-opacity="0"/>
     </radialGradient>
 
     <radialGradient id="centerBackdrop" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0%" stop-color="#fafaf9" stop-opacity="0.97"/>
-      <stop offset="50%" stop-color="#fafaf9" stop-opacity="0.92"/>
-      <stop offset="75%" stop-color="#fafaf9" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#fafaf9" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#4c0519" stop-opacity="0.97"/>
+      <stop offset="50%" stop-color="#4c0519" stop-opacity="0.9"/>
+      <stop offset="75%" stop-color="#4c0519" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#4c0519" stop-opacity="0"/>
     </radialGradient>
 
-    <pattern id="dotGrid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <circle cx="16" cy="16" r="0.7" fill="#d4d4d4" opacity="0.4"/>
+    <pattern id="dotGrid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <circle cx="15" cy="15" r="0.6" fill="#fecdd3" opacity="0.12"/>
     </pattern>
 
     <radialGradient id="vignetteGrad" cx="0.5" cy="0.5" r="0.75">
       <stop offset="0%" stop-color="transparent"/>
-      <stop offset="100%" stop-color="#fafaf9"/>
+      <stop offset="100%" stop-color="#2d0a16"/>
     </radialGradient>
   </defs>
 
-  <!-- Background — warm white -->
-  <rect width="1200" height="628" fill="#fafaf9"/>
-  <rect width="1200" height="628" fill="url(#ambientRose)"/>
-  <rect width="1200" height="628" fill="url(#ambientPink)"/>
-  <rect width="1200" height="628" fill="url(#ambientViolet)"/>
-  <rect width="1200" height="628" fill="url(#ambientFuchsia)"/>
-  <rect width="1200" height="628" fill="url(#dotGrid)" opacity="0.5"/>
+  <!-- Background — tulip deep red/rose -->
+  <rect width="1200" height="628" fill="url(#tulipBg)"/>
+  <rect width="1200" height="628" fill="url(#warmRed)"/>
+  <rect width="1200" height="628" fill="url(#warmOrange)"/>
+  <rect width="1200" height="628" fill="url(#warmYellow)"/>
+  <rect width="1200" height="628" fill="url(#deepRose)"/>
+  <rect width="1200" height="628" fill="url(#dotGrid)" opacity="0.6"/>
 
   <!-- ════════════════════════════════════════ -->
-  <!-- SELECT QUERY — top left (LARGE)         -->
+  <!-- SELECT QUERY — top left                 -->
   <!-- ════════════════════════════════════════ -->
-  <g transform="translate(-30, -30) rotate(-6, 200, 200)" filter="url(#glow-rose)" opacity="0.7">
-    <text font-family="'SF Mono','Fira Code',monospace" font-size="22" fill="#e11d48">
+  <g transform="translate(-30, -30) rotate(-6, 200, 200)" filter="url(#glow-crimson)" opacity="0.75">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="22" fill="#fecdd3">
       <tspan x="30" y="40" font-weight="bold">SELECT</tspan>
       <tspan x="60" y="70">"id",</tspan>
       <tspan x="60" y="100">"name",</tspan>
@@ -107,15 +116,15 @@
       <tspan x="30" y="440" font-weight="bold">LIMIT</tspan>
       <tspan x="60" y="470">10</tspan>
     </text>
-    <text x="150" y="510" text-anchor="middle" fill="#e11d48" opacity="0.4" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">POSTGRESQL</text>
+    <text x="150" y="510" text-anchor="middle" fill="#fecdd3" opacity="0.35" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">POSTGRESQL</text>
   </g>
 
   <!-- ════════════════════════════════════════ -->
-  <!-- TypeScript API — top right (LARGE)      -->
+  <!-- TypeScript API — top right              -->
   <!-- ════════════════════════════════════════ -->
-  <g transform="translate(820, -40) rotate(6, 200, 200)" filter="url(#glow-pink)" opacity="0.65">
-    <text font-family="'SF Mono','Fira Code',monospace" font-size="19" fill="#ec4899">
-      <tspan x="0" y="30" opacity="0.5">// type-safe</tspan>
+  <g transform="translate(820, -40) rotate(6, 200, 200)" filter="url(#glow-amber)" opacity="0.7">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="19" fill="#fed7aa">
+      <tspan x="0" y="30" opacity="0.6">// type-safe</tspan>
       <tspan x="0" y="62">db</tspan>
       <tspan x="0" y="92">  .selectFrom("users")</tspan>
       <tspan x="0" y="122">  .select("id", "name")</tspan>
@@ -124,7 +133,7 @@
       <tspan x="0" y="212">  )</tspan>
       <tspan x="0" y="242">  .orderBy("name")</tspan>
       <tspan x="0" y="272">  .limit(10)</tspan>
-      <tspan x="0" y="316" opacity="0.5">// joins</tspan>
+      <tspan x="0" y="316" opacity="0.6">// joins</tspan>
       <tspan x="0" y="348">.innerJoin("posts",</tspan>
       <tspan x="0" y="378">  ({ users, posts }) =&gt;</tspan>
       <tspan x="0" y="408">    users.id.eqCol(</tspan>
@@ -132,14 +141,14 @@
       <tspan x="0" y="468">    )</tspan>
       <tspan x="0" y="498">)</tspan>
     </text>
-    <text x="160" y="540" text-anchor="middle" fill="#ec4899" opacity="0.4" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">TYPESCRIPT</text>
+    <text x="160" y="540" text-anchor="middle" fill="#fed7aa" opacity="0.35" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">TYPESCRIPT</text>
   </g>
 
   <!-- ════════════════════════════════════════ -->
-  <!-- AST nodes — bottom left (LARGE)         -->
+  <!-- AST nodes — bottom left                 -->
   <!-- ════════════════════════════════════════ -->
-  <g transform="translate(-20, 340) rotate(4, 200, 140)" filter="url(#glow-violet)" opacity="0.55">
-    <text font-family="'SF Mono','Fira Code',monospace" font-size="18" fill="#8b5cf6">
+  <g transform="translate(-20, 340) rotate(4, 200, 140)" filter="url(#glow-rose)" opacity="0.6">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="18" fill="#fda4af">
       <tspan x="30" y="30">SelectNode {</tspan>
       <tspan x="56" y="58">type: "select"</tspan>
       <tspan x="56" y="86">columns: [ColumnRefNode]</tspan>
@@ -151,14 +160,14 @@
       <tspan x="56" y="254">}</tspan>
       <tspan x="30" y="282">}</tspan>
     </text>
-    <text x="160" y="316" text-anchor="middle" fill="#8b5cf6" opacity="0.35" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">AST</text>
+    <text x="160" y="316" text-anchor="middle" fill="#fda4af" opacity="0.3" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">AST</text>
   </g>
 
   <!-- ════════════════════════════════════════ -->
-  <!-- Dialects — bottom right (LARGE)         -->
+  <!-- Dialects — bottom right                 -->
   <!-- ════════════════════════════════════════ -->
-  <g transform="translate(860, 380) rotate(-5, 160, 100)" filter="url(#glow-fuchsia)" opacity="0.5">
-    <text font-family="'SF Mono','Fira Code',monospace" font-size="20" fill="#d946ef">
+  <g transform="translate(860, 380) rotate(-5, 160, 100)" filter="url(#glow-orange)" opacity="0.55">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="20" fill="#fdba74">
       <tspan x="0" y="24" font-weight="bold">PostgreSQL</tspan>
       <tspan x="20" y="54">"id" = $1</tspan>
       <tspan x="0" y="94" font-weight="bold">MySQL</tspan>
@@ -166,14 +175,14 @@
       <tspan x="0" y="164" font-weight="bold">SQLite</tspan>
       <tspan x="20" y="194">"id" = ?</tspan>
     </text>
-    <text x="100" y="236" text-anchor="middle" fill="#d946ef" opacity="0.35" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">DIALECTS</text>
+    <text x="100" y="236" text-anchor="middle" fill="#fdba74" opacity="0.3" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold" letter-spacing="5">DIALECTS</text>
   </g>
 
   <!-- ════════════════════════════════════════ -->
-  <!-- Plugin hooks — far right mid (LARGE)    -->
+  <!-- Plugin hooks — far right mid            -->
   <!-- ════════════════════════════════════════ -->
-  <g transform="translate(1020, 140) rotate(10, 80, 100)" filter="url(#glow-amber)" opacity="0.4">
-    <text font-family="'SF Mono','Fira Code',monospace" font-size="17" fill="#f59e0b">
+  <g transform="translate(1020, 140) rotate(10, 80, 100)" filter="url(#glow-yellow)" opacity="0.45">
+    <text font-family="'SF Mono','Fira Code',monospace" font-size="17" fill="#fde68a">
       <tspan x="0" y="24" font-weight="bold">hooks</tspan>
       <tspan x="0" y="56">query:before</tspan>
       <tspan x="0" y="82">query:after</tspan>
@@ -181,11 +190,11 @@
       <tspan x="0" y="134">insert:before</tspan>
       <tspan x="0" y="160">result:transform</tspan>
     </text>
-    <text x="80" y="198" text-anchor="middle" fill="#f59e0b" opacity="0.3" font-family="'SF Mono','Fira Code',monospace" font-size="14" font-weight="bold" letter-spacing="4">HOOKS</text>
+    <text x="80" y="198" text-anchor="middle" fill="#fde68a" opacity="0.25" font-family="'SF Mono','Fira Code',monospace" font-size="14" font-weight="bold" letter-spacing="4">HOOKS</text>
   </g>
 
   <!-- ════════════════════════════════════════ -->
-  <!-- CENTER LIGHT BACKDROP                   -->
+  <!-- CENTER BACKDROP                         -->
   <!-- ════════════════════════════════════════ -->
   <rect width="1200" height="628" fill="url(#centerBackdrop)"/>
 
@@ -194,55 +203,55 @@
   <!-- ════════════════════════════════════════ -->
 
   <!-- "lale" wordmark -->
-  <text x="600" y="264" text-anchor="middle" fill="#1c1917" font-family="'Georgia','Playfair Display','Times New Roman',serif" font-size="152" font-weight="bold" letter-spacing="-4" opacity="0.95">lale</text>
+  <text x="600" y="264" text-anchor="middle" fill="#fff1f2" font-family="'Georgia','Playfair Display','Times New Roman',serif" font-size="152" font-weight="bold" letter-spacing="-4" opacity="0.97">lale</text>
 
-  <!-- Thin rule — rose -->
-  <line x1="340" y1="290" x2="860" y2="290" stroke="#e11d48" stroke-width="1.5" opacity="0.3"/>
+  <!-- Thin rule -->
+  <line x1="340" y1="290" x2="860" y2="290" stroke="#fda4af" stroke-width="1.5" opacity="0.35"/>
 
   <!-- Tagline -->
-  <text x="600" y="332" text-anchor="middle" fill="#57534e" font-family="'SF Mono','Fira Code','Menlo',monospace" font-size="19" letter-spacing="6">TYPE-SAFE SQL QUERY BUILDER</text>
+  <text x="600" y="332" text-anchor="middle" fill="#fecdd3" font-family="'SF Mono','Fira Code','Menlo',monospace" font-size="19" letter-spacing="6">TYPE-SAFE SQL QUERY BUILDER</text>
 
-  <!-- Feature pills -->
+  <!-- Feature pills — warm tulip spectrum -->
   <g font-family="'SF Mono','Fira Code','Menlo',monospace" font-size="14" letter-spacing="1.5">
     <g transform="translate(144, 360)">
-      <rect x="0" y="0" width="164" height="38" rx="19" fill="#e11d4808" stroke="#e11d48" stroke-width="1.3" opacity="0.6"/>
-      <text x="82" y="25" text-anchor="middle" fill="#e11d48" opacity="0.85">0 DEPENDENCIES</text>
+      <rect x="0" y="0" width="164" height="38" rx="19" fill="#fecdd315" stroke="#fecdd3" stroke-width="1.2" opacity="0.6"/>
+      <text x="82" y="25" text-anchor="middle" fill="#fecdd3" opacity="0.9">0 DEPENDENCIES</text>
     </g>
     <g transform="translate(324, 360)">
-      <rect x="0" y="0" width="120" height="38" rx="19" fill="#ec489908" stroke="#ec4899" stroke-width="1.3" opacity="0.6"/>
-      <text x="60" y="25" text-anchor="middle" fill="#ec4899" opacity="0.85">AST-FIRST</text>
+      <rect x="0" y="0" width="120" height="38" rx="19" fill="#fda4af15" stroke="#fda4af" stroke-width="1.2" opacity="0.6"/>
+      <text x="60" y="25" text-anchor="middle" fill="#fda4af" opacity="0.9">AST-FIRST</text>
     </g>
     <g transform="translate(460, 360)">
-      <rect x="0" y="0" width="128" height="38" rx="19" fill="#8b5cf608" stroke="#8b5cf6" stroke-width="1.3" opacity="0.6"/>
-      <text x="64" y="25" text-anchor="middle" fill="#8b5cf6" opacity="0.85">TYPE-SAFE</text>
+      <rect x="0" y="0" width="128" height="38" rx="19" fill="#fdba7415" stroke="#fdba74" stroke-width="1.2" opacity="0.6"/>
+      <text x="64" y="25" text-anchor="middle" fill="#fdba74" opacity="0.9">TYPE-SAFE</text>
     </g>
     <g transform="translate(604, 360)">
-      <rect x="0" y="0" width="120" height="38" rx="19" fill="#d946ef08" stroke="#d946ef" stroke-width="1.3" opacity="0.6"/>
-      <text x="60" y="25" text-anchor="middle" fill="#d946ef" opacity="0.85">HOOKABLE</text>
+      <rect x="0" y="0" width="120" height="38" rx="19" fill="#fde68a15" stroke="#fde68a" stroke-width="1.2" opacity="0.6"/>
+      <text x="60" y="25" text-anchor="middle" fill="#fde68a" opacity="0.9">HOOKABLE</text>
     </g>
     <g transform="translate(740, 360)">
-      <rect x="0" y="0" width="172" height="38" rx="19" fill="#f59e0b08" stroke="#f59e0b" stroke-width="1.3" opacity="0.6"/>
-      <text x="86" y="25" text-anchor="middle" fill="#f59e0b" opacity="0.85">TREE-SHAKEABLE</text>
+      <rect x="0" y="0" width="172" height="38" rx="19" fill="#fed7aa15" stroke="#fed7aa" stroke-width="1.2" opacity="0.6"/>
+      <text x="86" y="25" text-anchor="middle" fill="#fed7aa" opacity="0.9">TREE-SHAKEABLE</text>
     </g>
   </g>
 
-  <!-- Dialect list -->
-  <text x="600" y="436" text-anchor="middle" fill="#78716c" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="2.5">POSTGRESQL · MYSQL · SQLITE · PLUGINS · HOOKS · WADLER PRINTER</text>
+  <!-- Feature list -->
+  <text x="600" y="436" text-anchor="middle" fill="#fda4af" opacity="0.6" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="2.5">POSTGRESQL · MYSQL · SQLITE · PLUGINS · HOOKS · WADLER PRINTER</text>
 
   <!-- npm install badge -->
   <g transform="translate(496, 462)">
-    <rect x="0" y="0" width="208" height="40" rx="8" fill="#ffffff" stroke="#d6d3d1" stroke-width="1.2"/>
-    <text x="20" y="26" fill="#a8a29e" font-family="'SF Mono','Fira Code',monospace" font-size="16">$</text>
-    <text x="38" y="26" fill="#78716c" font-family="'SF Mono','Fira Code',monospace" font-size="16"> npm i </text>
-    <text x="118" y="26" fill="#1c1917" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold">lale</text>
+    <rect x="0" y="0" width="208" height="40" rx="8" fill="#4c051940" stroke="#fecdd330" stroke-width="1.2"/>
+    <text x="20" y="26" fill="#fda4af80" font-family="'SF Mono','Fira Code',monospace" font-size="16">$</text>
+    <text x="38" y="26" fill="#fda4af" font-family="'SF Mono','Fira Code',monospace" font-size="16"> npm i </text>
+    <text x="118" y="26" fill="#fff1f2" font-family="'SF Mono','Fira Code',monospace" font-size="16" font-weight="bold">lale</text>
   </g>
 
   <!-- GitHub link -->
-  <text x="600" y="556" text-anchor="middle" fill="#a8a29e" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="1.5">github.com/productdevbook/lale</text>
+  <text x="600" y="556" text-anchor="middle" fill="#fda4af" opacity="0.45" font-family="'SF Mono','Fira Code',monospace" font-size="13" letter-spacing="1.5">github.com/productdevbook/lale</text>
 
   <!-- Grain overlay -->
-  <rect width="1200" height="628" filter="url(#grain)" opacity="0.15"/>
+  <rect width="1200" height="628" filter="url(#grain)" opacity="0.2"/>
 
   <!-- Vignette -->
-  <rect width="1200" height="628" fill="url(#vignetteGrad)" opacity="0.4"/>
+  <rect width="1200" height="628" fill="url(#vignetteGrad)" opacity="0.35"/>
 </svg>
