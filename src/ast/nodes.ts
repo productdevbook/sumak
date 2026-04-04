@@ -55,6 +55,7 @@ export interface FunctionCallNode {
   name: string
   args: ExpressionNode[]
   distinct?: boolean
+  filter?: ExpressionNode
   alias?: string
 }
 

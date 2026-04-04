@@ -591,3 +591,16 @@ export function ceil(expr: Expression<number>): Expression<number> {
 export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
 }
+
+/**
+ * Attach FILTER (WHERE ...) to an aggregate expression.
+ *
+ * ```ts
+ * filter(count(), ({ active }) => active.eq(true))
+ * // COUNT(*) FILTER (WHERE "active" = $1)
+ * ```
+ */
+export function filter<T>(agg: Expression<T>, condition: Expression<boolean>): Expression<T> {
+  const fnNode = (agg as any).node as FunctionCallNode
+  return wrap<T>({ ...fnNode, filter: (condition as any).node })
+}

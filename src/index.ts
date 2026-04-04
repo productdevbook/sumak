@@ -193,6 +193,7 @@ export {
   currentTimestamp,
   denseRank,
   exists,
+  filter,
   floor,
   greatest,
   jsonRef,
