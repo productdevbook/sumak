@@ -727,6 +727,28 @@ export function ceil(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("CEIL", [(expr as any).node]))
 }
 
+/** JSON_AGG(expr) — aggregate rows into JSON array (PG) */
+export function jsonAgg<T>(expr: Expression<T>): Expression<T[]> {
+  return wrap(rawFn("JSON_AGG", [(expr as any).node]))
+}
+
+/** TO_JSON(expr) — convert value to JSON (PG) */
+export function toJson<T>(expr: Expression<T>): Expression<unknown> {
+  return wrap(rawFn("TO_JSON", [(expr as any).node]))
+}
+
+/** JSON_BUILD_OBJECT(key, value, ...) — build JSON object (PG) */
+export function jsonBuildObject(
+  ...pairs: [string, Expression<any>][]
+): Expression<Record<string, unknown>> {
+  const args: ExpressionNode[] = []
+  for (const [key, val] of pairs) {
+    args.push(rawLit(key))
+    args.push((val as any).node)
+  }
+  return wrap(rawFn("JSON_BUILD_OBJECT", args))
+}
+
 /** FLOOR(expr) */
 export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
