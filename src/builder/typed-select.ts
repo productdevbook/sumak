@@ -626,6 +626,53 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return this as any
   }
 
+  /**
+   * Cursor-based (keyset) pagination.
+   *
+   * Adds WHERE column > cursor (ASC) or column < cursor (DESC),
+   * ORDER BY column, and LIMIT pageSize + 1 (for hasNextPage detection).
+   *
+   * ```ts
+   * db.selectFrom("users")
+   *   .select("id", "name")
+   *   .cursorPaginate({ column: "id", after: 42, pageSize: 20 })
+   *   .toSQL()
+   * ```
+   */
+  cursorPaginate(options: {
+    column: keyof O & string
+    after?: unknown
+    before?: unknown
+    pageSize: number
+  }): TypedSelectBuilder<DB, TB, O> {
+    const { column, after, before, pageSize } = options
+    let builder: SelectBuilder = this._builder
+
+    if (after !== undefined) {
+      const condition: import("../ast/nodes.ts").ExpressionNode = {
+        type: "binary_op",
+        op: ">",
+        left: { type: "column_ref", column },
+        right: { type: "param", index: 0, value: after },
+      }
+      builder = builder.where(condition)
+      builder = builder.orderBy(column, "ASC")
+    } else if (before !== undefined) {
+      const condition: import("../ast/nodes.ts").ExpressionNode = {
+        type: "binary_op",
+        op: "<",
+        left: { type: "column_ref", column },
+        right: { type: "param", index: 0, value: before },
+      }
+      builder = builder.where(condition)
+      builder = builder.orderBy(column, "DESC")
+    }
+
+    builder = builder.limit({ type: "literal", value: pageSize + 1 })
+
+    return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
+  }
+
   /** Build the AST node. */
   build(): SelectNode {
     return this._builder.build()

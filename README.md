@@ -689,6 +689,38 @@ Available: `clearWhere()`, `clearOrderBy()`, `clearLimit()`, `clearOffset()`, `c
 
 ---
 
+## Cursor Pagination
+
+```ts
+// Forward pagination (after cursor)
+db.selectFrom("users")
+  .select("id", "name")
+  .cursorPaginate({ column: "id", after: 42, pageSize: 20 })
+  .toSQL()
+// SELECT "id", "name" FROM "users" WHERE ("id" > $1) ORDER BY "id" ASC LIMIT 21
+// params: [42] — pageSize + 1 for hasNextPage detection
+
+// Backward pagination (before cursor)
+db.selectFrom("users")
+  .select("id", "name")
+  .cursorPaginate({ column: "id", before: 100, pageSize: 20 })
+  .toSQL()
+// WHERE ("id" < $1) ORDER BY "id" DESC LIMIT 21
+
+// First page (no cursor)
+db.selectFrom("users").select("id", "name").cursorPaginate({ column: "id", pageSize: 20 }).toSQL()
+// LIMIT 21
+
+// With existing WHERE — ANDs together
+db.selectFrom("users")
+  .select("id", "name")
+  .where(({ active }) => active.eq(true))
+  .cursorPaginate({ column: "id", after: lastId, pageSize: 20 })
+  .toSQL()
+```
+
+---
+
 ## Raw SQL
 
 ### `sql` tagged template
@@ -1094,25 +1126,6 @@ const plugin = new DataMaskingPlugin({
 })
 
 const db = sumak({ plugins: [plugin], ... })
-```
-
-### CursorPaginationPlugin
-
-```ts
-// Keyset (cursor-based) pagination — stable, no offset drift
-const db = sumak({
-  plugins: [
-    new CursorPaginationPlugin({
-      pageSize: 20,
-      cursor: { column: "id", value: lastSeenId, direction: "ASC" },
-    }),
-  ],
-  ...
-})
-
-db.selectFrom("users").select("id", "name").toSQL()
-// SELECT "id", "name" FROM "users" WHERE ("id" > $1) ORDER BY "id" ASC LIMIT 21
-// pageSize + 1 → detect hasNextPage by checking if result.length > pageSize
 ```
 
 ### Combining Plugins
