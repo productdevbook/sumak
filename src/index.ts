@@ -115,15 +115,15 @@ export { formatSQL } from "./printer/formatter.ts";
 export type { FormatOptions } from "./printer/formatter.ts";
 export type { Printer, PrinterOptions, PrintMode } from "./printer/types.ts";
 export {
-  concat,
-  empty,
-  group,
-  join,
-  line,
-  nest,
-  render,
-  text,
-  textLine,
+  concat as docConcat,
+  empty as docEmpty,
+  group as docGroup,
+  join as docJoin,
+  line as docLine,
+  nest as docNest,
+  render as docRender,
+  text as docText,
+  textLine as docTextLine,
 } from "./printer/document.ts";
 export type { Doc } from "./printer/document.ts";
 
