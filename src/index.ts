@@ -224,6 +224,7 @@ export {
   or,
   over,
   rank,
+  rawExpr,
   resetParams,
   round,
   rowNumber,

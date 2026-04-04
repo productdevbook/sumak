@@ -194,9 +194,19 @@ export class Col<T> {
     return wrap(binOp(">", this._node, (value as any).node))
   }
 
+  /** >= with Expression value */
+  gteExpr(value: Expression<T>): Expression<boolean> {
+    return wrap(binOp(">=", this._node, (value as any).node))
+  }
+
   /** < with Expression value */
   ltExpr(value: Expression<T>): Expression<boolean> {
     return wrap(binOp("<", this._node, (value as any).node))
+  }
+
+  /** <= with Expression value */
+  lteExpr(value: Expression<T>): Expression<boolean> {
+    return wrap(binOp("<=", this._node, (value as any).node))
   }
 
   /** IS DISTINCT FROM — null-safe inequality */
@@ -300,19 +310,35 @@ export type WhereCallback<DB, TB extends keyof DB> = (
 
 // ── Combinators for callback results ──
 
-/** AND two expressions */
-export function and(left: Expression<boolean>, right: Expression<boolean>): Expression<boolean> {
-  return wrap(rawAnd((left as any).node, (right as any).node))
+/** AND expressions — variadic: and(a, b) or and(a, b, c, ...) */
+export function and(...exprs: Expression<boolean>[]): Expression<boolean> {
+  if (exprs.length === 0) return wrap(rawLit(true))
+  if (exprs.length === 1) return exprs[0]!
+  return exprs.reduce((acc, expr) => wrap(rawAnd((acc as any).node, (expr as any).node)))
 }
 
-/** OR two expressions */
-export function or(left: Expression<boolean>, right: Expression<boolean>): Expression<boolean> {
-  return wrap(rawOr((left as any).node, (right as any).node))
+/** OR expressions — variadic: or(a, b) or or(a, b, c, ...) */
+export function or(...exprs: Expression<boolean>[]): Expression<boolean> {
+  if (exprs.length === 0) return wrap(rawLit(false))
+  if (exprs.length === 1) return exprs[0]!
+  return exprs.reduce((acc, expr) => wrap(rawOr((acc as any).node, (expr as any).node)))
 }
 
 /** Raw literal value as expression */
 export function val<T extends string | number | boolean | null>(value: T): Expression<T> {
   return wrap<T>(rawLit(value))
+}
+
+/**
+ * Raw SQL expression — escape hatch for arbitrary SQL in expressions.
+ *
+ * ```ts
+ * .where(() => rawExpr("age > 18"))
+ * .selectExpr(rawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
+ * ```
+ */
+export function rawExpr<T = unknown>(sql: string, params: unknown[] = []): Expression<T> {
+  return wrap<T>({ type: "raw", sql, params })
 }
 
 /** SQL function call */
