@@ -1060,16 +1060,22 @@ db.update("users").set({ name: "Bob" }).where(({ id }) => id.eq(1)).toSQL()
 
 ```ts
 // Auto-inject tenant_id on all queries
+// Use a callback for per-request tenant resolution:
 const db = sumak({
-  plugins: [new MultiTenantPlugin({ tables: ["users", "posts"], tenantId: 42 })],
+  plugins: [
+    new MultiTenantPlugin({
+      tables: ["users", "posts"],
+      tenantId: () => getCurrentTenantId(),  // called per query
+    }),
+  ],
   ...
 })
 
 db.selectFrom("users").select("id").toSQL()
-// SELECT "id" FROM "users" WHERE ("tenant_id" = $1)  — params: [42]
+// SELECT "id" FROM "users" WHERE ("tenant_id" = $1)
 
 db.insertInto("users").values({ name: "Alice" }).toSQL()
-// INSERT INTO "users" ("name", "tenant_id") VALUES ($1, $2)  — params: ["Alice", 42]
+// INSERT INTO "users" ("name", "tenant_id") VALUES ($1, $2)
 ```
 
 ### QueryLimitPlugin
@@ -1102,14 +1108,22 @@ const db = sumak({
 
 ```ts
 // Auto-inject WHERE version = N and SET version = version + 1 on UPDATE
+// Use a callback for per-row version:
+let rowVersion = 3
 const db = sumak({
-  plugins: [new OptimisticLockPlugin({ tables: ["users"], currentVersion: 3 })],
+  plugins: [
+    new OptimisticLockPlugin({
+      tables: ["users"],
+      currentVersion: () => rowVersion,  // called per query
+    }),
+  ],
   ...
 })
 
+rowVersion = fetchedRow.version  // set before each update
 db.update("users").set({ name: "Bob" }).where(({ id }) => id.eq(1)).toSQL()
 // UPDATE "users" SET "name" = $1, "version" = ("version" + 1)
-//   WHERE ("id" = $2) AND ("version" = $3)  — params: ["Bob", 1, 3]
+//   WHERE ("id" = $2) AND ("version" = $3)
 ```
 
 ### DataMaskingPlugin
@@ -1137,7 +1151,7 @@ const db = sumak({
     new WithSchemaPlugin("public"),
     new SoftDeletePlugin({ tables: ["users"] }),
     new AuditTimestampPlugin({ tables: ["users", "posts"] }),
-    new MultiTenantPlugin({ tables: ["users", "posts"], tenantId: currentTenantId }),
+    new MultiTenantPlugin({ tables: ["users", "posts"], tenantId: () => currentTenantId }),
     new QueryLimitPlugin({ maxRows: 5000 }),
   ],
   tables: { ... },

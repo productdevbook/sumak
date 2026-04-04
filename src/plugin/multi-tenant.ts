@@ -15,22 +15,29 @@ import type { SumakPlugin } from "./types.ts"
  * - SELECT/UPDATE/DELETE: adds `WHERE tenant_id = ?` (ANDed with existing WHERE)
  * - INSERT: adds tenant_id column and value to each row
  *
+ * `tenantId` accepts a value OR a function that returns the value per-query.
+ * Use a function for per-request tenant resolution (JWT, session, etc.):
+ *
  * ```ts
- * const plugin = new MultiTenantPlugin({ tables: ["users", "posts"], tenantId: 42 })
- * // SELECT * FROM "users" WHERE active = true
- * // → SELECT * FROM "users" WHERE active = true AND "tenant_id" = ?
+ * new MultiTenantPlugin({
+ *   tables: ["users", "posts"],
+ *   tenantId: () => getCurrentTenantId(),
+ * })
  * ```
  */
 export class MultiTenantPlugin implements SumakPlugin {
   readonly name = "multi-tenant"
   private tables: ReadonlySet<string>
   private column: string
-  private tenantId: unknown
+  private getTenantId: () => unknown
 
-  constructor(config: { tables: string[]; column?: string; tenantId: unknown }) {
+  constructor(config: { tables: string[]; column?: string; tenantId: unknown | (() => unknown) }) {
     this.tables = new Set(config.tables)
     this.column = config.column ?? "tenant_id"
-    this.tenantId = config.tenantId
+    this.getTenantId =
+      typeof config.tenantId === "function"
+        ? (config.tenantId as () => unknown)
+        : () => config.tenantId
   }
 
   transformNode(node: ASTNode): ASTNode {
@@ -53,7 +60,7 @@ export class MultiTenantPlugin implements SumakPlugin {
   }
 
   private tenantCondition(): ExpressionNode {
-    return eq(col(this.column), param(0, this.tenantId))
+    return eq(col(this.column), param(0, this.getTenantId()))
   }
 
   private addCondition(existing: ExpressionNode | undefined): ExpressionNode {
@@ -80,8 +87,9 @@ export class MultiTenantPlugin implements SumakPlugin {
 
   private transformInsert(node: InsertNode): InsertNode {
     if (!this.isTargetTable(node.table.name)) return node
+    const tenantId = this.getTenantId()
     const columns = [...node.columns, this.column]
-    const values = node.values.map((row) => [...row, param(0, this.tenantId)])
+    const values = node.values.map((row) => [...row, param(0, tenantId)])
     return { ...node, columns, values }
   }
 }

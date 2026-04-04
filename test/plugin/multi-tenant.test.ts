@@ -81,4 +81,26 @@ describe("MultiTenantPlugin", () => {
     expect(q.sql).toContain('"org_id"')
     expect(q.params).toContain("abc")
   })
+
+  it("callback tenantId — changes per request", () => {
+    let currentTenant = 10
+    const db2 = sumak({
+      dialect: pgDialect(),
+      plugins: [new MultiTenantPlugin({ tables: ["users"], tenantId: () => currentTenant })],
+      tables: {
+        users: {
+          id: serial().primaryKey(),
+          name: text().notNull(),
+          tenant_id: integer().defaultTo(0),
+        },
+      },
+    })
+
+    const q1 = db2.selectFrom("users").select("id").toSQL()
+    expect(q1.params).toContain(10)
+
+    currentTenant = 99
+    const q2 = db2.selectFrom("users").select("id").toSQL()
+    expect(q2.params).toContain(99)
+  })
 })

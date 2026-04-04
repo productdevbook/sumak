@@ -80,4 +80,34 @@ describe("OptimisticLockPlugin", () => {
     expect(q.sql).toContain('"rev"')
     expect(q.params).toContain(5)
   })
+
+  it("callback version — changes per query", () => {
+    let version = 3
+    const db2 = sumak({
+      dialect: pgDialect(),
+      plugins: [new OptimisticLockPlugin({ tables: ["users"], currentVersion: () => version })],
+      tables: {
+        users: {
+          id: serial().primaryKey(),
+          name: text().notNull(),
+          version: integer().defaultTo(1),
+        },
+      },
+    })
+
+    const q1 = db2
+      .update("users")
+      .set({ name: "A" })
+      .where(({ id }) => id.eq(1))
+      .toSQL()
+    expect(q1.params).toContain(3)
+
+    version = 7
+    const q2 = db2
+      .update("users")
+      .set({ name: "B" })
+      .where(({ id }) => id.eq(2))
+      .toSQL()
+    expect(q2.params).toContain(7)
+  })
 })
