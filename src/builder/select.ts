@@ -136,8 +136,16 @@ export class SelectBuilder {
     return this.setOp("INTERSECT", query)
   }
 
+  intersectAll(query: SelectNode): SelectBuilder {
+    return this.setOp("INTERSECT ALL", query)
+  }
+
   except(query: SelectNode): SelectBuilder {
     return this.setOp("EXCEPT", query)
+  }
+
+  exceptAll(query: SelectNode): SelectBuilder {
+    return this.setOp("EXCEPT ALL", query)
   }
 
   private setOp(op: SetOperator, query: SelectNode): SelectBuilder {

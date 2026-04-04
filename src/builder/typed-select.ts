@@ -176,9 +176,19 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.intersect(query.build()), this._table)
   }
 
+  /** INTERSECT ALL */
+  intersectAll(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.intersectAll(query.build()), this._table)
+  }
+
   /** EXCEPT */
   except(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
     return new TypedSelectBuilder(this._builder.except(query.build()), this._table)
+  }
+
+  /** EXCEPT ALL */
+  exceptAll(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.exceptAll(query.build()), this._table)
   }
 
   /** FULL JOIN — both sides become nullable. */

@@ -132,6 +132,18 @@ describe("TypedSelectBuilder", () => {
     expect(q1.except(q2).compile(printer).sql).toContain("EXCEPT")
   })
 
+  it("builds INTERSECT ALL query", () => {
+    const q1 = db.selectFrom("users").select("id")
+    const q2 = db.selectFrom("users").select("id")
+    expect(q1.intersectAll(q2).compile(printer).sql).toContain("INTERSECT ALL")
+  })
+
+  it("builds EXCEPT ALL query", () => {
+    const q1 = db.selectFrom("users").select("id")
+    const q2 = db.selectFrom("users").select("id")
+    expect(q1.exceptAll(q2).compile(printer).sql).toContain("EXCEPT ALL")
+  })
+
   it("builds FULL JOIN", () => {
     const q = db
       .selectFrom("users")
