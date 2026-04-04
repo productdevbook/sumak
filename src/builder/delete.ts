@@ -14,6 +14,12 @@ export class DeleteBuilder {
   }
 
   where(expr: ExpressionNode): DeleteBuilder {
+    if (this.node.where) {
+      return new DeleteBuilder({
+        ...this.node,
+        where: { type: "binary_op", op: "AND", left: this.node.where, right: expr },
+      })
+    }
     return new DeleteBuilder({ ...this.node, where: expr })
   }
 

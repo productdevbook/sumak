@@ -21,6 +21,12 @@ export class UpdateBuilder {
   }
 
   where(expr: ExpressionNode): UpdateBuilder {
+    if (this.node.where) {
+      return new UpdateBuilder({
+        ...this.node,
+        where: { type: "binary_op", op: "AND", left: this.node.where, right: expr },
+      })
+    }
     return new UpdateBuilder({ ...this.node, where: expr })
   }
 

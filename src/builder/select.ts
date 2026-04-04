@@ -44,6 +44,12 @@ export class SelectBuilder {
   }
 
   where(expr: ExpressionNode): SelectBuilder {
+    if (this.node.where) {
+      return new SelectBuilder({
+        ...this.node,
+        where: { type: "binary_op", op: "AND", left: this.node.where, right: expr },
+      })
+    }
     return new SelectBuilder({ ...this.node, where: expr })
   }
 
