@@ -1096,6 +1096,25 @@ const plugin = new DataMaskingPlugin({
 const db = sumak({ plugins: [plugin], ... })
 ```
 
+### CursorPaginationPlugin
+
+```ts
+// Keyset (cursor-based) pagination — stable, no offset drift
+const db = sumak({
+  plugins: [
+    new CursorPaginationPlugin({
+      pageSize: 20,
+      cursor: { column: "id", value: lastSeenId, direction: "ASC" },
+    }),
+  ],
+  ...
+})
+
+db.selectFrom("users").select("id", "name").toSQL()
+// SELECT "id", "name" FROM "users" WHERE ("id" > $1) ORDER BY "id" ASC LIMIT 21
+// pageSize + 1 → detect hasNextPage by checking if result.length > pageSize
+```
+
 ### Combining Plugins
 
 ```ts
