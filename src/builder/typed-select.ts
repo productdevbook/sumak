@@ -26,21 +26,39 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   readonly _builder: SelectBuilder
   private _table: TB & string
   private _printer?: Printer
+  /** @internal — full compile pipeline (plugins + hooks + printer) */
+  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
 
-  constructor(builder: SelectBuilder, table?: string, printer?: Printer) {
+  constructor(
+    builder: SelectBuilder,
+    table?: string,
+    printer?: Printer,
+    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+  ) {
     this._builder = builder
     this._table = (table ?? "") as TB & string
     this._printer = printer
+    this._compile = compile
   }
 
   /** Select specific columns. Narrows O. */
   select<K extends keyof O & string>(...cols: K[]): TypedSelectBuilder<DB, TB, Pick<O, K>> {
-    return new TypedSelectBuilder(this._builder.columns(...cols), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.columns(...cols),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** Select all columns. */
   selectAll(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.allColumns(), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.allColumns(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** Select with Expression<T> for computed columns. */
@@ -50,7 +68,12 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   ): TypedSelectBuilder<DB, TB, O & Record<Alias, T>> {
     const node = unwrap(expr)
     const aliased = aliasExpr(node, alias)
-    return new TypedSelectBuilder(this._builder.columns(aliased), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.columns(aliased),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** Select multiple aliased expressions at once. */
@@ -63,17 +86,27 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       const aliased = aliasExpr(node, alias)
       builder = builder.columns(aliased)
     }
-    return new TypedSelectBuilder(builder, this._table, this._printer)
+    return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
   }
 
   /** DISTINCT */
   distinct(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.distinct(), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.distinct(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** DISTINCT ON (PG-specific) */
   distinctOn<K extends keyof DB[TB] & string>(...cols: K[]): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.distinctOn(...cols), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.distinctOn(...cols),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /**
@@ -94,7 +127,12 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return new TypedSelectBuilder(this._builder.where(unwrap(result)), this._table, this._printer)
+      return new TypedSelectBuilder(
+        this._builder.where(unwrap(result)),
+        this._table,
+        this._printer,
+        this._compile,
+      )
     }
     return new TypedSelectBuilder(
       this._builder.where(unwrap(exprOrCallback)),
@@ -175,7 +213,12 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   /** GROUP BY — accepts column names or expressions */
   groupBy(...cols: ((keyof O & string) | Expression<any>)[]): TypedSelectBuilder<DB, TB, O> {
     const resolved = cols.map((c) => (typeof c === "string" ? c : unwrap(c)))
-    return new TypedSelectBuilder(this._builder.groupBy(...resolved), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.groupBy(...resolved),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** HAVING */
@@ -232,37 +275,67 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
   /** FOR SYSTEM_TIME (SQL:2011 temporal query) */
   forSystemTime(clause: TemporalClause): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.forSystemTime(clause), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.forSystemTime(clause),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** FOR UPDATE */
   forUpdate(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.forUpdate(), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.forUpdate(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** FOR SHARE */
   forShare(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.forShare(), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.forShare(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** FOR NO KEY UPDATE (PG) */
   forNoKeyUpdate(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.forNoKeyUpdate(), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.forNoKeyUpdate(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** FOR KEY SHARE (PG) */
   forKeyShare(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.forKeyShare(), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.forKeyShare(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** SKIP LOCKED — must follow a FOR lock mode */
   skipLocked(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.skipLocked(), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.skipLocked(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** NOWAIT — must follow a FOR lock mode */
   noWait(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.noWait(), this._table, this._printer)
+    return new TypedSelectBuilder(this._builder.noWait(), this._table, this._printer, this._compile)
   }
 
   /** WITH (CTE) */
@@ -276,12 +349,22 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
   /** UNION */
   union(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.union(query.build()), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.union(query.build()),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** UNION ALL */
   unionAll(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.unionAll(query.build()), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.unionAll(query.build()),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** INTERSECT */
@@ -304,7 +387,12 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
   /** EXCEPT */
   except(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.except(query.build()), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.except(query.build()),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** EXCEPT ALL */
@@ -433,7 +521,12 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   crossJoin<T extends keyof DB & string>(
     table: T,
   ): TypedSelectBuilder<DB, TB | T, O & SelectRow<DB, T>> {
-    return new TypedSelectBuilder(this._builder.join("CROSS", table), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.join("CROSS", table),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** CROSS JOIN LATERAL (subquery) */
@@ -446,7 +539,12 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       query: subquery.build(),
       alias,
     }
-    return new TypedSelectBuilder(this._builder.crossJoinLateral(sub), this._table, this._printer)
+    return new TypedSelectBuilder(
+      this._builder.crossJoinLateral(sub),
+      this._table,
+      this._printer,
+      this._compile,
+    )
   }
 
   /** Clear WHERE clause. */
@@ -540,6 +638,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
   /** Compile to SQL using the dialect's printer. */
   toSQL(): CompiledQuery {
+    if (this._compile) {
+      return this._compile(this.build())
+    }
     if (!this._printer) {
       throw new Error(
         "toSQL() requires a printer. Use db.selectFrom() or pass a printer to compile().",

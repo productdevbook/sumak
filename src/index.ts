@@ -266,6 +266,9 @@ export { PluginManager } from "./plugin/plugin-manager.ts"
 export { WithSchemaPlugin } from "./plugin/with-schema.ts"
 export { SoftDeletePlugin } from "./plugin/soft-delete.ts"
 export { CamelCasePlugin } from "./plugin/camel-case.ts"
+export { AuditTimestampPlugin } from "./plugin/audit-timestamp.ts"
+export { MultiTenantPlugin } from "./plugin/multi-tenant.ts"
+export { QueryLimitPlugin } from "./plugin/query-limit.ts"
 
 // Hooks
 export { Hookable } from "./plugin/hooks.ts"

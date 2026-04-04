@@ -982,14 +982,101 @@ Modes: `as_of`, `from_to`, `between`, `contained_in`, `all`.
 
 ## Plugins
 
-```ts
-import { WithSchemaPlugin, SoftDeletePlugin, CamelCasePlugin } from "sumak"
+### WithSchemaPlugin
 
+```ts
+const db = sumak({
+  plugins: [new WithSchemaPlugin("public")],
+  ...
+})
+// SELECT * FROM "public"."users"
+```
+
+### SoftDeletePlugin
+
+```ts
+// Mode "convert" (default) — DELETE becomes UPDATE SET deleted_at = NOW()
+const db = sumak({
+  plugins: [new SoftDeletePlugin({ tables: ["users"], mode: "convert" })],
+  ...
+})
+
+db.deleteFrom("users").where(({ id }) => id.eq(1)).toSQL()
+// UPDATE "users" SET "deleted_at" = NOW() WHERE ("id" = $1) AND ("deleted_at" IS NULL)
+
+// Mode "filter" — just adds WHERE deleted_at IS NULL (no DELETE conversion)
+new SoftDeletePlugin({ tables: ["users"], mode: "filter" })
+```
+
+### AuditTimestampPlugin
+
+```ts
+// Auto-inject created_at/updated_at timestamps
+const db = sumak({
+  plugins: [new AuditTimestampPlugin({ tables: ["users"] })],
+  ...
+})
+
+db.insertInto("users").values({ name: "Alice" }).toSQL()
+// INSERT INTO "users" ("name", "created_at", "updated_at") VALUES ($1, NOW(), NOW())
+
+db.update("users").set({ name: "Bob" }).where(({ id }) => id.eq(1)).toSQL()
+// UPDATE "users" SET "name" = $1, "updated_at" = NOW() WHERE ...
+```
+
+### MultiTenantPlugin
+
+```ts
+// Auto-inject tenant_id on all queries
+const db = sumak({
+  plugins: [new MultiTenantPlugin({ tables: ["users", "posts"], tenantId: 42 })],
+  ...
+})
+
+db.selectFrom("users").select("id").toSQL()
+// SELECT "id" FROM "users" WHERE ("tenant_id" = $1)  — params: [42]
+
+db.insertInto("users").values({ name: "Alice" }).toSQL()
+// INSERT INTO "users" ("name", "tenant_id") VALUES ($1, $2)  — params: ["Alice", 42]
+```
+
+### QueryLimitPlugin
+
+```ts
+// Auto-inject LIMIT on unbounded SELECTs
+const db = sumak({
+  plugins: [new QueryLimitPlugin({ maxRows: 1000 })],
+  ...
+})
+
+db.selectFrom("users").select("id").toSQL()
+// SELECT "id" FROM "users" LIMIT 1000
+
+db.selectFrom("users").select("id").limit(5).toSQL()
+// SELECT "id" FROM "users" LIMIT 5  — explicit limit preserved
+```
+
+### CamelCasePlugin
+
+```ts
+// Transform snake_case result columns to camelCase
+const db = sumak({
+  plugins: [new CamelCasePlugin()],
+  ...
+})
+```
+
+### Combining Plugins
+
+```ts
 const db = sumak({
   dialect: pgDialect(),
   plugins: [
-    new WithSchemaPlugin("public"),      // auto "public"."users"
-    new SoftDeletePlugin({ tables: ["users"] }), // auto WHERE deleted_at IS NULL
+    new WithSchemaPlugin("public"),
+    new SoftDeletePlugin({ tables: ["users"] }),
+    new AuditTimestampPlugin({ tables: ["users", "posts"] }),
+    new MultiTenantPlugin({ tables: ["users", "posts"], tenantId: currentTenantId }),
+    new QueryLimitPlugin({ maxRows: 5000 }),
   ],
   tables: { ... },
 })

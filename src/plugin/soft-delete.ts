@@ -1,24 +1,33 @@
-import { and, col, isNull } from "../ast/expression.ts"
+import { and, col, fn, isNull } from "../ast/expression.ts"
 import type { ASTNode, DeleteNode, ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
- * Plugin that automatically adds `WHERE deleted_at IS NULL` to
- * SELECT, UPDATE, and DELETE queries for configured tables.
+ * Plugin that automatically handles soft deletes for configured tables.
+ *
+ * In "convert" mode (default):
+ * - SELECT/UPDATE: adds `WHERE deleted_at IS NULL`
+ * - DELETE: converts to `UPDATE SET deleted_at = NOW() WHERE ... AND deleted_at IS NULL`
+ *
+ * In "filter" mode:
+ * - SELECT/UPDATE/DELETE: adds `WHERE deleted_at IS NULL`
  *
  * ```ts
- * const plugin = new SoftDeletePlugin({ tables: ["users", "posts"] });
- * // SELECT * FROM "users" → SELECT * FROM "users" WHERE "deleted_at" IS NULL
+ * const plugin = new SoftDeletePlugin({ tables: ["users", "posts"] })
+ * // DELETE FROM "users" WHERE id = 1
+ * // → UPDATE "users" SET "deleted_at" = NOW() WHERE id = 1 AND "deleted_at" IS NULL
  * ```
  */
 export class SoftDeletePlugin implements SumakPlugin {
   readonly name = "soft-delete"
   private tables: ReadonlySet<string>
   private column: string
+  private mode: "filter" | "convert"
 
-  constructor(config: { tables: string[]; column?: string }) {
+  constructor(config: { tables: string[]; column?: string; mode?: "filter" | "convert" }) {
     this.tables = new Set(config.tables)
     this.column = config.column ?? "deleted_at"
+    this.mode = config.mode ?? "convert"
   }
 
   transformNode(node: ASTNode): ASTNode {
@@ -59,8 +68,23 @@ export class SoftDeletePlugin implements SumakPlugin {
     return { ...node, where: this.addCondition(node.where) }
   }
 
-  private transformDelete(node: DeleteNode): DeleteNode {
+  private transformDelete(node: DeleteNode): ASTNode {
     if (!this.isTargetTable(node.table.name)) return node
-    return { ...node, where: this.addCondition(node.where) }
+
+    if (this.mode === "filter") {
+      return { ...node, where: this.addCondition(node.where) }
+    }
+
+    const updateNode: UpdateNode = {
+      type: "update",
+      table: node.table,
+      set: [{ column: this.column, value: fn("NOW", []) }],
+      where: this.addCondition(node.where),
+      returning: node.returning,
+      joins: node.joins,
+      ctes: node.ctes,
+    }
+
+    return updateNode
   }
 }

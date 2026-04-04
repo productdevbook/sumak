@@ -16,6 +16,8 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   readonly _builder: InsertBuilder
   /** @internal */
   _printer?: Printer
+  /** @internal */
+  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
 
   constructor(table: TB & string) {
     this._builder = new InsertBuilder().into(table)
@@ -26,6 +28,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     const t = new TypedInsertBuilder<DB, TB>("" as TB & string)
     ;(t as any)._builder = builder
     ;(t as any)._printer = this._printer
+    ;(t as any)._compile = this._compile
     return t
   }
 
@@ -217,8 +220,9 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     return printer.print(this.build())
   }
 
-  /** Compile to SQL using the dialect's printer. */
+  /** Compile to SQL using the full pipeline. */
   toSQL(): CompiledQuery {
+    if (this._compile) return this._compile(this.build())
     if (!this._printer) {
       throw new Error(
         "toSQL() requires a printer. Use db.insertInto() or pass a printer to compile().",

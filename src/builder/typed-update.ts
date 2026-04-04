@@ -17,6 +17,8 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   readonly _builder: UpdateBuilder
   /** @internal */
   _printer?: Printer
+  /** @internal */
+  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
 
   constructor(table: TB & string) {
     this._builder = new UpdateBuilder().table(table)
@@ -27,6 +29,7 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     const t = new TypedUpdateBuilder<DB, TB>("" as TB & string)
     ;(t as any)._builder = builder
     ;(t as any)._printer = this._printer
+    ;(t as any)._compile = this._compile
     return t
   }
 
@@ -134,6 +137,7 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
 
   /** Compile to SQL using the dialect's printer. */
   toSQL(): CompiledQuery {
+    if (this._compile) return this._compile(this.build())
     if (!this._printer) {
       throw new Error("toSQL() requires a printer. Use db.update() or pass a printer to compile().")
     }
