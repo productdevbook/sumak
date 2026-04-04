@@ -12,7 +12,7 @@ Type-safe SQL query builder with powerful SQL printers. Zero dependencies, tree-
 ```
 User Code
   │
-  ├─ lale({ dialect, tables })     ← DB type auto-inferred
+  ├─ sumak({ dialect, tables })     ← DB type auto-inferred
   │
   ├─ db.selectFrom("users")       ← TypedSelectBuilder<DB, "users", O>
   │    .select("id", "name")       ← O narrows to Pick<O, "id"|"name">
@@ -28,7 +28,7 @@ User Code
 
 ```
 src/
-  lale.ts                   # sumak() factory + Lale<DB> class
+  sumak.ts                   # sumak() factory + Sumak<DB> class
   index.ts                  # Main API — all exports
   pg.ts                     # Sub-path: sumak/pg
   mysql.ts                  # Sub-path: sumak/mysql
@@ -73,7 +73,7 @@ src/
     sqlite.ts               # sqliteDialect() factory
     types.ts                # Dialect interface
   plugin/
-    types.ts                # LalePlugin interface
+    types.ts                # SumakPlugin interface
     plugin-manager.ts       # PluginManager — sequential plugin pipeline
     hooks.ts                # Hookable — lifecycle hooks (query:before/after, etc.)
     with-schema.ts          # WithSchemaPlugin — auto schema prefix
@@ -83,7 +83,7 @@ src/
     identifier.ts           # Identifier quoting per dialect
     param.ts                # Parameter formatting per dialect
 test/
-  lale.test.ts              # Integration: lale() clean API, plugins, hooks
+  sumak.test.ts              # Integration: sumak() clean API, plugins, hooks
   ast/                      # 4 files: nodes, visitor, transformer, typed-expression
   builder/                  # 9 files: select, insert, update, delete, expression + typed variants
   printer/                  # 7 files: base, pg, mysql, sqlite, formatter, document, new-nodes
@@ -100,7 +100,7 @@ test/
 ```typescript
 import { sumak, pgDialect, serial, text, boolean } from "sumak"
 
-const db = lale({
+const db = sumak({
   dialect: pgDialect(),
   tables: {
     users: { id: serial(), name: text().notNull(), active: boolean().defaultTo(true) },
@@ -133,7 +133,7 @@ db.hook("result:transform", (rows) => {
 
 ### Sub-paths
 
-`lale`, `sumak/pg`, `sumak/mysql`, `sumak/sqlite`, `sumak/schema`
+`sumak`, `sumak/pg`, `sumak/mysql`, `sumak/sqlite`, `sumak/schema`
 
 ## Build & Scripts
 
