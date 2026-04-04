@@ -32,6 +32,11 @@ export class SelectBuilder {
     return new SelectBuilder({ ...this.node, distinct: true })
   }
 
+  distinctOn(...exprs: (string | ExpressionNode)[]): SelectBuilder {
+    const nodes = exprs.map((e) => (typeof e === "string" ? col(e) : e))
+    return new SelectBuilder({ ...this.node, distinct: true, distinctOn: nodes })
+  }
+
   from(table: string | TableRefNode | SubqueryNode, alias?: string): SelectBuilder {
     if (typeof table === "string") {
       const ref: TableRefNode = { type: "table_ref", name: table, alias }

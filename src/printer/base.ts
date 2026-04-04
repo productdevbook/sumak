@@ -83,7 +83,9 @@ export class BasePrinter implements Printer {
 
     parts.push("SELECT")
 
-    if (node.distinct) {
+    if (node.distinctOn && node.distinctOn.length > 0) {
+      parts.push(`DISTINCT ON (${node.distinctOn.map((e) => this.printExpression(e)).join(", ")})`)
+    } else if (node.distinct) {
       parts.push("DISTINCT")
     }
 

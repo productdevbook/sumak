@@ -21,6 +21,10 @@ export class MssqlPrinter extends BasePrinter {
       parts.push(this.printCTEs(node.ctes))
     }
 
+    if (node.distinctOn) {
+      throw new UnsupportedDialectFeatureError("mssql", "DISTINCT ON")
+    }
+
     parts.push("SELECT")
 
     if (node.distinct) {

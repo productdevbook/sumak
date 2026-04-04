@@ -9,6 +9,9 @@ export class SqlitePrinter extends BasePrinter {
   }
 
   protected override printSelect(node: SelectNode): string {
+    if (node.distinctOn) {
+      throw new UnsupportedDialectFeatureError("sqlite", "DISTINCT ON")
+    }
     if (node.lock) {
       throw new UnsupportedDialectFeatureError("sqlite", "FOR UPDATE/SHARE")
     }

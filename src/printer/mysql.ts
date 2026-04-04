@@ -32,7 +32,9 @@ export class MysqlPrinter extends BasePrinter {
   }
 
   protected override printSelect(node: SelectNode): string {
-    // MySQL supports FOR UPDATE and FOR SHARE (handled in base)
+    if (node.distinctOn) {
+      throw new UnsupportedDialectFeatureError("mysql", "DISTINCT ON")
+    }
     return super.printSelect(node)
   }
 

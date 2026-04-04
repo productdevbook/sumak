@@ -224,6 +224,7 @@ export interface LockClause {
 export interface SelectNode {
   type: "select"
   distinct: boolean
+  distinctOn?: ExpressionNode[]
   columns: ExpressionNode[]
   from?: TableRefNode | SubqueryNode
   joins: JoinNode[]

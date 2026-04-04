@@ -50,6 +50,11 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.distinct(), this._table)
   }
 
+  /** DISTINCT ON (PG-specific) */
+  distinctOn<K extends keyof DB[TB] & string>(...cols: K[]): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(this._builder.distinctOn(...cols), this._table)
+  }
+
   /**
    * WHERE — accepts callback with typed column proxies OR raw Expression.
    *
