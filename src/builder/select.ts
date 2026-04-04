@@ -58,6 +58,16 @@ export class SelectBuilder {
     return new SelectBuilder({ ...this.node, where: expr })
   }
 
+  orWhere(expr: ExpressionNode): SelectBuilder {
+    if (this.node.where) {
+      return new SelectBuilder({
+        ...this.node,
+        where: { type: "binary_op", op: "OR", left: this.node.where, right: expr },
+      })
+    }
+    return new SelectBuilder({ ...this.node, where: expr })
+  }
+
   join(
     type: JoinType,
     table: string | TableRefNode,

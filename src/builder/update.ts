@@ -38,6 +38,16 @@ export class UpdateBuilder {
     return new UpdateBuilder({ ...this.node, where: expr })
   }
 
+  orWhere(expr: ExpressionNode): UpdateBuilder {
+    if (this.node.where) {
+      return new UpdateBuilder({
+        ...this.node,
+        where: { type: "binary_op", op: "OR", left: this.node.where, right: expr },
+      })
+    }
+    return new UpdateBuilder({ ...this.node, where: expr })
+  }
+
   from(table: string | TableRefNode): UpdateBuilder {
     const ref: TableRefNode = typeof table === "string" ? { type: "table_ref", name: table } : table
     return new UpdateBuilder({ ...this.node, from: ref })

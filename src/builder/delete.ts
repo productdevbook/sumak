@@ -31,6 +31,16 @@ export class DeleteBuilder {
     return new DeleteBuilder({ ...this.node, where: expr })
   }
 
+  orWhere(expr: ExpressionNode): DeleteBuilder {
+    if (this.node.where) {
+      return new DeleteBuilder({
+        ...this.node,
+        where: { type: "binary_op", op: "OR", left: this.node.where, right: expr },
+      })
+    }
+    return new DeleteBuilder({ ...this.node, where: expr })
+  }
+
   /** USING clause (PG: DELETE FROM t USING other WHERE ...) */
   using(table: string | TableRefNode): DeleteBuilder {
     const ref: TableRefNode = typeof table === "string" ? { type: "table_ref", name: table } : table

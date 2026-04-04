@@ -99,6 +99,21 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   }
 
   /**
+   * OR WHERE — ORs with existing WHERE clause instead of AND.
+   */
+  orWhere(
+    exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>,
+  ): TypedSelectBuilder<DB, TB, O> {
+    if (typeof exprOrCallback === "function") {
+      resetParams()
+      const cols = createColumnProxies<DB, TB>(this._table)
+      const result = exprOrCallback(cols)
+      return new TypedSelectBuilder(this._builder.orWhere(unwrap(result)), this._table)
+    }
+    return new TypedSelectBuilder(this._builder.orWhere(unwrap(exprOrCallback)), this._table)
+  }
+
+  /**
    * INNER JOIN.
    *
    * ```ts

@@ -157,6 +157,15 @@ export interface DropViewNode {
   materialized?: boolean
 }
 
+// ── TRUNCATE TABLE ──
+
+export interface TruncateTableNode {
+  type: "truncate_table"
+  table: TableRefNode
+  cascade?: boolean
+  restartIdentity?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -167,3 +176,4 @@ export type DDLNode =
   | DropIndexNode
   | CreateViewNode
   | DropViewNode
+  | TruncateTableNode

@@ -254,6 +254,11 @@ export class Col<T> {
     return wrap<T>(this._node)
   }
 
+  /** CAST(col AS dataType) inline */
+  cast<R>(dataType: string): Expression<R> {
+    return wrap<R>(rawCast(this._node, dataType))
+  }
+
   /** ASC ordering — for use with orderBy(col.asc()) */
   asc(): { expr: Expression<T>; direction: "ASC" } {
     return { expr: wrap<T>(this._node), direction: "ASC" }

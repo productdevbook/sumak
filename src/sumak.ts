@@ -4,7 +4,12 @@ import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
 import { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
 import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
 import { CreateViewBuilder } from "./builder/ddl/create-view.ts"
-import { DropIndexBuilder, DropTableBuilder, DropViewBuilder } from "./builder/ddl/drop.ts"
+import {
+  DropIndexBuilder,
+  DropTableBuilder,
+  DropViewBuilder,
+  TruncateTableBuilder,
+} from "./builder/ddl/drop.ts"
 import { Col } from "./builder/eb.ts"
 import { SelectBuilder } from "./builder/select.ts"
 import { TypedDeleteBuilder } from "./builder/typed-delete.ts"
@@ -361,5 +366,9 @@ export class SchemaBuilder {
 
   dropView(name: string): DropViewBuilder {
     return new DropViewBuilder(name)
+  }
+
+  truncateTable(table: string, schema?: string): TruncateTableBuilder {
+    return new TruncateTableBuilder(table, schema)
   }
 }

@@ -10,6 +10,7 @@ import type {
   DropViewNode,
   ForeignKeyConstraintNode,
   TableConstraintNode,
+  TruncateTableNode,
 } from "../ast/ddl-nodes.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
@@ -44,6 +45,8 @@ export class DDLPrinter {
         return this.printCreateView(node)
       case "drop_view":
         return this.printDropView(node)
+      case "truncate_table":
+        return this.printTruncateTable(node)
     }
   }
 
@@ -249,6 +252,14 @@ export class DDLPrinter {
     parts.push("VIEW")
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
+  private printTruncateTable(node: TruncateTableNode): string {
+    const parts: string[] = ["TRUNCATE TABLE"]
+    parts.push(quoteTableRef(node.table.name, this.dialect, node.table.schema))
+    if (node.restartIdentity) parts.push("RESTART IDENTITY")
     if (node.cascade) parts.push("CASCADE")
     return parts.join(" ")
   }

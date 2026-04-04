@@ -1,4 +1,9 @@
-import type { DropIndexNode, DropTableNode, DropViewNode } from "../../ast/ddl-nodes.ts"
+import type {
+  DropIndexNode,
+  DropTableNode,
+  DropViewNode,
+  TruncateTableNode,
+} from "../../ast/ddl-nodes.ts"
 import type { TableRefNode } from "../../ast/nodes.ts"
 
 // ── DROP TABLE ──
@@ -87,6 +92,34 @@ export class DropViewBuilder {
   }
 
   build(): DropViewNode {
+    return { ...this.node }
+  }
+}
+
+// ── TRUNCATE TABLE ──
+
+export class TruncateTableBuilder {
+  private readonly node: TruncateTableNode
+
+  constructor(table: string, schema?: string) {
+    const ref: TableRefNode = { type: "table_ref", name: table, schema }
+    this.node = { type: "truncate_table", table: ref }
+  }
+
+  private clone(patch: Partial<TruncateTableNode>): TruncateTableBuilder {
+    const next = new TruncateTableBuilder(this.node.table.name, this.node.table.schema)
+    return Object.assign(next, { node: { ...this.node, ...patch } }) as TruncateTableBuilder
+  }
+
+  cascade(): TruncateTableBuilder {
+    return this.clone({ cascade: true })
+  }
+
+  restartIdentity(): TruncateTableBuilder {
+    return this.clone({ restartIdentity: true })
+  }
+
+  build(): TruncateTableNode {
     return { ...this.node }
   }
 }

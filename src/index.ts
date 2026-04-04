@@ -281,7 +281,12 @@ export {
 export { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
 export { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
 export { CreateViewBuilder } from "./builder/ddl/create-view.ts"
-export { DropTableBuilder, DropIndexBuilder, DropViewBuilder } from "./builder/ddl/drop.ts"
+export {
+  DropTableBuilder,
+  DropIndexBuilder,
+  DropViewBuilder,
+  TruncateTableBuilder,
+} from "./builder/ddl/drop.ts"
 export { DDLPrinter } from "./printer/ddl.ts"
 export { SchemaBuilder } from "./sumak.ts"
 
@@ -303,6 +308,7 @@ export type {
   ForeignKeyConstraintNode,
   PrimaryKeyConstraintNode,
   TableConstraintNode,
+  TruncateTableNode,
   UniqueConstraintNode,
 } from "./ast/ddl-nodes.ts"
 
