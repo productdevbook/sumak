@@ -458,7 +458,8 @@ export class BasePrinter implements Printer {
 
   protected printJoin(node: JoinNode): string {
     const parts: string[] = []
-    parts.push(`${node.joinType} JOIN`)
+    const lateral = node.lateral ? " LATERAL" : ""
+    parts.push(`${node.joinType} JOIN${lateral}`)
 
     if (node.table.type === "subquery") {
       parts.push(this.printSubquery(node.table))

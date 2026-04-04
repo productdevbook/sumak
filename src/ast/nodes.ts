@@ -173,6 +173,7 @@ export interface JoinNode {
   joinType: JoinType
   table: TableRefNode | SubqueryNode
   on?: ExpressionNode
+  lateral?: boolean
 }
 
 export interface JsonAccessNode {

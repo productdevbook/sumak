@@ -236,6 +236,34 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.join("FULL", table, unwrap(on)), this._table)
   }
 
+  /** INNER JOIN LATERAL (subquery) */
+  innerJoinLateral<Alias extends string, R>(
+    subquery: { build(): SelectNode },
+    alias: Alias,
+    on: Expression<boolean>,
+  ): TypedSelectBuilder<DB, TB, O & Record<Alias, R>> {
+    const sub: import("../ast/nodes.ts").SubqueryNode = {
+      type: "subquery",
+      query: subquery.build(),
+      alias,
+    }
+    return new TypedSelectBuilder(this._builder.innerJoinLateral(sub, unwrap(on)), this._table)
+  }
+
+  /** LEFT JOIN LATERAL (subquery) */
+  leftJoinLateral<Alias extends string, R>(
+    subquery: { build(): SelectNode },
+    alias: Alias,
+    on: Expression<boolean>,
+  ): TypedSelectBuilder<DB, TB, O & Partial<Record<Alias, R>>> {
+    const sub: import("../ast/nodes.ts").SubqueryNode = {
+      type: "subquery",
+      query: subquery.build(),
+      alias,
+    }
+    return new TypedSelectBuilder(this._builder.leftJoinLateral(sub, unwrap(on)), this._table)
+  }
+
   /** CROSS JOIN — cartesian product. */
   crossJoin<T extends keyof DB & string>(
     table: T,

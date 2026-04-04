@@ -82,6 +82,16 @@ export class SelectBuilder {
     return this.join("RIGHT", table, on, alias)
   }
 
+  innerJoinLateral(subquery: SubqueryNode, on: ExpressionNode): SelectBuilder {
+    const join: JoinNode = { type: "join", joinType: "INNER", table: subquery, on, lateral: true }
+    return new SelectBuilder({ ...this.node, joins: [...this.node.joins, join] })
+  }
+
+  leftJoinLateral(subquery: SubqueryNode, on: ExpressionNode): SelectBuilder {
+    const join: JoinNode = { type: "join", joinType: "LEFT", table: subquery, on, lateral: true }
+    return new SelectBuilder({ ...this.node, joins: [...this.node.joins, join] })
+  }
+
   groupBy(...exprs: (string | ExpressionNode)[]): SelectBuilder {
     const nodes = exprs.map((e) => (typeof e === "string" ? col(e) : e))
     return new SelectBuilder({ ...this.node, groupBy: [...this.node.groupBy, ...nodes] })
