@@ -59,6 +59,21 @@ export class UpdateBuilder {
     return this.join("LEFT", table, on)
   }
 
+  orderBy(expr: string | ExpressionNode, direction: "ASC" | "DESC" = "ASC"): UpdateBuilder {
+    const node: import("../ast/nodes.ts").OrderByNode = {
+      expr: typeof expr === "string" ? { type: "column_ref", column: expr } : expr,
+      direction,
+    }
+    return new UpdateBuilder({
+      ...this.node,
+      orderBy: [...(this.node.orderBy ?? []), node],
+    })
+  }
+
+  limit(n: ExpressionNode): UpdateBuilder {
+    return new UpdateBuilder({ ...this.node, limit: n })
+  }
+
   returning(...exprs: ExpressionNode[]): UpdateBuilder {
     return new UpdateBuilder({
       ...this.node,

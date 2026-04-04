@@ -53,6 +53,21 @@ export class DeleteBuilder {
     return this.join("LEFT", table, on)
   }
 
+  orderBy(expr: string | ExpressionNode, direction: "ASC" | "DESC" = "ASC"): DeleteBuilder {
+    const node: import("../ast/nodes.ts").OrderByNode = {
+      expr: typeof expr === "string" ? { type: "column_ref", column: expr } : expr,
+      direction,
+    }
+    return new DeleteBuilder({
+      ...this.node,
+      orderBy: [...(this.node.orderBy ?? []), node],
+    })
+  }
+
+  limit(n: ExpressionNode): DeleteBuilder {
+    return new DeleteBuilder({ ...this.node, limit: n })
+  }
+
   returning(...exprs: ExpressionNode[]): DeleteBuilder {
     return new DeleteBuilder({
       ...this.node,

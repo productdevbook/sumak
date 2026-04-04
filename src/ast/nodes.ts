@@ -301,6 +301,8 @@ export interface UpdateNode {
   from?: TableRefNode
   joins: JoinNode[]
   ctes: CTENode[]
+  orderBy?: OrderByNode[]
+  limit?: ExpressionNode
 }
 
 export interface DeleteNode {
@@ -311,6 +313,8 @@ export interface DeleteNode {
   ctes: CTENode[]
   using?: TableRefNode
   joins: JoinNode[]
+  orderBy?: OrderByNode[]
+  limit?: ExpressionNode
 }
 
 export interface MergeWhenMatched {

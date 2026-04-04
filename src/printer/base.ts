@@ -241,6 +241,14 @@ export class BasePrinter implements Printer {
       parts.push("WHERE", this.printExpression(node.where))
     }
 
+    if (node.orderBy && node.orderBy.length > 0) {
+      parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
+    }
+
+    if (node.limit) {
+      parts.push("LIMIT", this.printExpression(node.limit))
+    }
+
     if (node.returning.length > 0) {
       parts.push("RETURNING", node.returning.map((r) => this.printExpression(r)).join(", "))
     }
@@ -267,6 +275,14 @@ export class BasePrinter implements Printer {
 
     if (node.where) {
       parts.push("WHERE", this.printExpression(node.where))
+    }
+
+    if (node.orderBy && node.orderBy.length > 0) {
+      parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
+    }
+
+    if (node.limit) {
+      parts.push("LIMIT", this.printExpression(node.limit))
     }
 
     if (node.returning.length > 0) {
