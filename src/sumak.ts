@@ -12,6 +12,7 @@ import { Hookable } from "./plugin/hooks.ts"
 import type { HookName, SumakHooks } from "./plugin/hooks.ts"
 import { PluginManager } from "./plugin/plugin-manager.ts"
 import type { SumakPlugin } from "./plugin/types.ts"
+import type { Printer } from "./printer/types.ts"
 import type { ColumnBuilder } from "./schema/column.ts"
 import type { SelectRow } from "./schema/types.ts"
 import type { CompiledQuery } from "./types.ts"
@@ -195,7 +196,7 @@ export class Sumak<DB> {
     return result
   }
 
-  printer() {
+  printer(): Printer {
     return this._dialect.createPrinter()
   }
 

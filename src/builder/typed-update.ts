@@ -1,5 +1,5 @@
 import { param, star } from "../ast/expression.ts"
-import type { ExpressionNode, SelectNode } from "../ast/nodes.ts"
+import type { ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -117,7 +117,7 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     return this
   }
 
-  build() {
+  build(): UpdateNode {
     return this._builder.build()
   }
 
@@ -134,7 +134,7 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, _R> {
     this._builder = builder
   }
 
-  build() {
+  build(): UpdateNode {
     return this._builder.build()
   }
 

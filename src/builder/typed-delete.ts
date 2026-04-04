@@ -1,5 +1,5 @@
 import { star } from "../ast/expression.ts"
-import type { ExpressionNode, SelectNode } from "../ast/nodes.ts"
+import type { DeleteNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -84,7 +84,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
     return this
   }
 
-  build() {
+  build(): DeleteNode {
     return this._builder.build()
   }
 
@@ -101,7 +101,7 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, _R> {
     this._builder = builder
   }
 
-  build() {
+  build(): DeleteNode {
     return this._builder.build()
   }
 
