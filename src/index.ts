@@ -158,6 +158,7 @@ export type {
   InsertType,
   Nullable,
   Selectable,
+  SelectRow,
   SelectType,
   TableDefinition,
   Updateable,

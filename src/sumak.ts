@@ -1,6 +1,6 @@
 import type { Dialect } from "./dialect/types.ts";
 import type { ColumnBuilder } from "./schema/column.ts";
-import type { ColumnType, SelectType } from "./schema/types.ts";
+import type { ColumnType, SelectRow } from "./schema/types.ts";
 import { SelectBuilder } from "./builder/select.ts";
 import { TypedSelectBuilder } from "./builder/typed-select.ts";
 import { TypedInsertBuilder } from "./builder/typed-insert.ts";
@@ -14,13 +14,18 @@ import { Hookable } from "./plugin/hooks.ts";
 import type { HookName, SumakHooks } from "./plugin/hooks.ts";
 
 /**
+ * Extract column type from a ColumnBuilder.
+ * Named alias enables tsgo's alias fast-path (inference.go line 79).
+ */
+type InferColumn<C> =
+  C extends ColumnBuilder<infer S, infer I, infer U> ? ColumnType<S, I, U> : never;
+
+/**
  * Extract the DB type from a tables config object.
  */
 type InferDB<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>> = {
   [Table in keyof T]: {
-    [Col in keyof T[Table]]: T[Table][Col] extends ColumnBuilder<infer S, infer I, infer U>
-      ? ColumnType<S, I, U>
-      : never;
+    [Col in keyof T[Table]]: InferColumn<T[Table][Col]>;
   };
 };
 
@@ -53,7 +58,7 @@ export interface SumakConfig<
  */
 export function sumak<T extends Record<string, Record<string, ColumnBuilder<any, any, any>>>>(
   config: SumakConfig<T>,
-): Lale<InferDB<T>> {
+): Sumak<InferDB<T>> {
   return new Sumak(config.dialect, config.plugins ?? []);
 }
 
@@ -86,7 +91,7 @@ export class Sumak<DB> {
   selectFrom<T extends keyof DB & string>(
     table: T,
     alias?: string,
-  ): TypedSelectBuilder<DB, T, { [K in keyof DB[T]]: SelectType<DB[T][K]> }> {
+  ): TypedSelectBuilder<DB, T, SelectRow<DB, T>> {
     return new TypedSelectBuilder(new SelectBuilder().from(table, alias), table);
   }
 

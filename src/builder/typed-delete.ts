@@ -6,7 +6,7 @@ import { createColumnProxies, resetParams } from "./eb.ts";
 import type { ExpressionNode } from "../ast/nodes.ts";
 import type { CompiledQuery } from "../types.ts";
 import type { Printer } from "../printer/types.ts";
-import type { SelectType } from "../schema/types.ts";
+import type { SelectRow } from "../schema/types.ts";
 import { DeleteBuilder } from "./delete.ts";
 
 /**
@@ -46,7 +46,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
-  ): TypedDeleteReturningBuilder<DB, TB, Pick<{ [C in keyof DB[TB]]: SelectType<DB[TB][C]> }, K>> {
+  ): TypedDeleteReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }));
     return new TypedDeleteReturningBuilder(
       new DeleteBuilder({
@@ -59,11 +59,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   /**
    * RETURNING all columns.
    */
-  returningAll(): TypedDeleteReturningBuilder<
-    DB,
-    TB,
-    { [K in keyof DB[TB]]: SelectType<DB[TB][K]> }
-  > {
+  returningAll(): TypedDeleteReturningBuilder<DB, TB, SelectRow<DB, TB>> {
     return new TypedDeleteReturningBuilder(
       new DeleteBuilder({
         ...this._builder.build(),

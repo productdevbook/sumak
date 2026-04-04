@@ -3,7 +3,7 @@ import type { Expression } from "../ast/typed-expression.ts";
 import { unwrap } from "../ast/typed-expression.ts";
 import type { CompiledQuery, OrderDirection } from "../types.ts";
 import type { Printer } from "../printer/types.ts";
-import type { Nullable, SelectType } from "../schema/types.ts";
+import type { Nullable, SelectRow } from "../schema/types.ts";
 import { SelectBuilder } from "./select.ts";
 import type { WhereCallback } from "./eb.ts";
 import { createColumnProxies, resetParams } from "./eb.ts";
@@ -89,7 +89,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   innerJoin<T extends keyof DB & string>(
     table: T,
     onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
-  ): TypedSelectBuilder<DB, TB | T, O & { [K in keyof DB[T]]: SelectType<DB[T][K]> }> {
+  ): TypedSelectBuilder<DB, TB | T, O & SelectRow<DB, T>> {
     const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table);
     return new TypedSelectBuilder(this._builder.innerJoin(table, unwrap(on)), this._table);
   }
@@ -100,7 +100,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   leftJoin<T extends keyof DB & string>(
     table: T,
     onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
-  ): TypedSelectBuilder<DB, TB | T, O & Nullable<{ [K in keyof DB[T]]: SelectType<DB[T][K]> }>> {
+  ): TypedSelectBuilder<DB, TB | T, O & Nullable<SelectRow<DB, T>>> {
     const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table);
     return new TypedSelectBuilder(this._builder.leftJoin(table, unwrap(on)), this._table);
   }
@@ -109,7 +109,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   rightJoin<T extends keyof DB & string>(
     table: T,
     onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
-  ): TypedSelectBuilder<DB, TB | T, Nullable<O> & { [K in keyof DB[T]]: SelectType<DB[T][K]> }> {
+  ): TypedSelectBuilder<DB, TB | T, Nullable<O> & SelectRow<DB, T>> {
     const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table);
     return new TypedSelectBuilder(this._builder.rightJoin(table, unwrap(on)), this._table);
   }
@@ -188,7 +188,7 @@ import type { ColumnProxies } from "./eb.ts";
 import { Col } from "./eb.ts";
 
 type JoinProxies<DB, TB extends keyof DB, T extends keyof DB> = {
-  [Table in (TB | T) & string]: ColumnProxies<DB, Table & keyof DB>;
+  [Table in (TB | T) & string]: ColumnProxies<DB, Table>;
 };
 
 function createJoinProxies<DB, TB extends keyof DB, T extends keyof DB>(

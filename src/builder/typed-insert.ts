@@ -4,7 +4,7 @@ import type { Expression } from "../ast/typed-expression.ts";
 import { unwrap } from "../ast/typed-expression.ts";
 import type { CompiledQuery } from "../types.ts";
 import type { Printer } from "../printer/types.ts";
-import type { Insertable, SelectType } from "../schema/types.ts";
+import type { Insertable, SelectRow } from "../schema/types.ts";
 import { InsertBuilder } from "./insert.ts";
 import { star } from "../ast/expression.ts";
 
@@ -59,7 +59,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
-  ): TypedInsertReturningBuilder<DB, TB, Pick<{ [C in keyof DB[TB]]: SelectType<DB[TB][C]> }, K>> {
+  ): TypedInsertReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }));
     const builder = new InsertBuilder(
       { ...this._builder.build(), returning: exprs },
@@ -71,11 +71,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   /**
    * RETURNING all columns.
    */
-  returningAll(): TypedInsertReturningBuilder<
-    DB,
-    TB,
-    { [K in keyof DB[TB]]: SelectType<DB[TB][K]> }
-  > {
+  returningAll(): TypedInsertReturningBuilder<DB, TB, SelectRow<DB, TB>> {
     const builder = new InsertBuilder(
       { ...this._builder.build(), returning: [star()] },
       this._paramIdx,

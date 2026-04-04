@@ -8,6 +8,7 @@ export type {
   Nullable,
   Selectable,
   SelectType,
+  SelectRow,
   Updateable,
   UpdateType,
 } from "./types.ts";

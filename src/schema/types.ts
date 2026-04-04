@@ -56,6 +56,14 @@ export type Updateable<T> = {
 };
 
 /**
+ * Select row type for a table. Cached alias — avoids repeated mapped type
+ * instantiations across selectFrom, join, returning (tsgo alias cache optimization).
+ */
+export type SelectRow<DB, TB extends keyof DB> = {
+  [K in keyof DB[TB]]: SelectType<DB[TB][K]>;
+};
+
+/**
  * A column is required on INSERT if its InsertType does NOT include undefined or never.
  */
 type IsRequired<C> =

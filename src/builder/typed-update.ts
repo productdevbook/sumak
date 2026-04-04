@@ -6,7 +6,7 @@ import { createColumnProxies, resetParams } from "./eb.ts";
 import type { ExpressionNode } from "../ast/nodes.ts";
 import type { CompiledQuery } from "../types.ts";
 import type { Printer } from "../printer/types.ts";
-import type { SelectType, Updateable } from "../schema/types.ts";
+import type { SelectRow, Updateable } from "../schema/types.ts";
 import { UpdateBuilder } from "./update.ts";
 
 /**
@@ -74,7 +74,7 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
-  ): TypedUpdateReturningBuilder<DB, TB, Pick<{ [C in keyof DB[TB]]: SelectType<DB[TB][C]> }, K>> {
+  ): TypedUpdateReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }));
     return new TypedUpdateReturningBuilder(
       new UpdateBuilder({
@@ -87,11 +87,7 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   /**
    * RETURNING all columns.
    */
-  returningAll(): TypedUpdateReturningBuilder<
-    DB,
-    TB,
-    { [K in keyof DB[TB]]: SelectType<DB[TB][K]> }
-  > {
+  returningAll(): TypedUpdateReturningBuilder<DB, TB, SelectRow<DB, TB>> {
     return new TypedUpdateReturningBuilder(
       new UpdateBuilder({
         ...this._builder.build(),
