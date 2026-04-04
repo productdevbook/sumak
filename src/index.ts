@@ -267,6 +267,8 @@ export { WithSchemaPlugin } from "./plugin/with-schema.ts"
 export { SoftDeletePlugin } from "./plugin/soft-delete.ts"
 export { CamelCasePlugin } from "./plugin/camel-case.ts"
 export { AuditTimestampPlugin } from "./plugin/audit-timestamp.ts"
+export { OptimisticLockPlugin } from "./plugin/optimistic-lock.ts"
+export { DataMaskingPlugin } from "./plugin/data-masking.ts"
 export { MultiTenantPlugin } from "./plugin/multi-tenant.ts"
 export { QueryLimitPlugin } from "./plugin/query-limit.ts"
 

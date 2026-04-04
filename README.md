@@ -1066,6 +1066,36 @@ const db = sumak({
 })
 ```
 
+### OptimisticLockPlugin
+
+```ts
+// Auto-inject WHERE version = N and SET version = version + 1 on UPDATE
+const db = sumak({
+  plugins: [new OptimisticLockPlugin({ tables: ["users"], currentVersion: 3 })],
+  ...
+})
+
+db.update("users").set({ name: "Bob" }).where(({ id }) => id.eq(1)).toSQL()
+// UPDATE "users" SET "name" = $1, "version" = ("version" + 1)
+//   WHERE ("id" = $2) AND ("version" = $3)  — params: ["Bob", 1, 3]
+```
+
+### DataMaskingPlugin
+
+```ts
+// Mask sensitive data in query results
+const plugin = new DataMaskingPlugin({
+  rules: [
+    { column: "email", mask: "email" },    // "alice@example.com" → "al***@example.com"
+    { column: "phone", mask: "phone" },    // "+1234567890" → "***7890"
+    { column: "name", mask: "partial" },   // "John Doe" → "Jo***"
+    { column: "ssn", mask: (v) => `***-**-${String(v).slice(-4)}` },  // custom
+  ],
+})
+
+const db = sumak({ plugins: [plugin], ... })
+```
+
 ### Combining Plugins
 
 ```ts
