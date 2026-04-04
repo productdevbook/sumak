@@ -13,10 +13,16 @@ import {
 import type {
   CaseNode,
   ExpressionNode,
+  FrameBound,
+  FrameKind,
+  FrameSpec,
   FullTextSearchMode,
   FullTextSearchNode,
+  FunctionCallNode,
   JsonAccessNode,
+  OrderByNode,
   SelectNode,
+  WindowFunctionNode,
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import type { SelectType } from "../schema/types.ts"
@@ -210,6 +216,17 @@ export function count(): Expression<number> {
   return wrap(rawFn("COUNT", [rawStar()]))
 }
 
+/** COUNT(DISTINCT expr) */
+export function countDistinct(expr: Expression<any>): Expression<number> {
+  const node: FunctionCallNode = {
+    type: "function_call",
+    name: "COUNT",
+    args: [(expr as any).node],
+    distinct: true,
+  }
+  return wrap(node)
+}
+
 /** SUM(expr) */
 export function sum(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("SUM", [(expr as any).node]))
@@ -359,4 +376,218 @@ export class CaseBuilder<T> {
     }
     return wrap<T>(node)
   }
+}
+
+// ── Window Function Builder ──
+
+/**
+ * Window function builder.
+ *
+ * ```ts
+ * over(count(), w => w.partitionBy("dept").orderBy("salary", "DESC"))
+ * over(sqlFn("ROW_NUMBER"), w => w.partitionBy("dept").orderBy("id"))
+ * ```
+ */
+export function over<T>(
+  fn: Expression<T>,
+  build: (w: WindowBuilder) => WindowBuilder,
+): Expression<T> {
+  const builder = build(new WindowBuilder())
+  const fnNode = (fn as any).node as FunctionCallNode
+  const node: WindowFunctionNode = {
+    type: "window_function",
+    fn: fnNode,
+    partitionBy: builder._partitionBy,
+    orderBy: builder._orderBy,
+    frame: builder._frame,
+  }
+  return wrap<T>(node)
+}
+
+export class WindowBuilder {
+  /** @internal */
+  _partitionBy: ExpressionNode[] = []
+  /** @internal */
+  _orderBy: OrderByNode[] = []
+  /** @internal */
+  _frame: FrameSpec | undefined
+
+  partitionBy(...columns: string[]): WindowBuilder {
+    const b = new WindowBuilder()
+    b._partitionBy = columns.map((c) => rawCol(c))
+    b._orderBy = this._orderBy
+    b._frame = this._frame
+    return b
+  }
+
+  orderBy(column: string, direction: "ASC" | "DESC" = "ASC"): WindowBuilder {
+    const b = new WindowBuilder()
+    b._partitionBy = this._partitionBy
+    b._orderBy = [...this._orderBy, { expr: rawCol(column), direction }]
+    b._frame = this._frame
+    return b
+  }
+
+  rows(start: FrameBound, end?: FrameBound): WindowBuilder {
+    return this._withFrame("ROWS", start, end)
+  }
+
+  range(start: FrameBound, end?: FrameBound): WindowBuilder {
+    return this._withFrame("RANGE", start, end)
+  }
+
+  /** @internal */
+  _withFrame(kind: FrameKind, start: FrameBound, end?: FrameBound): WindowBuilder {
+    const b = new WindowBuilder()
+    b._partitionBy = this._partitionBy
+    b._orderBy = this._orderBy
+    b._frame = { kind, start, end }
+    return b
+  }
+}
+
+// ── Convenience window functions ──
+
+/** ROW_NUMBER() — must be used with over() */
+export function rowNumber(): Expression<number> {
+  return wrap(rawFn("ROW_NUMBER", []))
+}
+
+/** RANK() — must be used with over() */
+export function rank(): Expression<number> {
+  return wrap(rawFn("RANK", []))
+}
+
+/** DENSE_RANK() — must be used with over() */
+export function denseRank(): Expression<number> {
+  return wrap(rawFn("DENSE_RANK", []))
+}
+
+/** LAG(expr, offset?, default?) */
+export function lag<T>(
+  expr: Expression<T>,
+  offset?: number,
+  defaultValue?: Expression<T>,
+): Expression<T> {
+  const args: ExpressionNode[] = [(expr as any).node]
+  if (offset !== undefined) args.push(rawLit(offset))
+  if (defaultValue !== undefined) args.push((defaultValue as any).node)
+  return wrap(rawFn("LAG", args))
+}
+
+/** LEAD(expr, offset?, default?) */
+export function lead<T>(
+  expr: Expression<T>,
+  offset?: number,
+  defaultValue?: Expression<T>,
+): Expression<T> {
+  const args: ExpressionNode[] = [(expr as any).node]
+  if (offset !== undefined) args.push(rawLit(offset))
+  if (defaultValue !== undefined) args.push((defaultValue as any).node)
+  return wrap(rawFn("LEAD", args))
+}
+
+/** NTILE(n) */
+export function ntile(n: number): Expression<number> {
+  return wrap(rawFn("NTILE", [rawLit(n)]))
+}
+
+// ── Common SQL functions ──
+
+/** UPPER(expr) */
+export function upper(expr: Expression<string>): Expression<string> {
+  return wrap(rawFn("UPPER", [(expr as any).node]))
+}
+
+/** LOWER(expr) */
+export function lower(expr: Expression<string>): Expression<string> {
+  return wrap(rawFn("LOWER", [(expr as any).node]))
+}
+
+/** CONCAT(a, b, ...) */
+export function concat(...args: Expression<string>[]): Expression<string> {
+  return wrap(
+    rawFn(
+      "CONCAT",
+      args.map((a) => (a as any).node),
+    ),
+  )
+}
+
+/** SUBSTRING(expr, start, length?) */
+export function substring(
+  expr: Expression<string>,
+  start: number,
+  length?: number,
+): Expression<string> {
+  const args: ExpressionNode[] = [(expr as any).node, rawLit(start)]
+  if (length !== undefined) args.push(rawLit(length))
+  return wrap(rawFn("SUBSTRING", args))
+}
+
+/** TRIM(expr) */
+export function trim(expr: Expression<string>): Expression<string> {
+  return wrap(rawFn("TRIM", [(expr as any).node]))
+}
+
+/** LENGTH(expr) / CHAR_LENGTH(expr) */
+export function length(expr: Expression<string>): Expression<number> {
+  return wrap(rawFn("LENGTH", [(expr as any).node]))
+}
+
+/** NOW() */
+export function now(): Expression<Date> {
+  return wrap(rawFn("NOW", []))
+}
+
+/** CURRENT_TIMESTAMP */
+export function currentTimestamp(): Expression<Date> {
+  return wrap(rawFn("CURRENT_TIMESTAMP", []))
+}
+
+/** NULLIF(a, b) */
+export function nullif<T>(a: Expression<T>, b: Expression<T>): Expression<T | null> {
+  return wrap(rawFn("NULLIF", [(a as any).node, (b as any).node]))
+}
+
+/** GREATEST(a, b, ...) */
+export function greatest<T>(...args: Expression<T>[]): Expression<T> {
+  return wrap(
+    rawFn(
+      "GREATEST",
+      args.map((a) => (a as any).node),
+    ),
+  )
+}
+
+/** LEAST(a, b, ...) */
+export function least<T>(...args: Expression<T>[]): Expression<T> {
+  return wrap(
+    rawFn(
+      "LEAST",
+      args.map((a) => (a as any).node),
+    ),
+  )
+}
+
+/** ABS(expr) */
+export function abs(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("ABS", [(expr as any).node]))
+}
+
+/** ROUND(expr, precision?) */
+export function round(expr: Expression<number>, precision?: number): Expression<number> {
+  const args: ExpressionNode[] = [(expr as any).node]
+  if (precision !== undefined) args.push(rawLit(precision))
+  return wrap(rawFn("ROUND", args))
+}
+
+/** CEIL(expr) */
+export function ceil(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("CEIL", [(expr as any).node]))
+}
+
+/** FLOOR(expr) */
+export function floor(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("FLOOR", [(expr as any).node]))
 }

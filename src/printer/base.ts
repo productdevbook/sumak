@@ -317,7 +317,8 @@ export class BasePrinter implements Printer {
   }
 
   protected printFunctionCall(node: FunctionCallNode): string {
-    let result = `${node.name}(${node.args.map((a) => this.printExpression(a)).join(", ")})`
+    const distinctPrefix = node.distinct ? "DISTINCT " : ""
+    let result = `${node.name}(${distinctPrefix}${node.args.map((a) => this.printExpression(a)).join(", ")})`
     if (node.alias) {
       result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
     }

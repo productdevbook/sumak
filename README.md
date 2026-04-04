@@ -208,9 +208,12 @@ db.selectFrom("users").crossJoin("posts").compile(db.printer())
 ### Aggregates
 
 ```ts
-import { count, sum, avg, min, max, coalesce } from "sumak"
+import { count, countDistinct, sum, avg, min, max, coalesce } from "sumak"
 
 db.selectFrom("users").selectExpr(count(), "total").compile(db.printer())
+
+db.selectFrom("users").selectExpr(countDistinct(col.dept), "uniqueDepts").compile(db.printer())
+// SELECT COUNT(DISTINCT "dept") AS "uniqueDepts" FROM "users"
 
 db.selectFrom("orders").selectExpr(sum(col.amount), "totalAmount").compile(db.printer())
 
@@ -290,6 +293,122 @@ db.selectFrom("users")
 db.selectFrom("users")
   .selectExpr(jsonRef(col.meta, "name", "->>"), "metaName")
   .compile(db.printer())
+```
+
+## Window Functions
+
+```ts
+import { over, rowNumber, rank, denseRank, lag, lead, ntile, count, sum } from "sumak"
+
+// ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC)
+db.selectFrom("employees")
+  .selectExpr(
+    over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary", "DESC")),
+    "rn",
+  )
+  .compile(db.printer())
+
+// RANK() OVER (ORDER BY score DESC)
+db.selectFrom("students")
+  .selectExpr(
+    over(rank(), (w) => w.orderBy("score", "DESC")),
+    "rnk",
+  )
+  .compile(db.printer())
+
+// Running total with frame
+db.selectFrom("orders")
+  .selectExpr(
+    over(sum(col.amount), (w) =>
+      w
+        .partitionBy("userId")
+        .orderBy("createdAt")
+        .rows({ type: "unbounded_preceding" }, { type: "current_row" }),
+    ),
+    "runningTotal",
+  )
+  .compile(db.printer())
+
+// LAG / LEAD
+db.selectFrom("prices")
+  .selectExpr(
+    over(lag(col.price, 1), (w) => w.orderBy("date")),
+    "prevPrice",
+  )
+  .compile(db.printer())
+
+// NTILE(4)
+db.selectFrom("employees")
+  .selectExpr(
+    over(ntile(4), (w) => w.orderBy("salary", "DESC")),
+    "quartile",
+  )
+  .compile(db.printer())
+```
+
+## SQL Functions
+
+### String Functions
+
+```ts
+import { upper, lower, concat, substring, trim, length } from "sumak"
+
+db.selectFrom("users").selectExpr(upper(col.name), "upperName").compile(db.printer())
+// SELECT UPPER("name") AS "upperName" FROM "users"
+
+db.selectFrom("users").selectExpr(lower(col.email), "lowerEmail").compile(db.printer())
+
+db.selectFrom("users")
+  .selectExpr(concat(col.firstName, val(" "), col.lastName), "fullName")
+  .compile(db.printer())
+
+db.selectFrom("users")
+  .selectExpr(substring(col.name, 1, 3), "prefix")
+  .compile(db.printer())
+
+db.selectFrom("users").selectExpr(trim(col.name), "trimmed").compile(db.printer())
+
+db.selectFrom("users").selectExpr(length(col.name), "nameLen").compile(db.printer())
+```
+
+### Numeric Functions
+
+```ts
+import { abs, round, ceil, floor } from "sumak"
+
+db.selectFrom("orders").selectExpr(abs(col.balance), "absBalance").compile(db.printer())
+
+db.selectFrom("orders").selectExpr(round(col.price, 2), "rounded").compile(db.printer())
+
+db.selectFrom("orders").selectExpr(ceil(col.amount), "ceiling").compile(db.printer())
+
+db.selectFrom("orders").selectExpr(floor(col.amount), "floored").compile(db.printer())
+```
+
+### Conditional Functions
+
+```ts
+import { nullif, greatest, least } from "sumak"
+
+db.selectFrom("users")
+  .selectExpr(nullif(col.age, val(0)), "ageOrNull")
+  .compile(db.printer())
+
+db.selectFrom("products")
+  .selectExpr(greatest(col.price, col.minPrice), "effectivePrice")
+  .compile(db.printer())
+
+db.selectFrom("products")
+  .selectExpr(least(col.price, col.maxPrice), "cappedPrice")
+  .compile(db.printer())
+```
+
+### Date/Time Functions
+
+```ts
+import { now, currentTimestamp } from "sumak"
+
+db.selectFrom("users").selectExpr(now(), "currentTime").compile(db.printer())
 ```
 
 ## Set Operations
