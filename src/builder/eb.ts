@@ -199,6 +199,16 @@ export class Col<T> {
     return wrap(binOp("<", this._node, (value as any).node))
   }
 
+  /** IS DISTINCT FROM — null-safe inequality */
+  isDistinctFrom(value: T): Expression<boolean> {
+    return wrap(binOp("IS DISTINCT FROM", this._node, autoParam(value)))
+  }
+
+  /** IS NOT DISTINCT FROM — null-safe equality */
+  isNotDistinctFrom(value: T): Expression<boolean> {
+    return wrap(binOp("IS NOT DISTINCT FROM", this._node, autoParam(value)))
+  }
+
   /** Compare with another column: col1.eqCol(col2) */
   eqCol(other: Col<T>): Expression<boolean> {
     return wrap(binOp("=", this._node, other._node))
@@ -348,9 +358,14 @@ export function max<T>(expr: Expression<T>): Expression<T> {
   return wrap(rawFn("MAX", [(expr as any).node]))
 }
 
-/** COALESCE(expr, fallback) */
-export function coalesce<T>(expr: Expression<T | null>, fallback: Expression<T>): Expression<T> {
-  return wrap(rawFn("COALESCE", [(expr as any).node, (fallback as any).node]))
+/** COALESCE(a, b, c, ...) — returns first non-null value */
+export function coalesce<T>(...args: Expression<T | null>[]): Expression<T> {
+  return wrap(
+    rawFn(
+      "COALESCE",
+      args.map((a) => (a as any).node),
+    ),
+  )
 }
 
 /** NOT expr */

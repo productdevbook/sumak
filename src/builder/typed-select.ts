@@ -51,6 +51,19 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return new TypedSelectBuilder(this._builder.columns(aliased), this._table)
   }
 
+  /** Select multiple aliased expressions at once. */
+  selectExprs<Aliases extends Record<string, Expression<any>>>(
+    exprs: Aliases,
+  ): TypedSelectBuilder<DB, TB, O & { [K in keyof Aliases]: any }> {
+    let builder = this._builder
+    for (const [alias, expr] of Object.entries(exprs)) {
+      const node = unwrap(expr as Expression<any>)
+      const aliased = aliasExpr(node, alias)
+      builder = builder.columns(aliased)
+    }
+    return new TypedSelectBuilder(builder, this._table)
+  }
+
   /** DISTINCT */
   distinct(): TypedSelectBuilder<DB, TB, O> {
     return new TypedSelectBuilder(this._builder.distinct(), this._table)
@@ -327,6 +340,11 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), columns: [] }),
       this._table,
     )
+  }
+
+  /** Pipe builder through a function for reusable query fragments. */
+  $call<R>(fn: (qb: TypedSelectBuilder<DB, TB, O>) => R): R {
+    return fn(this)
   }
 
   /** Conditionally apply a transformation. */
