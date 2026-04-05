@@ -89,9 +89,7 @@ sql.ref = function ref(name: string, table?: string): Expression<any> {
  */
 sql.table = function table(name: string, schema?: string): Expression<any> {
   const escaped = name.replaceAll('"', '""')
-  const quoted = schema
-    ? `"${schema.replaceAll('"', '""')}"."${escaped}"`
-    : `"${escaped}"`
+  const quoted = schema ? `"${schema.replaceAll('"', '""')}"."${escaped}"` : `"${escaped}"`
   const node: RawNode = { type: "raw", sql: quoted, params: [] }
   return { node } as Expression<any>
 }

@@ -29,7 +29,9 @@ describe("PG array operators", () => {
     const q = db
       .selectFrom("posts")
       .select("id")
-      .where(() => arrayContains(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql', 'typescript']")))
+      .where(() =>
+        arrayContains(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql', 'typescript']")),
+      )
       .compile(p)
     expect(q.sql).toContain("@>")
   })
@@ -38,7 +40,12 @@ describe("PG array operators", () => {
     const q = db
       .selectFrom("posts")
       .select("id")
-      .where(() => arrayContainedBy(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql', 'typescript', 'rust']")))
+      .where(() =>
+        arrayContainedBy(
+          unsafeRawExpr("tags"),
+          unsafeRawExpr("ARRAY['sql', 'typescript', 'rust']"),
+        ),
+      )
       .compile(p)
     expect(q.sql).toContain("<@")
   })

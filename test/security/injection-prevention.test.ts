@@ -73,14 +73,30 @@ describe("SQL Injection Prevention", () => {
     it("rejects function names with special characters", () => {
       expect(() => {
         const expr = sqlFn("COUNT; DROP TABLE users --", val(1))
-        new PgPrinter().print({ type: "select", distinct: false, columns: [(expr as any).node], joins: [], groupBy: [], orderBy: [], ctes: [] })
+        new PgPrinter().print({
+          type: "select",
+          distinct: false,
+          columns: [(expr as any).node],
+          joins: [],
+          groupBy: [],
+          orderBy: [],
+          ctes: [],
+        })
       }).toThrow(SecurityError)
     })
 
     it("rejects function names with parentheses", () => {
       expect(() => {
         const expr = sqlFn("fn()", val(1))
-        new PgPrinter().print({ type: "select", distinct: false, columns: [(expr as any).node], joins: [], groupBy: [], orderBy: [], ctes: [] })
+        new PgPrinter().print({
+          type: "select",
+          distinct: false,
+          columns: [(expr as any).node],
+          joins: [],
+          groupBy: [],
+          orderBy: [],
+          ctes: [],
+        })
       }).toThrow(SecurityError)
     })
 
@@ -91,16 +107,28 @@ describe("SQL Injection Prevention", () => {
 
   describe("CAST dataType validation", () => {
     it("allows standard SQL types", () => {
-      const q1 = db.selectFrom("users").selectExpr(cast(val(42), "text"), "t").compile(p)
+      const q1 = db
+        .selectFrom("users")
+        .selectExpr(cast(val(42), "text"), "t")
+        .compile(p)
       expect(q1.sql).toContain("CAST")
 
-      const q2 = db.selectFrom("users").selectExpr(cast(val(42), "INTEGER"), "t").compile(p)
+      const q2 = db
+        .selectFrom("users")
+        .selectExpr(cast(val(42), "INTEGER"), "t")
+        .compile(p)
       expect(q2.sql).toContain("AS INTEGER")
 
-      const q3 = db.selectFrom("users").selectExpr(cast(val(42), "VARCHAR(255)"), "t").compile(p)
+      const q3 = db
+        .selectFrom("users")
+        .selectExpr(cast(val(42), "VARCHAR(255)"), "t")
+        .compile(p)
       expect(q3.sql).toContain("AS VARCHAR(255)")
 
-      const q4 = db.selectFrom("users").selectExpr(cast(val(42), "DOUBLE PRECISION"), "t").compile(p)
+      const q4 = db
+        .selectFrom("users")
+        .selectExpr(cast(val(42), "DOUBLE PRECISION"), "t")
+        .compile(p)
       expect(q4.sql).toContain("AS DOUBLE PRECISION")
     })
 
@@ -153,19 +181,13 @@ describe("SQL Injection Prevention", () => {
 
   describe("Backslash escaping (MySQL CVE-2026-33442)", () => {
     it("escapes backslashes in string literals via printer", () => {
-      const q = db
-        .selectFrom("users")
-        .selectExpr(val("a\\b"), "v")
-        .compile(p)
+      const q = db.selectFrom("users").selectExpr(val("a\\b"), "v").compile(p)
       // Backslash should be doubled: a\b → a\\b
       expect(q.sql).toContain("'a\\\\b'")
     })
 
     it("escapes single quotes in string literals via printer", () => {
-      const q = db
-        .selectFrom("users")
-        .selectExpr(val("it's"), "v")
-        .compile(p)
+      const q = db.selectFrom("users").selectExpr(val("it's"), "v").compile(p)
       // Single quote should be doubled: it's → it''s
       expect(q.sql).toContain("it''s")
     })

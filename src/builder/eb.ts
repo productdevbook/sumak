@@ -354,7 +354,6 @@ export function unsafeRawExpr<T = unknown>(sql: string, params: unknown[] = []):
   return wrap<T>({ type: "raw", sql, params })
 }
 
-
 /**
  * SQL function call with name validation.
  * Function names must be alphanumeric identifiers (prevents injection).
