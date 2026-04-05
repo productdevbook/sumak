@@ -1,6 +1,18 @@
 import { SecurityError } from "../errors.ts"
 
 /**
+ * Escapes a string value for safe embedding in a SQL string literal.
+ * Handles both single-quote doubling (ANSI SQL) and backslash escaping (MySQL default).
+ *
+ * This covers the MySQL `BACKSLASH_ESCAPES` sql_mode (enabled by default)
+ * where `\'` terminates a string literal, allowing injection even when
+ * single quotes are doubled. See: Kysely CVE-2026-33442.
+ */
+export function escapeStringLiteral(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll("'", "''")
+}
+
+/**
  * Validates that a SQL function name is safe (alphanumeric + underscores only).
  * Prevents injection via arbitrary function names like `sqlFn(userInput, ...)`.
  */

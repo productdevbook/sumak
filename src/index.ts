@@ -346,7 +346,7 @@ export type { CompiledQueryFn, PlaceholderMarker } from "./builder/compiled.ts"
 export { JsonOptic, JsonExpr, jsonCol, jsonExpr } from "./builder/json-optics.ts"
 
 // Security
-export { validateDataType, validateFunctionName } from "./utils/security.ts"
+export { escapeStringLiteral, validateDataType, validateFunctionName } from "./utils/security.ts"
 
 // Errors
 export {

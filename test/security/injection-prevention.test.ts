@@ -151,6 +151,34 @@ describe("SQL Injection Prevention", () => {
     })
   })
 
+  describe("Backslash escaping (MySQL CVE-2026-33442)", () => {
+    it("escapes backslashes in string literals via printer", () => {
+      const q = db
+        .selectFrom("users")
+        .selectExpr(val("a\\b"), "v")
+        .compile(p)
+      // Backslash should be doubled: a\b → a\\b
+      expect(q.sql).toContain("'a\\\\b'")
+    })
+
+    it("escapes single quotes in string literals via printer", () => {
+      const q = db
+        .selectFrom("users")
+        .selectExpr(val("it's"), "v")
+        .compile(p)
+      // Single quote should be doubled: it's → it''s
+      expect(q.sql).toContain("it''s")
+    })
+
+    it("escapes backslashes in sql tagged template literals", () => {
+      const expr = sql`SELECT ${val("test\\' OR 1=1 --")}`
+      const node = (expr as any).node
+      // The backslash and single-quote must both be escaped
+      expect(node.sql).toContain("\\\\")
+      expect(node.sql).toContain("''")
+    })
+  })
+
   describe("Parameterization by default", () => {
     it("all comparison values are parameterized", () => {
       const q = db

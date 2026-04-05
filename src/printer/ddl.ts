@@ -14,6 +14,7 @@ import type {
 } from "../ast/ddl-nodes.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
+import { escapeStringLiteral } from "../utils/security.ts"
 
 export class DDLPrinter {
   private dialect: SQLDialect
@@ -271,7 +272,7 @@ export class DDLPrinter {
         if (node.value === null) return "NULL"
         if (typeof node.value === "boolean") return node.value ? "TRUE" : "FALSE"
         if (typeof node.value === "number") return String(node.value)
-        return `'${String(node.value).replaceAll("'", "''")}'`
+        return `'${escapeStringLiteral(String(node.value))}'`
       case "raw":
         this.params.push(...node.params)
         return node.sql

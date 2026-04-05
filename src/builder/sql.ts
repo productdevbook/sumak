@@ -1,5 +1,6 @@
 import type { ExpressionNode, RawNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
+import { escapeStringLiteral } from "../utils/security.ts"
 
 /**
  * Tagged template literal for raw SQL with auto-parameterization.
@@ -34,7 +35,7 @@ export function sql<T = unknown>(
           else if (typeof exprNode.value === "boolean")
             sqlParts.push(exprNode.value ? "TRUE" : "FALSE")
           else if (typeof exprNode.value === "number") sqlParts.push(String(exprNode.value))
-          else sqlParts.push(`'${String(exprNode.value).replaceAll("'", "''")}'`)
+          else sqlParts.push(`'${escapeStringLiteral(String(exprNode.value))}'`)
         } else if (exprNode.type === "param") {
           params.push(exprNode.value)
           sqlParts.push(`__PARAM_${params.length - 1}__`)

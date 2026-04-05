@@ -43,7 +43,7 @@ import type {
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { formatParam } from "../utils/param.ts"
-import { validateDataType, validateFunctionName } from "../utils/security.ts"
+import { escapeStringLiteral, validateDataType, validateFunctionName } from "../utils/security.ts"
 import type { Printer } from "./types.ts"
 
 export class BasePrinter implements Printer {
@@ -355,7 +355,7 @@ export class BasePrinter implements Printer {
     if (node.value === null) return "NULL"
     if (typeof node.value === "boolean") return node.value ? "TRUE" : "FALSE"
     if (typeof node.value === "number") return String(node.value)
-    return `'${String(node.value).replaceAll("'", "''")}'`
+    return `'${escapeStringLiteral(String(node.value))}'`
   }
 
   protected printBinaryOp(node: BinaryOpNode): string {
