@@ -28,25 +28,6 @@ describe("PluginManager", () => {
     expect(log).toEqual(["p1", "p2"])
   })
 
-  it("applies transformQuery plugins in order", () => {
-    const p1: SumakPlugin = {
-      name: "p1",
-      transformQuery(q) {
-        return { ...q, sql: q.sql + " /* p1 */" }
-      },
-    }
-    const p2: SumakPlugin = {
-      name: "p2",
-      transformQuery(q) {
-        return { ...q, sql: q.sql + " /* p2 */" }
-      },
-    }
-
-    const pm = new PluginManager([p1, p2])
-    const result = pm.transformQuery({ sql: "SELECT 1", params: [] })
-    expect(result.sql).toBe("SELECT 1 /* p1 */ /* p2 */")
-  })
-
   it("applies transformResult plugins in order", () => {
     const p1: SumakPlugin = {
       name: "p1",
@@ -65,7 +46,6 @@ describe("PluginManager", () => {
 
     const node = createSelectNode()
     expect(pm.transformNode(node)).toBe(node)
-    expect(pm.transformQuery({ sql: "X", params: [] }).sql).toBe("X")
     expect(pm.transformResult([{ a: 1 }])).toEqual([{ a: 1 }])
   })
 })

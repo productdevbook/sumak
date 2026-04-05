@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { and, or, rawExpr, val } from "../../src/builder/eb.ts"
+import { and, or, unsafeRawExpr, val } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { integer, serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
@@ -92,12 +92,12 @@ describe("gteExpr / lteExpr", () => {
   })
 })
 
-describe("rawExpr()", () => {
+describe("unsafeRawExpr()", () => {
   it("raw SQL in WHERE", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(() => rawExpr<boolean>("age > 18"))
+      .where(() => unsafeRawExpr<boolean>("age > 18"))
       .compile(p)
     expect(q.sql).toContain("age > 18")
   })
@@ -105,7 +105,7 @@ describe("rawExpr()", () => {
   it("raw SQL in selectExpr", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(rawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
+      .selectExpr(unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
       .compile(p)
     expect(q.sql).toContain("EXTRACT(YEAR FROM created_at)")
     expect(q.sql).toContain('"year"')
@@ -115,7 +115,7 @@ describe("rawExpr()", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(() => rawExpr<boolean>("age > $1", [18]))
+      .where(() => unsafeRawExpr<boolean>("age > $1", [18]))
       .compile(p)
     expect(q.sql).toContain("age > $1")
     expect(q.params).toContain(18)

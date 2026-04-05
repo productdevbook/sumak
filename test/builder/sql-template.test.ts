@@ -90,8 +90,8 @@ describe("sql tagged template literal", () => {
     expect(node.sql).toContain('"public"."users"')
   })
 
-  it("sql.raw for unsafe SQL", () => {
-    const expr = sql`SELECT * FROM ${sql.raw("users")} WHERE 1=1`
+  it("sql.unsafe for unsafe SQL", () => {
+    const expr = sql`SELECT * FROM ${sql.unsafe("users")} WHERE 1=1`
     const node = (expr as any).node
     expect(node.sql).toContain("users")
   })

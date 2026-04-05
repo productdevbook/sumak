@@ -4,7 +4,7 @@ import {
   arrayContainedBy,
   arrayContains,
   arrayOverlaps,
-  rawExpr,
+  unsafeRawExpr,
   val,
 } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
@@ -29,7 +29,7 @@ describe("PG array operators", () => {
     const q = db
       .selectFrom("posts")
       .select("id")
-      .where(() => arrayContains(rawExpr("tags"), rawExpr("ARRAY['sql', 'typescript']")))
+      .where(() => arrayContains(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql', 'typescript']")))
       .compile(p)
     expect(q.sql).toContain("@>")
   })
@@ -38,7 +38,7 @@ describe("PG array operators", () => {
     const q = db
       .selectFrom("posts")
       .select("id")
-      .where(() => arrayContainedBy(rawExpr("tags"), rawExpr("ARRAY['sql', 'typescript', 'rust']")))
+      .where(() => arrayContainedBy(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql', 'typescript', 'rust']")))
       .compile(p)
     expect(q.sql).toContain("<@")
   })
@@ -47,7 +47,7 @@ describe("PG array operators", () => {
     const q = db
       .selectFrom("posts")
       .select("id")
-      .where(() => arrayOverlaps(rawExpr("tags"), rawExpr("ARRAY['sql']")))
+      .where(() => arrayOverlaps(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql']")))
       .compile(p)
     expect(q.sql).toContain("&&")
   })

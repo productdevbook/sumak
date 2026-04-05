@@ -43,6 +43,7 @@ import type {
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { formatParam } from "../utils/param.ts"
+import { validateDataType, validateFunctionName } from "../utils/security.ts"
 import type { Printer } from "./types.ts"
 
 export class BasePrinter implements Printer {
@@ -369,6 +370,7 @@ export class BasePrinter implements Printer {
   }
 
   protected printFunctionCall(node: FunctionCallNode): string {
+    validateFunctionName(node.name)
     const distinctPrefix = node.distinct ? "DISTINCT " : ""
     let inner = `${distinctPrefix}${node.args.map((a) => this.printExpression(a)).join(", ")}`
     if (node.orderBy && node.orderBy.length > 0) {
@@ -442,6 +444,7 @@ export class BasePrinter implements Printer {
   }
 
   protected printCast(node: CastNode): string {
+    validateDataType(node.dataType)
     return `CAST(${this.printExpression(node.expr)} AS ${node.dataType})`
   }
 

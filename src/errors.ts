@@ -25,3 +25,10 @@ export class EmptyQueryError extends SumakError {
     this.name = "EmptyQueryError"
   }
 }
+
+export class SecurityError extends SumakError {
+  constructor(message: string) {
+    super(message)
+    this.name = "SecurityError"
+  }
+}

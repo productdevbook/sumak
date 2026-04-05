@@ -27,6 +27,7 @@ import type {
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import type { SelectType } from "../schema/types.ts"
+import { validateFunctionName } from "../utils/security.ts"
 
 /**
  * A typed column reference that exposes comparison methods.
@@ -75,24 +76,24 @@ export class Col<T> {
     return wrap(binOp("<=", this._node, autoParam(value)))
   }
 
-  /** LIKE (string columns only) */
+  /** LIKE (string columns only) — pattern is parameterized for safety */
   like(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("LIKE", this._node, rawLit(pattern)))
+    return wrap(binOp("LIKE", this._node, autoParam(pattern)))
   }
 
-  /** NOT LIKE */
+  /** NOT LIKE — pattern is parameterized for safety */
   notLike(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("NOT LIKE", this._node, rawLit(pattern)))
+    return wrap(binOp("NOT LIKE", this._node, autoParam(pattern)))
   }
 
-  /** ILIKE — case-insensitive LIKE (PG) */
+  /** ILIKE — case-insensitive LIKE (PG) — pattern is parameterized for safety */
   ilike(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("ILIKE", this._node, rawLit(pattern)))
+    return wrap(binOp("ILIKE", this._node, autoParam(pattern)))
   }
 
-  /** NOT ILIKE (PG) */
+  /** NOT ILIKE (PG) — pattern is parameterized for safety */
   notIlike(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("NOT ILIKE", this._node, rawLit(pattern)))
+    return wrap(binOp("NOT ILIKE", this._node, autoParam(pattern)))
   }
 
   /** IN (value1, value2, ...) */
@@ -339,19 +340,43 @@ export function val<T extends string | number | boolean | null>(value: T): Expre
 }
 
 /**
- * Raw SQL expression — escape hatch for arbitrary SQL in expressions.
+ * Unsafe raw SQL expression — escape hatch for arbitrary SQL in expressions.
+ *
+ * **WARNING:** Never pass user-controlled input as the SQL string.
+ * This bypasses all security validation and can lead to SQL injection.
  *
  * ```ts
- * .where(() => rawExpr("age > 18"))
- * .selectExpr(rawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
+ * .where(() => unsafeRawExpr("age > 18"))
+ * .selectExpr(unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
  * ```
  */
-export function rawExpr<T = unknown>(sql: string, params: unknown[] = []): Expression<T> {
+export function unsafeRawExpr<T = unknown>(sql: string, params: unknown[] = []): Expression<T> {
   return wrap<T>({ type: "raw", sql, params })
 }
 
-/** SQL function call */
+
+/**
+ * SQL function call with name validation.
+ * Function names must be alphanumeric identifiers (prevents injection).
+ * For non-standard function names, use `unsafeSqlFn()` with caution.
+ */
 export function sqlFn(name: string, ...args: Expression<any>[]): Expression<any> {
+  validateFunctionName(name)
+  return wrap(
+    rawFn(
+      name,
+      args.map((a) => (a as any).node),
+    ),
+  )
+}
+
+/**
+ * Unsafe SQL function call — no name validation.
+ *
+ * **WARNING:** Never pass user-controlled input as the function name.
+ * This bypasses security validation and can lead to SQL injection.
+ */
+export function unsafeSqlFn(name: string, ...args: Expression<any>[]): Expression<any> {
   return wrap(
     rawFn(
       name,

@@ -303,10 +303,7 @@ export class Sumak<DB> {
     const printer = this._dialect.createPrinter()
     let query = printer.print(ast)
 
-    // 7. Plugin query transform
-    query = this._plugins.transformQuery(query)
-
-    // 8. After hook
+    // 7. After hook
     const afterResult = this._hooks.callHook("query:after", { node: ast, table, query })
     if (afterResult) query = afterResult
 

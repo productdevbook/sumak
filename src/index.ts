@@ -36,6 +36,7 @@ export type {
   ParamNode,
   RawNode,
   SelectNode,
+  SqlDataType,
   StarNode,
   SubqueryNode,
   TableRefNode,
@@ -228,10 +229,11 @@ export {
   or,
   over,
   rank,
-  rawExpr,
   round,
   rowNumber,
   sqlFn,
+  unsafeRawExpr,
+  unsafeSqlFn,
   stringAgg,
   subqueryExpr,
   sub,
@@ -343,10 +345,14 @@ export type { CompiledQueryFn, PlaceholderMarker } from "./builder/compiled.ts"
 // JSON optics
 export { JsonOptic, JsonExpr, jsonCol, jsonExpr } from "./builder/json-optics.ts"
 
+// Security
+export { validateDataType, validateFunctionName } from "./utils/security.ts"
+
 // Errors
 export {
   EmptyQueryError,
   InvalidExpressionError,
+  SecurityError,
   SumakError,
   UnsupportedDialectFeatureError,
 } from "./errors.ts"

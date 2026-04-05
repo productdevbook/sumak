@@ -1,10 +1,12 @@
 import type { ASTNode } from "../ast/nodes.ts"
-import type { CompiledQuery } from "../types.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
  * Manages plugin execution pipeline.
  * Plugins are applied sequentially in registration order.
+ *
+ * **Security:** Only AST-level transforms are allowed. Plugins cannot modify
+ * compiled SQL strings directly, preserving parameterization guarantees.
  */
 export class PluginManager {
   private readonly plugins: readonly SumakPlugin[]
@@ -19,17 +21,6 @@ export class PluginManager {
     for (const plugin of this.plugins) {
       if (plugin.transformNode) {
         result = plugin.transformNode(result)
-      }
-    }
-    return result
-  }
-
-  /** Apply all transformQuery phases in order. */
-  transformQuery(query: CompiledQuery): CompiledQuery {
-    let result = query
-    for (const plugin of this.plugins) {
-      if (plugin.transformQuery) {
-        result = plugin.transformQuery(result)
       }
     }
     return result

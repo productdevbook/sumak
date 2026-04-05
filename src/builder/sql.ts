@@ -40,8 +40,8 @@ export function sql<T = unknown>(
           sqlParts.push(`__PARAM_${params.length - 1}__`)
         } else if (exprNode.type === "column_ref") {
           const col = exprNode.table
-            ? `"${exprNode.table}"."${exprNode.column}"`
-            : `"${exprNode.column}"`
+            ? `"${exprNode.table.replaceAll('"', '""')}"."${exprNode.column.replaceAll('"', '""')}"`
+            : `"${exprNode.column.replaceAll('"', '""')}"`
           sqlParts.push(col)
         } else if (exprNode.type === "raw") {
           params.push(...exprNode.params)
@@ -81,17 +81,27 @@ sql.ref = function ref(name: string, table?: string): Expression<any> {
 
 /**
  * SQL table reference for use in sql`` template.
+ * Escapes identifier delimiters to prevent injection.
+ *
+ * Note: Uses ANSI SQL double-quote escaping. For dialect-aware quoting,
+ * use the builder API instead of raw sql templates.
  */
 sql.table = function table(name: string, schema?: string): Expression<any> {
-  const quoted = schema ? `"${schema}"."${name}"` : `"${name}"`
+  const escaped = name.replaceAll('"', '""')
+  const quoted = schema
+    ? `"${schema.replaceAll('"', '""')}"."${escaped}"`
+    : `"${escaped}"`
   const node: RawNode = { type: "raw", sql: quoted, params: [] }
   return { node } as Expression<any>
 }
 
 /**
- * Raw unsafe SQL string — no escaping. Use with care.
+ * Unsafe raw SQL string — no escaping.
+ *
+ * **WARNING:** Never pass user-controlled input. This bypasses all
+ * security validation and can lead to SQL injection.
  */
-sql.raw = function rawSql(str: string): Expression<any> {
+sql.unsafe = function unsafeSql(str: string): Expression<any> {
   const node: RawNode = { type: "raw", sql: str, params: [] }
   return { node } as Expression<any>
 }
