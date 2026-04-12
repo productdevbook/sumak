@@ -68,47 +68,49 @@ export function sql<T = unknown>(
   return { node } as Expression<T>
 }
 
-/**
- * SQL identifier quoting helper for use in sql`` template.
- *
- * ```ts
- * sql`SELECT * FROM ${sql.ref("users")} WHERE ${sql.ref("id")} = ${1}`
- * ```
- */
-sql.ref = function ref(name: string, table?: string): Expression<any> {
-  const node: ExpressionNode = { type: "column_ref", column: name, table }
-  return { node } as Expression<any>
-}
+export namespace sql {
+  /**
+   * SQL identifier quoting helper for use in sql`` template.
+   *
+   * ```ts
+   * sql`SELECT * FROM ${sql.ref("users")} WHERE ${sql.ref("id")} = ${1}`
+   * ```
+   */
+  export function ref(name: string, table?: string): Expression<any> {
+    const node: ExpressionNode = { type: "column_ref", column: name, table }
+    return { node } as Expression<any>
+  }
 
-/**
- * SQL table reference for use in sql`` template.
- * Escapes identifier delimiters to prevent injection.
- *
- * Note: Uses ANSI SQL double-quote escaping. For dialect-aware quoting,
- * use the builder API instead of raw sql templates.
- */
-sql.table = function table(name: string, schema?: string): Expression<any> {
-  const escaped = name.replaceAll('"', '""')
-  const quoted = schema ? `"${schema.replaceAll('"', '""')}"."${escaped}"` : `"${escaped}"`
-  const node: RawNode = { type: "raw", sql: quoted, params: [] }
-  return { node } as Expression<any>
-}
+  /**
+   * SQL table reference for use in sql`` template.
+   * Escapes identifier delimiters to prevent injection.
+   *
+   * Note: Uses ANSI SQL double-quote escaping. For dialect-aware quoting,
+   * use the builder API instead of raw sql templates.
+   */
+  export function table(name: string, schema?: string): Expression<any> {
+    const escaped = name.replaceAll('"', '""')
+    const quoted = schema ? `"${schema.replaceAll('"', '""')}"."${escaped}"` : `"${escaped}"`
+    const node: RawNode = { type: "raw", sql: quoted, params: [] }
+    return { node } as Expression<any>
+  }
 
-/**
- * Unsafe raw SQL string — no escaping.
- *
- * **WARNING:** Never pass user-controlled input. This bypasses all
- * security validation and can lead to SQL injection.
- */
-sql.unsafe = function unsafeSql(str: string): Expression<any> {
-  const node: RawNode = { type: "raw", sql: str, params: [] }
-  return { node } as Expression<any>
-}
+  /**
+   * Unsafe raw SQL string — no escaping.
+   *
+   * **WARNING:** Never pass user-controlled input. This bypasses all
+   * security validation and can lead to SQL injection.
+   */
+  export function unsafe(str: string): Expression<any> {
+    const node: RawNode = { type: "raw", sql: str, params: [] }
+    return { node } as Expression<any>
+  }
 
-/**
- * Literal value (not parameterized) — for constants.
- */
-sql.lit = function lit(value: string | number | boolean | null): Expression<any> {
-  const node: ExpressionNode = { type: "literal", value }
-  return { node } as Expression<any>
+  /**
+   * Literal value (not parameterized) — for constants.
+   */
+  export function lit(value: string | number | boolean | null): Expression<any> {
+    const node: ExpressionNode = { type: "literal", value }
+    return { node } as Expression<any>
+  }
 }

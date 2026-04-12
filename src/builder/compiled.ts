@@ -23,7 +23,7 @@ export interface PlaceholderNode {
   value: PlaceholderMarker
 }
 
-const PLACEHOLDER_BRAND = Symbol.for("sumak.placeholder")
+const PLACEHOLDER_BRAND: unique symbol = Symbol.for("sumak.placeholder") as any
 
 export interface PlaceholderMarker {
   readonly [PLACEHOLDER_BRAND]: true
