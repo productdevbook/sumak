@@ -17,7 +17,7 @@ import { brandExpression } from "../ast/typed-expression.ts"
  *
  * // Use in SELECT:
  * db.selectFrom("users")
- *   .selectExprs(jsonCol("data").at("name").asText().as("name"))
+ *   .select(jsonCol("data").at("name").asText().as("name"))
  * ```
  *
  * **Dialect-aware operators:**

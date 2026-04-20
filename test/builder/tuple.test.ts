@@ -23,7 +23,7 @@ describe("Tuple comparisons", () => {
     const q = db
       .selectFrom("users")
       .selectAll()
-      .selectExpr(tuple(val(1), val(2)), "pair")
+      .select({ pair: tuple(val(1), val(2)) })
       .compile(p)
     expect(q.sql).toContain("(1, 2)")
   })
@@ -53,7 +53,7 @@ describe("Tuple comparisons", () => {
     const q = db
       .selectFrom("users")
       .selectAll()
-      .selectExpr(tuple(val(42)), "single")
+      .select({ single: tuple(val(42)) })
       .compile(p)
     expect(q.sql).toContain("(42)")
   })
@@ -62,7 +62,7 @@ describe("Tuple comparisons", () => {
     const q = db
       .selectFrom("users")
       .selectAll()
-      .selectExpr(tuple(val(1), val("a"), val(true)), "triple")
+      .select({ triple: tuple(val(1), val("a"), val(true)) })
       .compile(p)
     expect(q.sql).toContain("(1, 'a', TRUE)")
   })

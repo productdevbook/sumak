@@ -22,7 +22,7 @@ describe("SUM(DISTINCT) and AVG(DISTINCT)", () => {
   it("SUM(DISTINCT expr)", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(sumDistinct(val(100) as any), "unique_sum")
+      .select({ unique_sum: sumDistinct(val(100) as any) })
       .compile(p)
     expect(q.sql).toContain("SUM(DISTINCT")
   })
@@ -30,7 +30,7 @@ describe("SUM(DISTINCT) and AVG(DISTINCT)", () => {
   it("AVG(DISTINCT expr)", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(avgDistinct(val(50) as any), "unique_avg")
+      .select({ unique_avg: avgDistinct(val(50) as any) })
       .compile(p)
     expect(q.sql).toContain("AVG(DISTINCT")
   })

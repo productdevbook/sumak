@@ -141,21 +141,6 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     )
   }
 
-  /** @deprecated Use `.select({ [alias]: expr })` — same result, one canonical method. */
-  selectExpr<Alias extends string, T>(
-    expr: Expression<T>,
-    alias: Alias,
-  ): TypedSelectBuilder<DB, TB, O & Record<Alias, T>> {
-    return (this as any).select({ [alias]: expr })
-  }
-
-  /** @deprecated Use `.select(aliased)` — same object shape, one canonical method. */
-  selectExprs<Aliases extends Record<string, Expression<any>>>(
-    exprs: Aliases,
-  ): TypedSelectBuilder<DB, TB, O & { [K in keyof Aliases]: any }> {
-    return (this as any).select(exprs)
-  }
-
   /** DISTINCT */
   distinct(): TypedSelectBuilder<DB, TB, O> {
     return new TypedSelectBuilder(
@@ -237,7 +222,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * INNER JOIN.
    *
    * ```ts
-   * .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+   * .innerJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
    * ```
    */
   innerJoin<T extends keyof DB & string>(
@@ -542,7 +527,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * INNER JOIN with alias — for self-joins.
    *
    * ```ts
-   * .innerJoinAs("users", "u2", ({ users, u2 }) => users.managerId.eqCol(u2.id))
+   * .innerJoinAs("users", "u2", ({ users, u2 }) => users.managerId.eq(u2.id))
    * ```
    */
   innerJoinAs<T extends keyof DB & string, A extends string>(

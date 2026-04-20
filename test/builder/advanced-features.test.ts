@@ -23,7 +23,7 @@ describe("Variadic COALESCE", () => {
   it("two args (backward compat)", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(coalesce(val(null) as any, val("default")), "v")
+      .select({ v: coalesce(val(null) as any, val("default")) })
       .compile(p)
     expect(q.sql).toContain("COALESCE(")
     expect(q.sql).toContain("'default'")
@@ -32,7 +32,7 @@ describe("Variadic COALESCE", () => {
   it("three args", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(coalesce(val(null) as any, val(null) as any, val("fallback")), "v")
+      .select({ v: coalesce(val(null) as any, val(null) as any, val("fallback")) })
       .compile(p)
     expect(q.sql).toContain("COALESCE(NULL, NULL, 'fallback')")
   })
@@ -40,10 +40,9 @@ describe("Variadic COALESCE", () => {
   it("four args", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(
-        coalesce(val(null) as any, val(null) as any, val(null) as any, val(0) as any),
-        "v",
-      )
+      .select({
+        v: coalesce(val(null) as any, val(null) as any, val(null) as any, val(0) as any),
+      })
       .compile(p)
     expect(q.sql).toContain("COALESCE(NULL, NULL, NULL, 0)")
   })
@@ -54,7 +53,7 @@ describe("IS DISTINCT FROM / IS NOT DISTINCT FROM", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.isDistinctFrom(null as any))
+      .where(({ age }) => age.distinctFrom(null as any))
       .compile(p)
     expect(q.sql).toContain("IS DISTINCT FROM")
   })
@@ -63,7 +62,7 @@ describe("IS DISTINCT FROM / IS NOT DISTINCT FROM", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.isNotDistinctFrom(25))
+      .where(({ age }) => age.distinctFrom(25, { negate: true }))
       .compile(p)
     expect(q.sql).toContain("IS NOT DISTINCT FROM")
   })
@@ -88,7 +87,7 @@ describe("selectExprs — multiple expressions", () => {
   it("adds multiple aliased expressions", () => {
     const q = db
       .selectFrom("users")
-      .selectExprs({
+      .select({
         total: count(),
         greeting: val("hello"),
       })

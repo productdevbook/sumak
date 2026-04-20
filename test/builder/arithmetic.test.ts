@@ -22,7 +22,7 @@ describe("Arithmetic operators", () => {
   it("add: a + b", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(add(val(10) as any, val(5) as any), "total")
+      .select({ total: add(val(10) as any, val(5) as any) })
       .compile(p)
     expect(q.sql).toContain("(10 + 5)")
   })
@@ -30,7 +30,7 @@ describe("Arithmetic operators", () => {
   it("sub: a - b", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(sub(val(10) as any, val(3) as any), "diff")
+      .select({ diff: sub(val(10) as any, val(3) as any) })
       .compile(p)
     expect(q.sql).toContain("(10 - 3)")
   })
@@ -38,7 +38,7 @@ describe("Arithmetic operators", () => {
   it("mul: a * b", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(mul(val(4) as any, val(5) as any), "product")
+      .select({ product: mul(val(4) as any, val(5) as any) })
       .compile(p)
     expect(q.sql).toContain("(4 * 5)")
   })
@@ -46,7 +46,7 @@ describe("Arithmetic operators", () => {
   it("div: a / b", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(div(val(10) as any, val(2) as any), "quotient")
+      .select({ quotient: div(val(10) as any, val(2) as any) })
       .compile(p)
     expect(q.sql).toContain("(10 / 2)")
   })
@@ -54,7 +54,7 @@ describe("Arithmetic operators", () => {
   it("mod: a % b", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(mod(val(10) as any, val(3) as any), "remainder")
+      .select({ remainder: mod(val(10) as any, val(3) as any) })
       .compile(p)
     expect(q.sql).toContain("(10 % 3)")
   })
@@ -62,7 +62,7 @@ describe("Arithmetic operators", () => {
   it("nested arithmetic", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(add(mul(val(2) as any, val(3) as any), val(1) as any), "result")
+      .select({ result: add(mul(val(2) as any, val(3) as any), val(1) as any) })
       .compile(p)
     expect(q.sql).toContain("((2 * 3) + 1)")
   })

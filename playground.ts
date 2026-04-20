@@ -113,13 +113,13 @@ console.log("\n── JOIN ──\n")
 
 const q9 = db
   .selectFrom("users")
-  .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .innerJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
 
 console.log(q9.compile(p).sql)
 
 const q10 = db
   .selectFrom("users")
-  .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .leftJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
 
 console.log(q10.compile(p).sql)
 

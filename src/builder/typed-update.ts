@@ -84,11 +84,6 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     return this._with(builder)
   }
 
-  /** @deprecated — use `.set({ [column]: expr })` instead. */
-  setExpr(column: keyof DB[TB] & string, value: Expression<any>): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.set(column, unwrap(value)))
-  }
-
   /**
    * WHERE — callback or raw Expression.
    */

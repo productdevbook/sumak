@@ -55,7 +55,7 @@ describe("groupBy with Expression", () => {
     const q = db
       .selectFrom("users")
       .select("dept")
-      .selectExpr(count(), "cnt")
+      .select({ cnt: count() })
       .groupBy("dept")
       .compile(p)
     expect(q.sql).toContain("GROUP BY")

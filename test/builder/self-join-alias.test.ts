@@ -22,7 +22,7 @@ describe("Self-join with alias", () => {
   it("innerJoinAs for self-join", () => {
     const q = db
       .selectFrom("employees")
-      .innerJoinAs("employees", "mgr", ({ employees, mgr }) => employees.managerId.eqCol(mgr.id))
+      .innerJoinAs("employees", "mgr", ({ employees, mgr }) => employees.managerId.eq(mgr.id))
       .selectAll()
       .compile(p)
     expect(q.sql).toContain("INNER JOIN")
@@ -35,7 +35,7 @@ describe("Self-join with alias", () => {
   it("leftJoinAs for optional self-join", () => {
     const q = db
       .selectFrom("employees")
-      .leftJoinAs("employees", "mgr", ({ employees, mgr }) => employees.managerId.eqCol(mgr.id))
+      .leftJoinAs("employees", "mgr", ({ employees, mgr }) => employees.managerId.eq(mgr.id))
       .selectAll()
       .compile(p)
     expect(q.sql).toContain("LEFT JOIN")
@@ -48,7 +48,7 @@ describe("subqueryExpr — scalar subquery in expressions", () => {
     const sub = db.selectFrom("employees").select("name").build()
     const q = db
       .update("employees")
-      .setExpr("name", subqueryExpr(sub))
+      .set({ name: subqueryExpr(sub) })
       .where(({ id }) => id.eq(1))
       .compile(p)
     expect(q.sql).toContain("SET")
@@ -57,7 +57,10 @@ describe("subqueryExpr — scalar subquery in expressions", () => {
 
   it("scalar subquery in selectExpr", () => {
     const sub = db.selectFrom("employees").select("name").build()
-    const q = db.selectFrom("employees").selectExpr(subqueryExpr(sub), "sub_name").compile(p)
+    const q = db
+      .selectFrom("employees")
+      .select({ sub_name: subqueryExpr(sub) })
+      .compile(p)
     expect(q.sql).toContain("(SELECT")
     expect(q.sql).toContain('"sub_name"')
   })
@@ -82,7 +85,7 @@ describe("RETURNING with expression", () => {
     const q = db
       .insertInto("employees")
       .values({ name: "Alice", managerId: 0 })
-      .returningExpr(val("done"), "status")
+      .returning({ status: val("done") })
       .compile(p)
     expect(q.sql).toContain("RETURNING")
     expect(q.sql).toContain('"status"')

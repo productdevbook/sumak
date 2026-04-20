@@ -106,7 +106,7 @@ describe("sql tagged template literal", () => {
   it("can be used in selectExpr", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(sql`CURRENT_DATE`, "today")
+      .select({ today: sql`CURRENT_DATE` })
       .compile(p)
     expect(q.sql).toContain("CURRENT_DATE")
     expect(q.sql).toContain('"today"')

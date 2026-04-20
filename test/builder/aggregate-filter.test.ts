@@ -23,7 +23,7 @@ describe("Aggregate FILTER (WHERE)", () => {
   it("COUNT(*) FILTER (WHERE ...)", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(filter(count(), val(true) as any), "active_count")
+      .select({ active_count: filter(count(), val(true) as any) })
       .compile(p)
     expect(q.sql).toContain("COUNT(*) FILTER (WHERE")
   })
@@ -31,7 +31,7 @@ describe("Aggregate FILTER (WHERE)", () => {
   it("COUNT(DISTINCT) FILTER (WHERE ...)", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(filter(countDistinct(val("test") as any), val(true) as any), "unique_active")
+      .select({ unique_active: filter(countDistinct(val("test") as any), val(true) as any) })
       .compile(p)
     expect(q.sql).toContain("COUNT(DISTINCT")
     expect(q.sql).toContain("FILTER (WHERE")
@@ -40,14 +40,14 @@ describe("Aggregate FILTER (WHERE)", () => {
   it("SUM with FILTER", () => {
     const q = db
       .selectFrom("orders")
-      .selectExpr(filter(sum(val(100) as any), val(true) as any), "active_total")
+      .select({ active_total: filter(sum(val(100) as any), val(true) as any) })
       .compile(p)
     expect(q.sql).toContain("SUM(")
     expect(q.sql).toContain("FILTER (WHERE")
   })
 
   it("no FILTER when not used", () => {
-    const q = db.selectFrom("orders").selectExpr(count(), "total_count").compile(p)
+    const q = db.selectFrom("orders").select({ total_count: count() }).compile(p)
     expect(q.sql).not.toContain("FILTER")
   })
 })

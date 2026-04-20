@@ -22,7 +22,7 @@ describe("Typed DELETE with USING", () => {
     const q = db
       .deleteFrom("orders")
       .using("users")
-      .where(() => orderId.eqCol(userId))
+      .where(() => orderId.eq(userId))
       .compile(db.printer())
     expect(q.sql).toContain("USING")
     expect(q.sql).toContain("WHERE")
@@ -43,7 +43,7 @@ describe("Typed DELETE with JOIN", () => {
     const userId = new Col<number>("id", "users")
     const q = db
       .deleteFrom("orders")
-      .innerJoin("users", orderId.eqCol(userId))
+      .innerJoin("users", orderId.eq(userId))
       .where(({ id }) => id.eq(1))
       .compile(db.printer())
     expect(q.sql).toContain("INNER JOIN")
@@ -65,7 +65,7 @@ describe("Typed UPDATE with JOIN", () => {
     const q = db
       .update("orders")
       .set({ total: 0 })
-      .innerJoin("users", orderId.eqCol(userId))
+      .innerJoin("users", orderId.eq(userId))
       .compile(db.printer())
     expect(q.sql).toContain("INNER JOIN")
   })
@@ -76,7 +76,7 @@ describe("Typed UPDATE with JOIN", () => {
     const q = db
       .update("orders")
       .set({ total: 0 })
-      .leftJoin("users", orderId.eqCol(userId))
+      .leftJoin("users", orderId.eq(userId))
       .compile(db.printer())
     expect(q.sql).toContain("LEFT JOIN")
   })

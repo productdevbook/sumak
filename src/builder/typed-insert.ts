@@ -126,14 +126,6 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     return new TypedInsertReturningBuilder(builder, this._printer, this._compile)
   }
 
-  /** @deprecated — use `.returning({ [alias]: expr })` instead. */
-  returningExpr<Alias extends string>(
-    expr: Expression<any>,
-    alias: Alias,
-  ): TypedInsertReturningBuilder<DB, TB, SelectRow<DB, TB> & Record<Alias, any>> {
-    return (this as any).returning({ [alias]: expr })
-  }
-
   /**
    * RETURNING all columns.
    */

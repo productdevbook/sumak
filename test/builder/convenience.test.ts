@@ -57,7 +57,10 @@ describe("orWhere()", () => {
 describe("Col.cast()", () => {
   it("inline CAST on column", () => {
     const col = new Col<number>("age")
-    const q = db.selectFrom("users").selectExpr(col.cast<string>("text"), "ageText").compile(p)
+    const q = db
+      .selectFrom("users")
+      .select({ ageText: col.cast<string>("text") })
+      .compile(p)
     expect(q.sql).toContain("CAST(")
     expect(q.sql).toContain("AS text")
   })
