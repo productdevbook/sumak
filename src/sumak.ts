@@ -712,9 +712,17 @@ export class ScopedSumak<DB> {
       }) => Expression<boolean>
     },
   ): TypedMergeBuilder<DB, T, S> {
+    // If the caller didn't pass an alias, derive it from the source's
+    // unqualified name — otherwise `Sumak.mergeInto`'s default
+    // (`alias ?? source`) would set the alias to the fully-qualified
+    // name `"schema.table"`, which the printer then quotes as one
+    // identifier (`"schema.table"`) instead of two.
+    const sourceName = options.source as unknown as string
+    const derivedAlias = options.alias ?? (sourceName.split(".").at(-1) as string)
     return this._db.mergeInto(this._qualify(target) as T, {
       ...options,
       source: this._qualify(options.source) as S,
+      alias: derivedAlias,
     })
   }
 }

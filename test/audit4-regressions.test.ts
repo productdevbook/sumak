@@ -122,6 +122,25 @@ describe("Audit #4 regressions", () => {
       expect(q.sql).toContain('"tenant_1"."users"')
       expect(q.sql).toContain('"tenant_1"."staging"')
     })
+
+    it("derives a sane alias when the caller omits `alias`", () => {
+      // Without an alias the scoped mergeInto used to pass the
+      // fully-qualified name (`"tenant_1.staging"`) through to
+      // `Sumak.mergeInto`'s default alias fallback, which then emitted
+      // a single broken identifier `"tenant_1.staging"` in the ON clause.
+      // Now we derive the alias from the last segment of the source.
+      const q = db
+        .mergeInto("users", {
+          source: "staging",
+          on: ({ target, source }) => target.id.eq(source.id),
+        })
+        .whenMatchedThenUpdate({ name: "x" })
+        .toSQL()
+      expect(q.sql).toContain('"tenant_1"."staging"')
+      // The alias is `staging` (the last segment), not `tenant_1.staging`.
+      expect(q.sql).toContain('"staging"."id"')
+      expect(q.sql).not.toContain('"tenant_1.staging"')
+    })
   })
 
   describe("OptimisticLockPlugin idempotency", () => {
