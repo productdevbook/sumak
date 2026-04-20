@@ -155,6 +155,20 @@ export class SoftDeletePlugin implements SumakPlugin {
   /**
    * For each JOIN targeting a soft-delete table, append the alive condition
    * to the join's ON clause. Used by _transformSelect.
+   *
+   * ## Join-type semantics
+   *
+   * - **INNER JOIN** — predicate added to `ON`. Filters deleted rows out
+   *   of the result set (correct).
+   * - **LEFT / RIGHT / FULL JOIN** — LEFT/outer-joined rows with a deleted
+   *   target would NOT be filtered by adding `AND deleted_at IS NULL` to
+   *   `ON`; instead they would appear with NULL-valued joined columns.
+   *   That is a silent semantic surprise, so we leave outer joins alone.
+   *   If you want to hide deleted rows from an outer join, filter them in
+   *   your `WHERE` clause explicitly, or use INNER JOIN.
+   * - **CROSS JOIN** — no `ON` clause; irrelevant.
+   * - **Subquery join** — we recursively transform the subquery's own
+   *   SELECT so any soft-delete tables inside it get filtered.
    */
   private _filterJoins(
     joins: import("../ast/nodes.ts").JoinNode[],
@@ -162,8 +176,19 @@ export class SoftDeletePlugin implements SumakPlugin {
     let changed = false
     const out = joins.map((j) => {
       const t = j.table
-      const tableName = t.type === "table_ref" ? t.name : undefined
-      if (!tableName || !this._isTargetTable(tableName)) return j
+      // Subquery join — recurse so soft-delete tables inside the subquery
+      // still get filtered. Without this, `innerJoinLateral(subqueryFromUsers)`
+      // would silently bypass the plugin.
+      if (t.type === "subquery") {
+        const rewrittenInner = this._transformSelect(t.query)
+        if (rewrittenInner === t.query) return j
+        changed = true
+        return { ...j, table: { ...t, query: rewrittenInner } }
+      }
+      if (t.type !== "table_ref" || !this._isTargetTable(t.name)) return j
+      // Only INNER JOIN gets the predicate added to ON — adding it to a
+      // LEFT/RIGHT/FULL JOIN's ON changes semantics in a confusing way.
+      if (j.joinType !== "INNER") return j
       changed = true
       const cond = this._aliveCondition()
       const on = j.on ? and(j.on, cond) : cond

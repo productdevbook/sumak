@@ -98,11 +98,16 @@ abstract class SoftDeleteLikeBuilder<DB, TB extends keyof DB, Self> {
     return this._clone({ userWhere: andNodes(this._userWhere, raw) })
   }
 
+  /**
+   * RETURNING specific columns. Accumulates across multiple calls:
+   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
+   */
   returning<K extends keyof DB[TB] & string>(...cols: K[]): Self {
-    const returning: ExpressionNode[] = cols.map((c) => ({ type: "column_ref", column: c }))
-    return this._clone({ returning })
+    const newCols: ExpressionNode[] = cols.map((c) => ({ type: "column_ref", column: c }))
+    return this._clone({ returning: [...this._returning, ...newCols] })
   }
 
+  /** RETURNING * — discards any previously-accumulated column list. */
   returningAll(): Self {
     return this._clone({ returning: [{ type: "star" }] })
   }

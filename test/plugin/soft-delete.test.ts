@@ -243,7 +243,7 @@ describe("double-chain .where() — user predicates are AND-accumulated", () => 
   })
 })
 
-describe("JOIN — soft-delete filter propagates to joined target tables", () => {
+describe("JOIN — soft-delete filter behaviour per join type", () => {
   const db = sumak({
     dialect: pgDialect(),
     plugins: [softDelete({ tables: ["users"] })],
@@ -263,8 +263,22 @@ describe("JOIN — soft-delete filter propagates to joined target tables", () =>
       .innerJoin("users", ({ orders, users }) => orders.user_id.eq(users.id))
       .select("id")
       .toSQL()
-    // The join ON should include the alive predicate for the joined `users` table.
     expect(q.sql).toMatch(/JOIN "users" ON .*"deleted_at" IS NULL/)
+  })
+
+  it("LEFT JOIN is NOT rewritten — adding IS NULL to ON would null-out columns, not hide rows", () => {
+    const q = db
+      .selectFrom("orders")
+      .leftJoin("users", ({ orders, users }) => orders.user_id.eq(users.id))
+      .select("id")
+      .toSQL()
+    // LEFT JOIN to a soft-delete table must NOT get the predicate added
+    // to ON — it would be a silent semantic change. User must filter in
+    // WHERE or use INNER JOIN explicitly.
+    expect(q.sql).toMatch(
+      /LEFT JOIN "users" ON \("orders"\."user_id" = "users"\."id"\)(?!.*deleted_at)/,
+    )
+    expect(q.sql).not.toContain("deleted_at")
   })
 
   it("FROM-less join case: when soft-delete table is only in FROM, WHERE filter still applies", () => {
@@ -284,6 +298,31 @@ describe("includeDeleted + onlyDeleted precedence — last call wins", () => {
   it("onlyDeleted().includeDeleted() → includeDeleted wins (no filter)", () => {
     const q = db.selectFrom("users").select("id").onlyDeleted().includeDeleted().toSQL()
     expect(q.sql).not.toContain("deleted_at")
+  })
+})
+
+describe("SoftDeleteBuilder.returning() accumulates across chained calls", () => {
+  const db = makeDb({ tables: ["users"] })
+
+  it("two .returning() calls → both columns", () => {
+    const q = db
+      .softDelete("users")
+      .where(({ id }) => id.eq(1))
+      .returning("id")
+      .returning("name")
+      .toSQL()
+    expect(q.sql).toMatch(/RETURNING "id", "name"/)
+  })
+
+  it(".returningAll() discards any accumulated returning list", () => {
+    const q = db
+      .softDelete("users")
+      .where(({ id }) => id.eq(1))
+      .returning("id")
+      .returningAll()
+      .toSQL()
+    expect(q.sql).toContain("RETURNING *")
+    expect(q.sql).not.toMatch(/RETURNING "id"/)
   })
 })
 
