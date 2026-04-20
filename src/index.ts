@@ -59,7 +59,7 @@ export {
   val,
 } from "./builder/eb.ts"
 export { sql } from "./builder/sql.ts"
-export type { ColumnProxies, WhereCallback } from "./builder/eb.ts"
+export type { CaseBuilder, ColumnProxies, WhereCallback } from "./builder/eb.ts"
 
 // ─── Aggregates ────────────────────────────────────────────────────────────
 export {

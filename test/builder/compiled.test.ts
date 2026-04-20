@@ -155,3 +155,53 @@ describe("collectPlaceholders", () => {
     expect(collectPlaceholders(node)).toEqual([])
   })
 })
+
+describe("builder.toCompiled() — chainable compile-query entry point", () => {
+  it("SELECT builder exposes .toCompiled()", async () => {
+    const { sumak } = await import("../../src/sumak.ts")
+    const { pgDialect } = await import("../../src/dialect/pg.ts")
+    const { serial, text } = await import("../../src/schema/column.ts")
+
+    const db = sumak({
+      dialect: pgDialect(),
+      tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
+    })
+
+    const findUser = db
+      .selectFrom("users")
+      .where(({ id }) => id.eq(placeholder("userId") as unknown as number))
+      .select("id", "name")
+      .toCompiled<{ userId: number }>()
+
+    expect(typeof findUser).toBe("function")
+    expect(findUser.sql).toContain("SELECT")
+    expect(findUser.sql).toContain('"users"')
+
+    const r1 = findUser({ userId: 42 })
+    expect(r1.params).toEqual([42])
+    const r2 = findUser({ userId: 99 })
+    expect(r2.params).toEqual([99])
+    expect(r1.sql).toBe(r2.sql)
+  })
+
+  it("UPDATE builder exposes .toCompiled()", async () => {
+    const { sumak } = await import("../../src/sumak.ts")
+    const { pgDialect } = await import("../../src/dialect/pg.ts")
+    const { serial, text } = await import("../../src/schema/column.ts")
+
+    const db = sumak({
+      dialect: pgDialect(),
+      tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
+    })
+
+    const renameUser = db
+      .update("users")
+      .set({ name: placeholder("newName") as unknown as string })
+      .where(({ id }) => id.eq(placeholder("id") as unknown as number))
+      .toCompiled<{ id: number; newName: string }>()
+
+    const r = renameUser({ id: 1, newName: "Alice" })
+    expect(r.sql).toContain("UPDATE")
+    expect(r.params).toEqual(["Alice", 1])
+  })
+})

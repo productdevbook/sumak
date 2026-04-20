@@ -5,6 +5,8 @@ import { isExpression, unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
 import type { SelectRow, Updateable } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
+import type { CompiledQueryFn } from "./compiled.ts"
+import { compileQuery } from "./compiled.ts"
 import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
@@ -245,6 +247,14 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
       format: options?.format,
     }
     return new ExplainBuilder(explainNode, this._printer, this._compile)
+  }
+
+  /** Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`. */
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
+    if (!this._printer) {
+      throw new Error("toCompiled() requires a printer. Use db.update() to construct the builder.")
+    }
+    return compileQuery<P>(this.build(), this._printer, this._compile)
   }
 }
 
