@@ -1,5 +1,5 @@
 import { and, binOp, col, isNull, lit } from "../ast/expression.ts"
-import type { ASTNode, ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
+import type { ASTNode, ExpressionNode, MergeNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import { QueryFlags } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
@@ -86,6 +86,8 @@ export class SoftDeletePlugin implements SumakPlugin {
         return this._transformSelect(node)
       case "update":
         return this._transformUpdate(node)
+      case "merge":
+        return this._transformMerge(node)
       default:
         // DELETE intentionally unchanged — `deleteFrom` means hard delete.
         return node
@@ -156,6 +158,33 @@ export class SoftDeletePlugin implements SumakPlugin {
       ...node,
       where: this._addCondition(node.where, cond),
       flags: flags | QueryFlags.SoftDeleteApplied,
+    }
+  }
+
+  /**
+   * MERGE soft-delete integration.
+   *
+   * When the target is a soft-delete table, we qualify the match predicate
+   * (`ON`) with `target.<column> IS NULL` so soft-deleted rows are treated
+   * as non-existent — they don't match and fall through to WHEN NOT MATCHED.
+   *
+   * The target column reference is emitted qualified (`<table>.<col>`) so
+   * the predicate binds to the MERGE target rather than the source.
+   */
+  private _transformMerge(node: MergeNode): MergeNode {
+    if (!this._isTargetTable(node.target.name)) return node
+    const qualified: ExpressionNode = {
+      type: "column_ref",
+      table: node.target.alias ?? node.target.name,
+      column: this.#column,
+    }
+    const aliveCond: ExpressionNode =
+      this.#flag === "timestamp"
+        ? { type: "is_null", expr: qualified, negated: false }
+        : binOp("=", qualified, lit(false))
+    return {
+      ...node,
+      on: and(node.on, aliveCond),
     }
   }
 
