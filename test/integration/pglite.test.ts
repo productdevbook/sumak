@@ -191,7 +191,7 @@ describe("PGlite Integration — SELECT", () => {
     const q = db
       .selectFrom("users")
       .select("active")
-      .selectExpr(count(), "cnt")
+      .select({ cnt: count() })
       .groupBy("active")
       .compile(printer)
     const result = await run(q)
@@ -203,7 +203,7 @@ describe("PGlite Integration — JOIN", () => {
   it("INNER JOIN", async () => {
     const q = db
       .selectFrom("users")
-      .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+      .innerJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
       .select("name", "title")
       .compile(printer)
     const result = await run(q)
@@ -213,7 +213,7 @@ describe("PGlite Integration — JOIN", () => {
   it("LEFT JOIN", async () => {
     const q = db
       .selectFrom("users")
-      .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+      .leftJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
       .select("name", "title")
       .compile(printer)
     const result = await run(q)
@@ -279,13 +279,12 @@ describe("PGlite Integration — Advanced Expressions", () => {
   it("CASE expression", async () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(
-        case_()
+      .select({
+        answer: case_()
           .when(val(true) as any, val("yes"))
           .else_(val("no"))
           .end(),
-        "answer",
-      )
+      })
       .compile(printer)
     const result = await run(q)
     expect(result.rows[0].answer).toBe("yes")
@@ -294,7 +293,7 @@ describe("PGlite Integration — Advanced Expressions", () => {
   it("CAST", async () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(cast(val(42), "text"), "num")
+      .select({ num: cast(val(42), "text") })
       .limit(1)
       .compile(printer)
     const result = await run(q)

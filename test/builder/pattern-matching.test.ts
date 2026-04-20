@@ -32,7 +32,7 @@ describe("Pattern matching operators", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ name }) => name.notLike("%bob%"))
+      .where(({ name }) => name.like("%bob%", { negate: true }))
       .compile(p)
     expect(q.sql).toContain("NOT LIKE")
   })
@@ -41,7 +41,7 @@ describe("Pattern matching operators", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ name }) => name.ilike("%alice%"))
+      .where(({ name }) => name.like("%alice%", { insensitive: true }))
       .compile(p)
     expect(q.sql).toContain("ILIKE")
   })
@@ -50,7 +50,7 @@ describe("Pattern matching operators", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ email }) => email.notIlike("%spam%"))
+      .where(({ email }) => email.like("%spam%", { negate: true, insensitive: true }))
       .compile(p)
     expect(q.sql).toContain("NOT ILIKE")
   })
@@ -61,7 +61,7 @@ describe("NOT BETWEEN", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.notBetween(18, 65))
+      .where(({ age }) => age.between(18, 65, { negate: true }))
       .compile(p)
     expect(q.sql).toContain("NOT BETWEEN")
   })
@@ -72,7 +72,7 @@ describe("BETWEEN SYMMETRIC", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.betweenSymmetric(65, 18))
+      .where(({ age }) => age.between(65, 18, { symmetric: true }))
       .compile(p)
     expect(q.sql).toContain("BETWEEN SYMMETRIC")
   })

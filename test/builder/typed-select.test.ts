@@ -56,14 +56,14 @@ describe("TypedSelectBuilder", () => {
   it("builds SELECT with INNER JOIN callback", () => {
     const q = db
       .selectFrom("users")
-      .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+      .innerJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
     expect(q.compile(printer).sql).toContain("INNER JOIN")
   })
 
   it("builds SELECT with LEFT JOIN callback", () => {
     const q = db
       .selectFrom("users")
-      .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+      .leftJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
     expect(q.compile(printer).sql).toContain("LEFT JOIN")
   })
 
@@ -147,7 +147,7 @@ describe("TypedSelectBuilder", () => {
   it("builds FULL JOIN", () => {
     const q = db
       .selectFrom("users")
-      .fullJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+      .fullJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
     expect(q.compile(printer).sql).toContain("FULL JOIN")
   })
 

@@ -22,7 +22,7 @@ describe("JSON aggregate functions", () => {
   it("JSON_AGG", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(jsonAgg(val("test") as any), "arr")
+      .select({ arr: jsonAgg(val("test") as any) })
       .compile(p)
     expect(q.sql).toContain("JSON_AGG(")
   })
@@ -30,7 +30,7 @@ describe("JSON aggregate functions", () => {
   it("TO_JSON", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(toJson(val("hello") as any), "j")
+      .select({ j: toJson(val("hello") as any) })
       .compile(p)
     expect(q.sql).toContain("TO_JSON(")
   })
@@ -38,7 +38,7 @@ describe("JSON aggregate functions", () => {
   it("JSON_BUILD_OBJECT", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(jsonBuildObject(["name", val("Alice")], ["age", val(30) as any]), "obj")
+      .select({ obj: jsonBuildObject(["name", val("Alice")], ["age", val(30) as any]) })
       .compile(p)
     expect(q.sql).toContain("JSON_BUILD_OBJECT(")
     expect(q.sql).toContain("'name'")

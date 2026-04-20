@@ -24,7 +24,7 @@ describe("Col expression comparisons", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.eqExpr(val(25) as any))
+      .where(({ age }) => age.eq(val(25) as any))
       .compile(p)
     expect(q.sql).toContain("=")
     expect(q.sql).toContain("25")
@@ -34,7 +34,7 @@ describe("Col expression comparisons", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.neqExpr(val(0) as any))
+      .where(({ age }) => age.neq(val(0) as any))
       .compile(p)
     expect(q.sql).toContain("!=")
   })
@@ -43,7 +43,7 @@ describe("Col expression comparisons", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.gtExpr(val(18) as any))
+      .where(({ age }) => age.gt(val(18) as any))
       .compile(p)
     expect(q.sql).toContain(">")
   })
@@ -52,7 +52,7 @@ describe("Col expression comparisons", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ score }) => score.ltExpr(val(100) as any))
+      .where(({ score }) => score.lt(val(100) as any))
       .compile(p)
     expect(q.sql).toContain("<")
   })
@@ -62,7 +62,7 @@ describe("neg() unary minus", () => {
   it("negates expression", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(neg(val(42) as any), "negative")
+      .select({ negative: neg(val(42) as any) })
       .compile(p)
     expect(q.sql).toContain("(- 42)")
   })
@@ -72,12 +72,11 @@ describe("GROUPS frame kind", () => {
   it("GROUPS BETWEEN in window function", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(
-        over(count(), (w) =>
+      .select({
+        cnt: over(count(), (w) =>
           w.orderBy("id").groups({ type: "unbounded_preceding" }, { type: "current_row" }),
         ),
-        "cnt",
-      )
+      })
       .compile(p)
     expect(q.sql).toContain("GROUPS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW")
   })

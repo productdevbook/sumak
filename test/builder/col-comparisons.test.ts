@@ -26,7 +26,7 @@ describe("Column-to-column comparisons", () => {
     const q = db
       .selectFrom("products")
       .select("id")
-      .where(() => a.eqCol(b))
+      .where(() => a.eq(b))
       .compile(p)
     expect(q.sql).toContain("=")
   })
@@ -37,7 +37,7 @@ describe("Column-to-column comparisons", () => {
     const q = db
       .selectFrom("products")
       .select("id")
-      .where(() => a.neqCol(b))
+      .where(() => a.neq(b))
       .compile(p)
     expect(q.sql).toContain("!=")
   })
@@ -48,7 +48,7 @@ describe("Column-to-column comparisons", () => {
     const q = db
       .selectFrom("products")
       .select("id")
-      .where(() => a.gtCol(b))
+      .where(() => a.gt(b))
       .compile(p)
     expect(q.sql).toContain(">")
   })
@@ -59,7 +59,7 @@ describe("Column-to-column comparisons", () => {
     const q = db
       .selectFrom("products")
       .select("id")
-      .where(() => a.ltCol(b))
+      .where(() => a.lt(b))
       .compile(p)
     expect(q.sql).toContain("<")
   })
@@ -70,7 +70,7 @@ describe("Column-to-column comparisons", () => {
     const q = db
       .selectFrom("products")
       .select("id")
-      .where(() => a.gteCol(b))
+      .where(() => a.gte(b))
       .compile(p)
     expect(q.sql).toContain(">=")
   })
@@ -81,7 +81,7 @@ describe("Column-to-column comparisons", () => {
     const q = db
       .selectFrom("products")
       .select("id")
-      .where(() => a.lteCol(b))
+      .where(() => a.lte(b))
       .compile(p)
     expect(q.sql).toContain("<=")
   })

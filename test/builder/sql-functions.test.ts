@@ -40,7 +40,7 @@ describe("String functions", () => {
   it("UPPER()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(upper(val("hello")), "u")
+      .select({ u: upper(val("hello")) })
       .compile(p)
     expect(q.sql).toContain("UPPER('hello')")
   })
@@ -48,7 +48,7 @@ describe("String functions", () => {
   it("LOWER()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(lower(val("HELLO")), "l")
+      .select({ l: lower(val("HELLO")) })
       .compile(p)
     expect(q.sql).toContain("LOWER('HELLO')")
   })
@@ -56,7 +56,7 @@ describe("String functions", () => {
   it("CONCAT()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(concat(val("a"), val("b"), val("c")), "joined")
+      .select({ joined: concat(val("a"), val("b"), val("c")) })
       .compile(p)
     expect(q.sql).toContain("CONCAT(")
     expect(q.sql).toContain("'a'")
@@ -67,7 +67,7 @@ describe("String functions", () => {
   it("SUBSTRING()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(substring(val("hello"), 2, 3), "sub")
+      .select({ sub: substring(val("hello"), 2, 3) })
       .compile(p)
     expect(q.sql).toContain("SUBSTRING(")
   })
@@ -75,7 +75,7 @@ describe("String functions", () => {
   it("SUBSTRING() without length", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(substring(val("hello"), 2), "sub")
+      .select({ sub: substring(val("hello"), 2) })
       .compile(p)
     expect(q.sql).toContain("SUBSTRING('hello', 2)")
   })
@@ -83,7 +83,7 @@ describe("String functions", () => {
   it("TRIM()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(trim(val("  hi  ")), "t")
+      .select({ t: trim(val("  hi  ")) })
       .compile(p)
     expect(q.sql).toContain("TRIM(")
   })
@@ -91,7 +91,7 @@ describe("String functions", () => {
   it("LENGTH()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(length(val("hello")), "len")
+      .select({ len: length(val("hello")) })
       .compile(p)
     expect(q.sql).toContain("LENGTH('hello')")
   })
@@ -99,14 +99,14 @@ describe("String functions", () => {
 
 describe("Date/Time functions", () => {
   it("NOW()", () => {
-    const q = db.selectFrom("users").selectExpr(now(), "ts").compile(p)
+    const q = db.selectFrom("users").select({ ts: now() }).compile(p)
     expect(q.sql).toContain("NOW()")
   })
 
   it("CURRENT_TIMESTAMP", () => {
     // Printed as a bare SQL:92 keyword (no parens) — portable across
     // pg/mysql/sqlite/mssql. MSSQL specifically rejects CURRENT_TIMESTAMP().
-    const q = db.selectFrom("users").selectExpr(currentTimestamp(), "ts").compile(p)
+    const q = db.selectFrom("users").select({ ts: currentTimestamp() }).compile(p)
     expect(q.sql).toMatch(/\bCURRENT_TIMESTAMP\b/)
     expect(q.sql).not.toContain("CURRENT_TIMESTAMP()")
   })
@@ -116,7 +116,7 @@ describe("Numeric functions", () => {
   it("ABS()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(abs(val(-5) as any), "a")
+      .select({ a: abs(val(-5) as any) })
       .compile(p)
     expect(q.sql).toContain("ABS(")
   })
@@ -124,7 +124,7 @@ describe("Numeric functions", () => {
   it("ROUND()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(round(val(3.14159) as any, 2), "r")
+      .select({ r: round(val(3.14159) as any, 2) })
       .compile(p)
     expect(q.sql).toContain("ROUND(")
   })
@@ -132,7 +132,7 @@ describe("Numeric functions", () => {
   it("ROUND() without precision", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(round(val(3.7) as any), "r")
+      .select({ r: round(val(3.7) as any) })
       .compile(p)
     expect(q.sql).toContain("ROUND(")
   })
@@ -140,7 +140,7 @@ describe("Numeric functions", () => {
   it("CEIL()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(ceil(val(3.2) as any), "c")
+      .select({ c: ceil(val(3.2) as any) })
       .compile(p)
     expect(q.sql).toContain("CEIL(")
   })
@@ -148,7 +148,7 @@ describe("Numeric functions", () => {
   it("FLOOR()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(floor(val(3.7) as any), "f")
+      .select({ f: floor(val(3.7) as any) })
       .compile(p)
     expect(q.sql).toContain("FLOOR(")
   })
@@ -158,7 +158,7 @@ describe("Conditional functions", () => {
   it("NULLIF()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(nullif(val(0) as any, val(0) as any), "n")
+      .select({ n: nullif(val(0) as any, val(0) as any) })
       .compile(p)
     expect(q.sql).toContain("NULLIF(")
   })
@@ -166,7 +166,7 @@ describe("Conditional functions", () => {
   it("GREATEST()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(greatest(val(1) as any, val(2) as any, val(3) as any), "g")
+      .select({ g: greatest(val(1) as any, val(2) as any, val(3) as any) })
       .compile(p)
     expect(q.sql).toContain("GREATEST(")
   })
@@ -174,7 +174,7 @@ describe("Conditional functions", () => {
   it("LEAST()", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(least(val(1) as any, val(2) as any, val(3) as any), "l")
+      .select({ l: least(val(1) as any, val(2) as any, val(3) as any) })
       .compile(p)
     expect(q.sql).toContain("LEAST(")
   })

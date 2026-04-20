@@ -78,7 +78,7 @@ describe("Clean callback API", () => {
     })
 
     it("isNotNull", () => {
-      const q = db.selectFrom("users").where(({ email }) => email.isNotNull())
+      const q = db.selectFrom("users").where(({ email }) => email.isNull({ negate: true }))
       expect(q.compile(p).sql).toContain("IS NOT NULL")
     })
 
@@ -90,7 +90,7 @@ describe("Clean callback API", () => {
     })
 
     it("notIn", () => {
-      const q = db.selectFrom("users").where(({ id }) => id.notIn([99, 100]))
+      const q = db.selectFrom("users").where(({ id }) => id.in([99, 100], { negate: true }))
       expect(q.compile(p).sql).toContain("NOT IN")
     })
 
@@ -126,7 +126,7 @@ describe("Clean callback API", () => {
     it("innerJoin with table-qualified columns", () => {
       const q = db
         .selectFrom("users")
-        .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+        .innerJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
       const r = q.compile(p)
       expect(r.sql).toContain("INNER JOIN")
       expect(r.sql).toContain('"users"."id"')
@@ -136,7 +136,7 @@ describe("Clean callback API", () => {
     it("leftJoin with callback", () => {
       const q = db
         .selectFrom("users")
-        .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+        .leftJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
       expect(q.compile(p).sql).toContain("LEFT JOIN")
     })
   })
@@ -181,37 +181,37 @@ describe("Clean callback API", () => {
 
   describe("aggregate functions", () => {
     it("count()", () => {
-      const q = db.selectFrom("users").selectExpr(count(), "total")
+      const q = db.selectFrom("users").select({ total: count() })
       const r = q.compile(p)
       expect(r.sql).toContain("COUNT(*)")
     })
 
     it("sum()", () => {
-      const q = db.selectFrom("users").selectExpr(sum(val(1) as any), "s")
+      const q = db.selectFrom("users").select({ s: sum(val(1) as any) })
       const r = q.compile(p)
       expect(r.sql).toContain("SUM(")
     })
 
     it("avg()", () => {
-      const q = db.selectFrom("users").selectExpr(avg(val(1) as any), "a")
+      const q = db.selectFrom("users").select({ a: avg(val(1) as any) })
       const r = q.compile(p)
       expect(r.sql).toContain("AVG(")
     })
 
     it("min()", () => {
-      const q = db.selectFrom("users").selectExpr(min(val(1) as any), "m")
+      const q = db.selectFrom("users").select({ m: min(val(1) as any) })
       const r = q.compile(p)
       expect(r.sql).toContain("MIN(")
     })
 
     it("max()", () => {
-      const q = db.selectFrom("users").selectExpr(max(val(1) as any), "m")
+      const q = db.selectFrom("users").select({ m: max(val(1) as any) })
       const r = q.compile(p)
       expect(r.sql).toContain("MAX(")
     })
 
     it("coalesce()", () => {
-      const q = db.selectFrom("users").selectExpr(coalesce(val(null) as any, val(0) as any), "c")
+      const q = db.selectFrom("users").select({ c: coalesce(val(null) as any, val(0) as any) })
       const r = q.compile(p)
       expect(r.sql).toContain("COALESCE(")
     })
@@ -244,7 +244,7 @@ describe("Clean callback API", () => {
 
   describe("cast()", () => {
     it("CAST expression", () => {
-      const q = db.selectFrom("users").selectExpr(cast(val(42), "text"), "t")
+      const q = db.selectFrom("users").select({ t: cast(val(42), "text") })
       const r = q.compile(p)
       expect(r.sql).toContain("CAST(")
       expect(r.sql).toContain("AS text")
@@ -253,13 +253,13 @@ describe("Clean callback API", () => {
 
   describe("jsonRef()", () => {
     it("-> operator", () => {
-      const q = db.selectFrom("users").selectExpr(jsonRef(val(null) as any, "name", "->"), "j")
+      const q = db.selectFrom("users").select({ j: jsonRef(val(null) as any, "name", "->") })
       const r = q.compile(p)
       expect(r.sql).toContain("->")
     })
 
     it("->> operator", () => {
-      const q = db.selectFrom("users").selectExpr(jsonRef(val(null) as any, "name", "->>"), "j")
+      const q = db.selectFrom("users").select({ j: jsonRef(val(null) as any, "name", "->>") })
       const r = q.compile(p)
       expect(r.sql).toContain("->>")
     })
@@ -267,13 +267,12 @@ describe("Clean callback API", () => {
 
   describe("case_()", () => {
     it("simple CASE WHEN THEN ELSE END", () => {
-      const q = db.selectFrom("users").selectExpr(
-        case_()
+      const q = db.selectFrom("users").select({
+        result: case_()
           .when(val(true) as any, val(1))
           .else_(val(0))
           .end(),
-        "result",
-      )
+      })
       const r = q.compile(p)
       expect(r.sql).toContain("CASE")
       expect(r.sql).toContain("WHEN")
@@ -283,13 +282,12 @@ describe("Clean callback API", () => {
     })
 
     it("CASE with multiple WHEN clauses", () => {
-      const q = db.selectFrom("users").selectExpr(
-        case_()
+      const q = db.selectFrom("users").select({
+        result: case_()
           .when(val(true) as any, val("a"))
           .when(val(false) as any, val("b"))
           .end(),
-        "result",
-      )
+      })
       const r = q.compile(p)
       const whenCount = (r.sql.match(/WHEN/g) || []).length
       expect(whenCount).toBe(2)

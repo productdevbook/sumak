@@ -40,13 +40,13 @@ describe(".select() unified API", () => {
     expect(q.sql).toMatch(/"id",.*count\(\*\) AS "total"/i)
   })
 
-  it("legacy selectExpr still works and delegates to new .select()", () => {
-    const q = db.selectFrom("users").selectExpr(count(), "total").toSQL()
+  it("object-form select() with single alias", () => {
+    const q = db.selectFrom("users").select({ total: count() }).toSQL()
     expect(q.sql).toMatch(/count\(\*\) AS "total"/i)
   })
 
-  it("legacy selectExprs still works", () => {
-    const q = db.selectFrom("users").selectExprs({ total: count() }).toSQL()
+  it("object-form select() via .select({ ... })", () => {
+    const q = db.selectFrom("users").select({ total: count() }).toSQL()
     expect(q.sql).toMatch(/count\(\*\) AS "total"/i)
   })
 })
@@ -84,10 +84,10 @@ describe(".set() unified API (update)", () => {
     expect(q.sql).toMatch(/"age" = 42|"age" = \$2/)
   })
 
-  it("legacy setExpr still works", () => {
+  it("object-form set() with Expression value", () => {
     const q = db
       .update("users")
-      .setExpr("name", val("X"))
+      .set({ name: val("X") as any })
       .where(({ id }) => id.eq(1))
       .toSQL()
     expect(q.sql).toMatch(/SET "name" = 'X'/)
@@ -128,11 +128,11 @@ describe(".returning() unified API", () => {
     expect(q.sql).toMatch(/RETURNING count\(\*\) AS "gone"/i)
   })
 
-  it("legacy returningExpr still works on insert", () => {
+  it("object-form returning() with single alias on insert", () => {
     const q = db
       .insertInto("users")
       .values({ name: "A", age: 1 })
-      .returningExpr(count(), "total")
+      .returning({ total: count() })
       .toSQL()
     expect(q.sql).toMatch(/RETURNING count\(\*\) AS "total"/i)
   })

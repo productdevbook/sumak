@@ -42,7 +42,7 @@ describe("HAVING with aggregate expressions", () => {
     const q = db
       .selectFrom("users")
       .select("dept")
-      .selectExpr(count(), "cnt")
+      .select({ cnt: count() })
       .groupBy("dept")
       .having(({ dept }) => dept.eq("engineering"))
       .toSQL()
@@ -55,7 +55,7 @@ describe("HAVING with aggregate expressions", () => {
     const q = db
       .selectFrom("users")
       .select("dept")
-      .selectExpr(countExpr, "cnt")
+      .select({ cnt: countExpr })
       .groupBy("dept")
       .having(() => {
         // COUNT(*) > 5

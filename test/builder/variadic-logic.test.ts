@@ -77,7 +77,7 @@ describe("gteExpr / lteExpr", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.gteExpr(val(18) as any))
+      .where(({ age }) => age.gte(val(18) as any))
       .compile(p)
     expect(q.sql).toContain(">=")
   })
@@ -86,7 +86,7 @@ describe("gteExpr / lteExpr", () => {
     const q = db
       .selectFrom("users")
       .select("id")
-      .where(({ age }) => age.lteExpr(val(65) as any))
+      .where(({ age }) => age.lte(val(65) as any))
       .compile(p)
     expect(q.sql).toContain("<=")
   })
@@ -105,7 +105,7 @@ describe("unsafeRawExpr()", () => {
   it("raw SQL in selectExpr", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
+      .select({ year: unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)") })
       .compile(p)
     expect(q.sql).toContain("EXTRACT(YEAR FROM created_at)")
     expect(q.sql).toContain('"year"')

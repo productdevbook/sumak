@@ -27,7 +27,7 @@ describe("IN subquery", () => {
     const q = db
       .selectFrom("users")
       .select("id", "name")
-      .where(({ dept_id }) => dept_id.inSubquery(sub))
+      .where(({ dept_id }) => dept_id.in(sub))
       .compile(p)
     expect(q.sql).toContain("IN (SELECT")
     expect(q.sql).not.toContain("NOT IN")
@@ -38,7 +38,7 @@ describe("IN subquery", () => {
     const q = db
       .selectFrom("users")
       .select("id", "name")
-      .where(({ dept_id }) => dept_id.notInSubquery(sub))
+      .where(({ dept_id }) => dept_id.in(sub, { negate: true }))
       .compile(p)
     expect(q.sql).toContain("NOT IN (SELECT")
   })
@@ -52,7 +52,7 @@ describe("IN subquery", () => {
     const q = db
       .selectFrom("users")
       .select("id", "name")
-      .where(({ dept_id }) => dept_id.inSubquery(sub))
+      .where(({ dept_id }) => dept_id.in(sub))
       .compile(p)
     expect(q.sql).toContain("IN (SELECT")
     expect(q.params).toContain("Engineering")

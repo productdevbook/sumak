@@ -38,7 +38,7 @@ describe("SQL Injection Prevention", () => {
       const q = db
         .selectFrom("users")
         .select("id")
-        .where(({ name }) => name.ilike("%Alice%"))
+        .where(({ name }) => name.like("%Alice%", { insensitive: true }))
         .compile(p)
       expect(q.params).toContain("%Alice%")
       expect(q.sql).not.toContain("'%Alice%'")
@@ -48,7 +48,7 @@ describe("SQL Injection Prevention", () => {
       const q = db
         .selectFrom("users")
         .select("id")
-        .where(({ name }) => name.notLike("%bob%"))
+        .where(({ name }) => name.like("%bob%", { negate: true }))
         .compile(p)
       expect(q.params).toContain("%bob%")
     })
@@ -57,7 +57,7 @@ describe("SQL Injection Prevention", () => {
       const q = db
         .selectFrom("users")
         .select("id")
-        .where(({ name }) => name.notIlike("%Spam%"))
+        .where(({ name }) => name.like("%Spam%", { negate: true, insensitive: true }))
         .compile(p)
       expect(q.params).toContain("%Spam%")
     })
@@ -109,25 +109,25 @@ describe("SQL Injection Prevention", () => {
     it("allows standard SQL types", () => {
       const q1 = db
         .selectFrom("users")
-        .selectExpr(cast(val(42), "text"), "t")
+        .select({ t: cast(val(42), "text") })
         .compile(p)
       expect(q1.sql).toContain("CAST")
 
       const q2 = db
         .selectFrom("users")
-        .selectExpr(cast(val(42), "INTEGER"), "t")
+        .select({ t: cast(val(42), "INTEGER") })
         .compile(p)
       expect(q2.sql).toContain("AS INTEGER")
 
       const q3 = db
         .selectFrom("users")
-        .selectExpr(cast(val(42), "VARCHAR(255)"), "t")
+        .select({ t: cast(val(42), "VARCHAR(255)") })
         .compile(p)
       expect(q3.sql).toContain("AS VARCHAR(255)")
 
       const q4 = db
         .selectFrom("users")
-        .selectExpr(cast(val(42), "DOUBLE PRECISION"), "t")
+        .select({ t: cast(val(42), "DOUBLE PRECISION") })
         .compile(p)
       expect(q4.sql).toContain("AS DOUBLE PRECISION")
     })
@@ -135,7 +135,7 @@ describe("SQL Injection Prevention", () => {
     it("rejects malicious dataType strings", () => {
       expect(() => {
         db.selectFrom("users")
-          .selectExpr(cast(val(42), "INTEGER); DROP TABLE users --"), "t")
+          .select({ t: cast(val(42), "INTEGER); DROP TABLE users --") })
           .compile(p)
       }).toThrow(SecurityError)
     })
@@ -143,7 +143,7 @@ describe("SQL Injection Prevention", () => {
     it("rejects dataType with quotes", () => {
       expect(() => {
         db.selectFrom("users")
-          .selectExpr(cast(val(42), "INT'EGER"), "t")
+          .select({ t: cast(val(42), "INT'EGER") })
           .compile(p)
       }).toThrow(SecurityError)
     })
@@ -181,13 +181,19 @@ describe("SQL Injection Prevention", () => {
 
   describe("Backslash escaping (MySQL CVE-2026-33442)", () => {
     it("escapes backslashes in string literals via printer", () => {
-      const q = db.selectFrom("users").selectExpr(val("a\\b"), "v").compile(p)
+      const q = db
+        .selectFrom("users")
+        .select({ v: val("a\\b") })
+        .compile(p)
       // Backslash should be doubled: a\b → a\\b
       expect(q.sql).toContain("'a\\\\b'")
     })
 
     it("escapes single quotes in string literals via printer", () => {
-      const q = db.selectFrom("users").selectExpr(val("it's"), "v").compile(p)
+      const q = db
+        .selectFrom("users")
+        .select({ v: val("it's") })
+        .compile(p)
       // Single quote should be doubled: it's → it''s
       expect(q.sql).toContain("it''s")
     })

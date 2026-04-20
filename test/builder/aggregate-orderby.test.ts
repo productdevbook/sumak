@@ -23,7 +23,7 @@ describe("STRING_AGG", () => {
   it("basic STRING_AGG", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(stringAgg(val("test") as any, ", "), "names")
+      .select({ names: stringAgg(val("test") as any, ", ") })
       .compile(p)
     expect(q.sql).toContain("STRING_AGG(")
     expect(q.sql).toContain("', '")
@@ -32,10 +32,11 @@ describe("STRING_AGG", () => {
   it("STRING_AGG with ORDER BY", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(
-        stringAgg(val("test") as any, ", ", [{ expr: val("test") as any, direction: "ASC" }]),
-        "names",
-      )
+      .select({
+        names: stringAgg(val("test") as any, ", ", [
+          { expr: val("test") as any, direction: "ASC" },
+        ]),
+      })
       .compile(p)
     expect(q.sql).toContain("STRING_AGG(")
     expect(q.sql).toContain("ORDER BY")
@@ -46,7 +47,7 @@ describe("ARRAY_AGG", () => {
   it("basic ARRAY_AGG", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(arrayAgg(val(1) as any), "ids")
+      .select({ ids: arrayAgg(val(1) as any) })
       .compile(p)
     expect(q.sql).toContain("ARRAY_AGG(")
   })
@@ -54,7 +55,7 @@ describe("ARRAY_AGG", () => {
   it("ARRAY_AGG with ORDER BY", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(arrayAgg(val(1) as any, [{ expr: val(1) as any, direction: "DESC" }]), "ids")
+      .select({ ids: arrayAgg(val(1) as any, [{ expr: val(1) as any, direction: "DESC" }]) })
       .compile(p)
     expect(q.sql).toContain("ARRAY_AGG(")
     expect(q.sql).toContain("ORDER BY")
@@ -66,7 +67,7 @@ describe("aggOrderBy", () => {
   it("attach ORDER BY to existing aggregate", () => {
     const q = db
       .selectFrom("users")
-      .selectExpr(aggOrderBy(count(), [{ expr: val(1) as any, direction: "DESC" }]), "cnt")
+      .select({ cnt: aggOrderBy(count(), [{ expr: val(1) as any, direction: "DESC" }]) })
       .compile(p)
     expect(q.sql).toContain("COUNT(")
     expect(q.sql).toContain("ORDER BY")

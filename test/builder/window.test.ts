@@ -40,10 +40,9 @@ describe("Window Functions", () => {
     const q = db
       .selectFrom("employees")
       .select("name")
-      .selectExpr(
-        over(rowNumber(), (w) => w.orderBy("id")),
-        "rn",
-      )
+      .select({
+        rn: over(rowNumber(), (w) => w.orderBy("id")),
+      })
       .compile(p)
     expect(q.sql).toContain("ROW_NUMBER() OVER (ORDER BY")
     expect(q.sql).toContain('"rn"')
@@ -52,10 +51,9 @@ describe("Window Functions", () => {
   it("ROW_NUMBER() OVER (PARTITION BY dept ORDER BY salary DESC)", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary", "DESC")),
-        "rn",
-      )
+      .select({
+        rn: over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary", "DESC")),
+      })
       .compile(p)
     expect(q.sql).toContain("ROW_NUMBER() OVER (PARTITION BY")
     expect(q.sql).toContain("ORDER BY")
@@ -65,10 +63,9 @@ describe("Window Functions", () => {
   it("RANK()", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(rank(), (w) => w.orderBy("salary", "DESC")),
-        "rnk",
-      )
+      .select({
+        rnk: over(rank(), (w) => w.orderBy("salary", "DESC")),
+      })
       .compile(p)
     expect(q.sql).toContain("RANK() OVER")
   })
@@ -76,10 +73,9 @@ describe("Window Functions", () => {
   it("DENSE_RANK()", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(denseRank(), (w) => w.orderBy("salary", "DESC")),
-        "drnk",
-      )
+      .select({
+        drnk: over(denseRank(), (w) => w.orderBy("salary", "DESC")),
+      })
       .compile(p)
     expect(q.sql).toContain("DENSE_RANK() OVER")
   })
@@ -87,15 +83,14 @@ describe("Window Functions", () => {
   it("SUM() OVER with frame", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(sum(val(1) as any), (w) =>
+      .select({
+        running_total: over(sum(val(1) as any), (w) =>
           w
             .partitionBy("dept")
             .orderBy("salary")
             .rows({ type: "unbounded_preceding" }, { type: "current_row" }),
         ),
-        "running_total",
-      )
+      })
       .compile(p)
     expect(q.sql).toContain("SUM(")
     expect(q.sql).toContain("ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW")
@@ -104,14 +99,13 @@ describe("Window Functions", () => {
   it("COUNT() OVER with range frame", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(count(), (w) =>
+      .select({
+        cnt: over(count(), (w) =>
           w
             .orderBy("salary")
             .range({ type: "preceding", value: 100 }, { type: "following", value: 100 }),
         ),
-        "cnt",
-      )
+      })
       .compile(p)
     expect(q.sql).toContain("RANGE BETWEEN 100 PRECEDING AND 100 FOLLOWING")
   })
@@ -119,10 +113,9 @@ describe("Window Functions", () => {
   it("NTILE(4)", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(ntile(4), (w) => w.orderBy("salary", "DESC")),
-        "quartile",
-      )
+      .select({
+        quartile: over(ntile(4), (w) => w.orderBy("salary", "DESC")),
+      })
       .compile(p)
     expect(q.sql).toContain("NTILE(4)")
     expect(q.sql).toContain("OVER")
@@ -131,10 +124,9 @@ describe("Window Functions", () => {
   it("LAG()", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(lag(val(0) as any, 1), (w) => w.orderBy("salary")),
-        "prev_salary",
-      )
+      .select({
+        prev_salary: over(lag(val(0) as any, 1), (w) => w.orderBy("salary")),
+      })
       .compile(p)
     expect(q.sql).toContain("LAG(")
     expect(q.sql).toContain("OVER")
@@ -143,10 +135,9 @@ describe("Window Functions", () => {
   it("LEAD()", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(lead(val(0) as any, 1), (w) => w.orderBy("salary")),
-        "next_salary",
-      )
+      .select({
+        next_salary: over(lead(val(0) as any, 1), (w) => w.orderBy("salary")),
+      })
       .compile(p)
     expect(q.sql).toContain("LEAD(")
     expect(q.sql).toContain("OVER")
@@ -155,10 +146,9 @@ describe("Window Functions", () => {
   it("empty OVER ()", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(
-        over(count(), (w) => w),
-        "total",
-      )
+      .select({
+        total: over(count(), (w) => w),
+      })
       .compile(p)
     expect(q.sql).toContain("COUNT(*) OVER ()")
   })
@@ -168,7 +158,7 @@ describe("COUNT(DISTINCT)", () => {
   it("COUNT(DISTINCT col) in PG", () => {
     const q = db
       .selectFrom("employees")
-      .selectExpr(countDistinct(val("test") as any), "unique_count")
+      .select({ unique_count: countDistinct(val("test") as any) })
       .compile(p)
     expect(q.sql).toContain("COUNT(DISTINCT")
   })
@@ -185,7 +175,7 @@ describe("COUNT(DISTINCT)", () => {
     })
     const q = mydb
       .selectFrom("employees")
-      .selectExpr(countDistinct(val("test") as any), "unique_count")
+      .select({ unique_count: countDistinct(val("test") as any) })
       .compile(mydb.printer())
     expect(q.sql).toContain("COUNT(DISTINCT")
   })
@@ -202,7 +192,7 @@ describe("COUNT(DISTINCT)", () => {
     })
     const q = msdb
       .selectFrom("employees")
-      .selectExpr(countDistinct(val("test") as any), "unique_count")
+      .select({ unique_count: countDistinct(val("test") as any) })
       .compile(msdb.printer())
     expect(q.sql).toContain("COUNT(DISTINCT")
   })
@@ -219,7 +209,7 @@ describe("COUNT(DISTINCT)", () => {
     })
     const q = sldb
       .selectFrom("employees")
-      .selectExpr(countDistinct(val("test") as any), "unique_count")
+      .select({ unique_count: countDistinct(val("test") as any) })
       .compile(sldb.printer())
     expect(q.sql).toContain("COUNT(DISTINCT")
   })
