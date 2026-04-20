@@ -161,6 +161,49 @@ describe("MssqlPrinter", () => {
       const r = printer().print(node)
       expect(r.sql).toContain("OUTPUT INSERTED.*")
     })
+
+    it("UPDATE with OUTPUT + FROM + JOIN emits in MSSQL order (OUTPUT → FROM → JOIN)", () => {
+      const node: UpdateNode = {
+        ...createUpdateNode({ type: "table_ref", name: "users" }),
+        set: [{ column: "name", value: param(0, "Bob") }],
+        returning: [col("id")],
+        from: { type: "table_ref", name: "orders" },
+        joins: [
+          {
+            type: "join",
+            joinType: "INNER",
+            table: { type: "table_ref", name: "items" },
+            on: eq(col("id"), col("oid")),
+          },
+        ],
+        where: eq(col("id"), param(1, 1)),
+      }
+      const r = printer().print(node)
+      const outputIdx = r.sql.indexOf("OUTPUT")
+      const fromIdx = r.sql.indexOf("FROM")
+      const joinIdx = r.sql.indexOf("INNER JOIN")
+      const whereIdx = r.sql.indexOf("WHERE")
+      expect(outputIdx).toBeGreaterThan(-1)
+      expect(outputIdx).toBeLessThan(fromIdx)
+      expect(fromIdx).toBeLessThan(joinIdx)
+      expect(joinIdx).toBeLessThan(whereIdx)
+    })
+
+    it("IN with empty array uses `(1=0)` on MSSQL (not `FALSE`)", () => {
+      const node = {
+        ...createUpdateNode({ type: "table_ref", name: "users" }),
+        set: [{ column: "name", value: param(0, "Bob") }],
+        where: {
+          type: "in" as const,
+          expr: col("id"),
+          values: [],
+          negated: false,
+        },
+      }
+      const r = printer().print(node)
+      expect(r.sql).toContain("(1=0)")
+      expect(r.sql).not.toContain("FALSE")
+    })
   })
 
   describe("DELETE", () => {

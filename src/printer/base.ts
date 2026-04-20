@@ -448,9 +448,11 @@ export class BasePrinter implements Printer {
     const neg = node.negated ? "NOT " : ""
     if (Array.isArray(node.values)) {
       // `IN ()` is a syntax error in every dialect. Constant-fold empty
-      // lists to the logically-equivalent boolean literal so SQL stays valid.
-      // NOT IN (∅) is always TRUE; IN (∅) is always FALSE.
+      // lists to the logically-equivalent boolean constant so SQL stays valid.
+      // NOT IN (∅) is always TRUE; IN (∅) is always FALSE. MSSQL rejects
+      // bare TRUE/FALSE in predicates, so use the portable `(1=0)` / `(1=1)`.
       if (node.values.length === 0) {
+        if (this.dialect === "mssql") return node.negated ? "(1=1)" : "(1=0)"
         return node.negated ? "TRUE" : "FALSE"
       }
       return `(${this.printExpression(node.expr)} ${neg}IN (${node.values.map((v) => this.printExpression(v)).join(", ")}))`

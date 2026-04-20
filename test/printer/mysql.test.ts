@@ -4,6 +4,7 @@ import { col, eq, param } from "../../src/ast/expression.ts"
 import { star } from "../../src/ast/expression.ts"
 import { insert } from "../../src/builder/insert.ts"
 import { select } from "../../src/builder/select.ts"
+import { UpdateBuilder } from "../../src/builder/update.ts"
 import { UnsupportedDialectFeatureError } from "../../src/errors.ts"
 import { MysqlPrinter } from "../../src/printer/mysql.ts"
 
@@ -43,5 +44,31 @@ describe("MysqlPrinter", () => {
     const node = select("id").from("users").forUpdate().build()
     const result = printer.print(node)
     expect(result.sql).toContain("FOR UPDATE")
+  })
+
+  it("UPDATE ... JOIN (multi-table) puts JOIN right after the target — no FROM", () => {
+    const node = new UpdateBuilder()
+      .table("users")
+      .innerJoin("orders", eq(col("id"), col("user_id")))
+      .set("name", param(0, "Bob"))
+      .where(eq(col("id"), param(1, 1)))
+      .build()
+    const r = printer.print(node)
+    expect(r.sql).toContain("UPDATE")
+    expect(r.sql).toContain("INNER JOIN")
+    expect(r.sql).toContain("SET")
+    expect(r.sql).not.toContain("FROM")
+    const joinIdx = r.sql.indexOf("INNER JOIN")
+    const setIdx = r.sql.indexOf("SET")
+    expect(joinIdx).toBeLessThan(setIdx)
+  })
+
+  it("UPDATE ... FROM is rejected on MySQL with a helpful error", () => {
+    const node = new UpdateBuilder()
+      .table("users")
+      .from("orders")
+      .set("name", param(0, "Bob"))
+      .build()
+    expect(() => printer.print(node)).toThrow(UnsupportedDialectFeatureError)
   })
 })

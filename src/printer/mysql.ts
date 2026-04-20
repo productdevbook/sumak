@@ -1,4 +1,4 @@
-import type { FullTextSearchNode, InsertNode, SelectNode } from "../ast/nodes.ts"
+import type { FullTextSearchNode, InsertNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { BasePrinter } from "./base.ts"
@@ -36,6 +36,42 @@ export class MysqlPrinter extends BasePrinter {
       throw new UnsupportedDialectFeatureError("mysql", "DISTINCT ON")
     }
     return super.printSelect(node)
+  }
+
+  /**
+   * MySQL multi-table UPDATE: `UPDATE t [JOIN t2 ON …] SET … WHERE …`.
+   * There is no `FROM` clause — JOINs follow the target table directly.
+   * If a caller used `.from()` with a MySQL dialect, surface a helpful error
+   * instead of silently emitting invalid SQL.
+   */
+  protected override printUpdate(node: UpdateNode): string {
+    if (node.from) {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "UPDATE … FROM (use innerJoin/leftJoin instead — MySQL's multi-table UPDATE has no FROM clause)",
+      )
+    }
+    if (node.joins.length === 0) return super.printUpdate(node)
+
+    const parts: string[] = []
+    if (node.ctes.length > 0) parts.push(this.printCTEs(node.ctes))
+
+    parts.push("UPDATE", this.printTableRef(node.table))
+    for (const join of node.joins) parts.push(this.printJoin(join))
+
+    parts.push("SET")
+    const sets = node.set.map(
+      (s) => `${quoteIdentifier(s.column, this.dialect)} = ${this.printExpression(s.value)}`,
+    )
+    parts.push(sets.join(", "))
+
+    if (node.where) parts.push("WHERE", this.printExpression(node.where))
+    if (node.orderBy && node.orderBy.length > 0) {
+      parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
+    }
+    if (node.limit) parts.push("LIMIT", this.printExpression(node.limit))
+
+    return parts.join(" ")
   }
 
   protected override printFullTextSearch(node: FullTextSearchNode): string {
