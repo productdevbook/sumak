@@ -252,7 +252,7 @@ export function val<T extends string | number | boolean | null>(value: T): Expre
  *
  * ```ts
  * .where(() => unsafeRawExpr("age > 18"))
- * .selectExpr(unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year")
+ * .select({ year: unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)") })
  * ```
  */
 export function unsafeRawExpr<T = unknown>(sql: string, params: unknown[] = []): Expression<T> {
