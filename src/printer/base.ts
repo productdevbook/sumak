@@ -606,7 +606,15 @@ export class BasePrinter implements Printer {
   }
 
   protected printJsonAccess(node: JsonAccessNode): string {
-    let result = `${this.printExpression(node.expr)}${node.operator}${this.printLiteral({ type: "literal", value: node.path })}`
+    // PG path operators `#>` / `#>>` expect the path as a text-array literal
+    // (`'{a,b,c}'`), not a dotted string. `->` / `->>` accept a single key
+    // or index verbatim. `jsonCol("data").atPath("a.b")` stores "a.b" as
+    // the path; translate to the array literal form here.
+    const pathLiteral =
+      node.operator === "#>" || node.operator === "#>>"
+        ? `'{${pgJsonPathSegments(node.path).join(",")}}'`
+        : this.printLiteral({ type: "literal", value: node.path })
+    let result = `${this.printExpression(node.expr)}${node.operator}${pathLiteral}`
     if (node.alias) {
       result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
     }
@@ -754,4 +762,29 @@ export class BasePrinter implements Printer {
     }
     return result
   }
+}
+
+/**
+ * Split a dotted JSON-path string (`"a.b.c"` or `"a.0.c"` with numeric
+ * indices) into segments for a PG text-array literal `{a,b,c}`. Rejects
+ * segments containing characters that would break the array literal
+ * (single quote, comma, brace) so `atPath` can't become an injection
+ * vector for attacker-controlled path strings.
+ */
+function pgJsonPathSegments(path: string): string[] {
+  const parts = path.split(".")
+  for (const p of parts) {
+    // Reject anything that could break the array-literal context:
+    //   quotes/comma/brace — direct syntax,
+    //   backslash — PG treats `\c` as an escape inside an array string,
+    //   newline/CR — upper-layer loggers and SQL sanitizers are often
+    //   line-oriented; don't let a path smuggle one through.
+    if (p.length === 0 || /["',{}\\\n\r]/.test(p)) {
+      throw new Error(
+        `Invalid JSON path segment ${JSON.stringify(p)} — segments must be non-empty ` +
+          "and must not contain quote, comma, brace, backslash, or newline characters.",
+      )
+    }
+  }
+  return parts
 }

@@ -318,6 +318,8 @@ export const QueryFlags = {
   None: 0,
   /** Plugin has already injected its soft-delete filter — don't double-apply. */
   SoftDeleteApplied: 1 << 0,
+  /** Plugin has already injected its multi-tenant filter — don't double-apply. */
+  MultiTenantApplied: 1 << 1,
 } as const
 export type QueryFlags = number
 
