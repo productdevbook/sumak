@@ -35,6 +35,13 @@ describe("Subquery in FROM (derived tables)", () => {
     expect(q.sql).toContain(') AS "u"')
   })
 
+  it("selectFromSubquery wires the printer through so .toSQL() works", () => {
+    const sub = db.selectFrom("users").select("id", "name")
+    const r = db.selectFromSubquery(sub, "u").selectAll().toSQL()
+    expect(r.sql).toContain("FROM (SELECT")
+    expect(r.sql).toContain(') AS "u"')
+  })
+
   it("derived table with WHERE", () => {
     const sub = db
       .selectFrom("users")

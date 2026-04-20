@@ -94,6 +94,21 @@ describe("Clean callback API", () => {
       expect(q.compile(p).sql).toContain("NOT IN")
     })
 
+    it("in with empty array → FALSE (never-matches), no invalid SQL", () => {
+      const q = db.selectFrom("users").where(({ id }) => id.in([]))
+      const r = q.compile(p)
+      expect(r.sql).toContain("FALSE")
+      expect(r.sql).not.toContain("IN ()")
+      expect(r.params).toEqual([])
+    })
+
+    it("notIn with empty array → TRUE (always-matches)", () => {
+      const q = db.selectFrom("users").where(({ id }) => id.in([], { negate: true }))
+      const r = q.compile(p)
+      expect(r.sql).toContain("TRUE")
+      expect(r.sql).not.toContain("IN ()")
+    })
+
     it("and combinator", () => {
       const q = db.selectFrom("users").where(({ age, active }) => and(age.gt(18), active.eq(true)))
       const r = q.compile(p)

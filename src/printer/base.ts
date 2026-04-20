@@ -251,12 +251,15 @@ export class BasePrinter implements Printer {
     )
     parts.push(sets.join(", "))
 
-    for (const join of node.joins) {
-      parts.push(this.printJoin(join))
-    }
-
+    // PG `UPDATE ... FROM ... [JOIN ...] WHERE` requires FROM before JOINs.
+    // MySQL's `UPDATE t JOIN ...` has no FROM. Emit FROM first when present,
+    // then JOINs — the MySQL printer override handles its own form.
     if (node.from) {
       parts.push("FROM", this.printTableRef(node.from))
+    }
+
+    for (const join of node.joins) {
+      parts.push(this.printJoin(join))
     }
 
     if (node.where) {
@@ -444,6 +447,14 @@ export class BasePrinter implements Printer {
   protected printIn(node: InNode): string {
     const neg = node.negated ? "NOT " : ""
     if (Array.isArray(node.values)) {
+      // `IN ()` is a syntax error in every dialect. Constant-fold empty
+      // lists to the logically-equivalent boolean constant so SQL stays valid.
+      // NOT IN (∅) is always TRUE; IN (∅) is always FALSE. MSSQL rejects
+      // bare TRUE/FALSE in predicates, so use the portable `(1=0)` / `(1=1)`.
+      if (node.values.length === 0) {
+        if (this.dialect === "mssql") return node.negated ? "(1=1)" : "(1=0)"
+        return node.negated ? "TRUE" : "FALSE"
+      }
       return `(${this.printExpression(node.expr)} ${neg}IN (${node.values.map((v) => this.printExpression(v)).join(", ")}))`
     }
     return `(${this.printExpression(node.expr)} ${neg}IN (${this.printSelect(node.values)}))`

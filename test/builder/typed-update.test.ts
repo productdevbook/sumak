@@ -64,6 +64,24 @@ describe("TypedUpdateBuilder", () => {
     expect(result.sql).toContain('"posts"')
   })
 
+  it("UPDATE … SET … FROM … JOIN … WHERE — FROM precedes JOINs (PG)", () => {
+    // Regression: PG UPDATE requires FROM before any JOINs. Previously the
+    // printer emitted `UPDATE t SET … INNER JOIN … FROM …` which is
+    // syntactically invalid.
+    const q = db
+      .update("users")
+      .set({ name: "Bob" })
+      .from("posts")
+      .innerJoin("orders", { node: { type: "literal", value: true } } as any)
+      .where(({ id }) => id.eq(1))
+    const sql = q.compile(printer).sql
+    const fromIdx = sql.indexOf("FROM")
+    const joinIdx = sql.indexOf("INNER JOIN")
+    expect(fromIdx).toBeGreaterThan(-1)
+    expect(joinIdx).toBeGreaterThan(-1)
+    expect(fromIdx).toBeLessThan(joinIdx)
+  })
+
   it("updates with CTE (WITH)", () => {
     const cteQuery = select("id").from("users").build()
     const q = db.update("users").with("target", cteQuery).set({ active: false })
