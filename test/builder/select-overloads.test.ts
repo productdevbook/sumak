@@ -184,6 +184,21 @@ describe("JsonExpr integrates with .select({ alias: ... }) object form", () => {
   })
 })
 
+describe("Expression detection — `.eq()` also uses the Symbol brand", () => {
+  it(".where(col.eq(jsonValueWithNodeKey)) auto-parameterizes, does not unwrap", () => {
+    const jsonValue = { node: "not really an expression" } as any
+    const q = db
+      .selectFrom("users")
+      .select("id")
+      .where(({ name }) => name.eq(jsonValue))
+      .toSQL()
+    // The value must be parameterized — if it were wrongly unwrapped, the
+    // SQL would embed the raw `node: "not really..."` shape, breaking.
+    expect(q.sql).toContain('"name" = $1')
+    expect(q.params[0]).toEqual(jsonValue)
+  })
+})
+
 describe("Expression detection — JSON columns with `.node` key are not misidentified", () => {
   it(".set() with a JSON column value shaped like { node: ... } is auto-parameterized, not unwrapped", () => {
     // User stores a JSON object that happens to have a `node` key.

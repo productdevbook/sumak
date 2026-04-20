@@ -270,14 +270,30 @@ export class Sumak<DB> {
    * MERGE INTO target USING source ON condition.
    *
    * ```ts
-   * db.mergeInto("users", "staging", "s", ({ target, source }) =>
-   *   target.id.eqCol(source.id),
-   * )
-   * .whenMatchedThenUpdate({ name: "updated" })
-   * .whenNotMatchedThenInsert({ name: "new", email: "e@x.com" })
-   * .compile(db.printer())
+   * db.mergeInto("users", {
+   *   source: "staging",
+   *   alias: "s",                             // optional; defaults to source name
+   *   on: ({ target, source }) => target.id.eq(source.id),
+   * })
+   *   .whenMatchedThenUpdate({ name: "updated" })
+   *   .whenNotMatchedThenInsert({ name: "new", email: "e@x.com" })
+   *   .toSQL()
    * ```
+   *
+   * A legacy 4-positional-arg form is kept as a `@deprecated` overload.
    */
+  mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
+    target: T,
+    options: {
+      source: S
+      alias?: string
+      on: (proxies: {
+        target: { [K in keyof DB[T] & string]: Col<any> }
+        source: { [K in keyof DB[S] & string]: Col<any> }
+      }) => Expression<boolean>
+    },
+  ): TypedMergeBuilder<DB, T, S>
+  /** @deprecated Use the options-object form: `mergeInto(target, { source, alias, on })`. */
   mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
     target: T,
     source: S,
@@ -286,7 +302,42 @@ export class Sumak<DB> {
       target: { [K in keyof DB[T] & string]: Col<any> }
       source: { [K in keyof DB[S] & string]: Col<any> }
     }) => Expression<boolean>,
+  ): TypedMergeBuilder<DB, T, S>
+  mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
+    target: T,
+    sourceOrOptions:
+      | S
+      | {
+          source: S
+          alias?: string
+          on: (proxies: {
+            target: { [K in keyof DB[T] & string]: Col<any> }
+            source: { [K in keyof DB[S] & string]: Col<any> }
+          }) => Expression<boolean>
+        },
+    sourceAlias?: string,
+    on?: (proxies: {
+      target: { [K in keyof DB[T] & string]: Col<any> }
+      source: { [K in keyof DB[S] & string]: Col<any> }
+    }) => Expression<boolean>,
   ): TypedMergeBuilder<DB, T, S> {
+    let source: S
+    let alias: string
+    let onCallback: (proxies: {
+      target: { [K in keyof DB[T] & string]: Col<any> }
+      source: { [K in keyof DB[S] & string]: Col<any> }
+    }) => Expression<boolean>
+
+    if (typeof sourceOrOptions === "object" && sourceOrOptions !== null) {
+      source = sourceOrOptions.source
+      alias = sourceOrOptions.alias ?? (source as unknown as string)
+      onCallback = sourceOrOptions.on
+    } else {
+      source = sourceOrOptions as S
+      alias = sourceAlias!
+      onCallback = on!
+    }
+
     const makeProxy = (prefix: string) =>
       new Proxy(
         {},
@@ -298,10 +349,10 @@ export class Sumak<DB> {
       )
     const proxies = {
       target: makeProxy(target),
-      source: makeProxy(sourceAlias),
+      source: makeProxy(alias),
     } as any
-    const onExpr = on(proxies)
-    return new TypedMergeBuilder<DB, T, S>(target, source, sourceAlias, onExpr)
+    const onExpr = onCallback(proxies)
+    return new TypedMergeBuilder<DB, T, S>(target, source, alias, onExpr)
   }
 
   /**

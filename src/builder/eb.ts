@@ -26,7 +26,7 @@ import type {
   WindowFunctionNode,
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
-import { brandExpression } from "../ast/typed-expression.ts"
+import { brandExpression, isExpression } from "../ast/typed-expression.ts"
 import type { SelectType } from "../schema/types.ts"
 import { validateFunctionName } from "../utils/security.ts"
 
@@ -46,14 +46,9 @@ export type CmpArg<T> = T | Col<T> | Expression<T>
 
 function rhsNode<T>(value: CmpArg<T>): ExpressionNode {
   if (value instanceof Col) return (value as Col<T>)._node
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    "node" in (value as any) &&
-    (value as any).node != null
-  ) {
-    return (value as any).node as ExpressionNode
-  }
+  // Symbol-branded `isExpression` — a user object with a `.node` key
+  // (e.g. a JSONB value) is not an Expression and is auto-parameterized.
+  if (isExpression(value)) return (value as Expression<T>).node
   return autoParam(value)
 }
 

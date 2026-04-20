@@ -828,13 +828,20 @@ db.insertInto("users")
 ## MERGE (SQL:2003)
 
 ```ts
-db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+db.mergeInto("users", {
+  source: "staging",
+  alias: "s", // optional; defaults to source name
+  on: ({ target, source }) => target.id.eq(source.id),
+})
   .whenMatchedThenUpdate({ name: "updated" })
   .whenNotMatchedThenInsert({ name: "Alice", email: "a@b.com" })
   .toSQL()
 
 // Conditional delete
-db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+db.mergeInto("users", {
+  source: "staging",
+  on: ({ target, source }) => target.id.eq(source.id),
+})
   .whenMatchedThenDelete()
   .toSQL()
 ```
