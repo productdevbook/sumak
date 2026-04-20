@@ -37,6 +37,25 @@ import { validateFunctionName } from "../utils/security.ts"
  * // users.name.like("%ali%") → ("name" LIKE '%ali%')
  * ```
  */
+/**
+ * Accepted RHS for a Col comparison: raw value, another Col, or Expression.
+ * This is what unifies the v0.1 `.eq(x)` overload surface — no more `.eqCol` / `.eqExpr`.
+ */
+export type CmpArg<T> = T | Col<T> | Expression<T>
+
+function rhsNode<T>(value: CmpArg<T>): ExpressionNode {
+  if (value instanceof Col) return (value as Col<T>)._node
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    "node" in (value as any) &&
+    (value as any).node != null
+  ) {
+    return (value as any).node as ExpressionNode
+  }
+  return autoParam(value)
+}
+
 export class Col<T> {
   /** @internal */
   readonly _node: ExpressionNode
@@ -46,208 +65,98 @@ export class Col<T> {
     this._node = rawCol(column, table)
   }
 
-  /** = */
-  eq(value: T): Expression<boolean> {
-    return wrap(binOp("=", this._node, autoParam(value)))
+  /** = — accepts raw value, another Col, or Expression. */
+  eq(value: CmpArg<T>): Expression<boolean> {
+    return wrap(binOp("=", this._node, rhsNode(value)))
   }
 
   /** != */
-  neq(value: T): Expression<boolean> {
-    return wrap(binOp("!=", this._node, autoParam(value)))
+  neq(value: CmpArg<T>): Expression<boolean> {
+    return wrap(binOp("!=", this._node, rhsNode(value)))
   }
 
   /** > */
-  gt(value: T): Expression<boolean> {
-    return wrap(binOp(">", this._node, autoParam(value)))
+  gt(value: CmpArg<T>): Expression<boolean> {
+    return wrap(binOp(">", this._node, rhsNode(value)))
   }
 
   /** >= */
-  gte(value: T): Expression<boolean> {
-    return wrap(binOp(">=", this._node, autoParam(value)))
+  gte(value: CmpArg<T>): Expression<boolean> {
+    return wrap(binOp(">=", this._node, rhsNode(value)))
   }
 
   /** < */
-  lt(value: T): Expression<boolean> {
-    return wrap(binOp("<", this._node, autoParam(value)))
+  lt(value: CmpArg<T>): Expression<boolean> {
+    return wrap(binOp("<", this._node, rhsNode(value)))
   }
 
   /** <= */
-  lte(value: T): Expression<boolean> {
-    return wrap(binOp("<=", this._node, autoParam(value)))
+  lte(value: CmpArg<T>): Expression<boolean> {
+    return wrap(binOp("<=", this._node, rhsNode(value)))
   }
 
-  /** LIKE (string columns only) — pattern is parameterized for safety */
-  like(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("LIKE", this._node, autoParam(pattern)))
+  /**
+   * LIKE / ILIKE / NOT LIKE / NOT ILIKE — one method, opts for variants.
+   * Pattern is always parameterized.
+   */
+  like(
+    this: Col<string>,
+    pattern: string,
+    opts?: { negate?: boolean; insensitive?: boolean },
+  ): Expression<boolean> {
+    const op =
+      opts?.negate === true
+        ? opts?.insensitive === true
+          ? "NOT ILIKE"
+          : "NOT LIKE"
+        : opts?.insensitive === true
+          ? "ILIKE"
+          : "LIKE"
+    return wrap(binOp(op, this._node, autoParam(pattern)))
   }
 
-  /** NOT LIKE — pattern is parameterized for safety */
-  notLike(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("NOT LIKE", this._node, autoParam(pattern)))
+  /** IN (...values) / NOT IN via `{ negate: true }`. Also accepts a SELECT subquery. */
+  in(values: T[] | SelectNode, opts?: { negate?: boolean }): Expression<boolean> {
+    const negated = opts?.negate === true
+    if (Array.isArray(values)) {
+      return wrap({
+        type: "in",
+        expr: this._node,
+        values: values.map((v) => autoParam(v)),
+        negated,
+      })
+    }
+    return wrap({ type: "in", expr: this._node, values, negated })
   }
 
-  /** ILIKE — case-insensitive LIKE (PG) — pattern is parameterized for safety */
-  ilike(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("ILIKE", this._node, autoParam(pattern)))
+  /** IS NULL / IS NOT NULL via `{ negate: true }`. */
+  isNull(opts?: { negate?: boolean }): Expression<boolean> {
+    return wrap({ type: "is_null", expr: this._node, negated: opts?.negate === true })
   }
 
-  /** NOT ILIKE (PG) — pattern is parameterized for safety */
-  notIlike(this: Col<string>, pattern: string): Expression<boolean> {
-    return wrap(binOp("NOT ILIKE", this._node, autoParam(pattern)))
-  }
-
-  /** IN (value1, value2, ...) */
-  in(values: T[]): Expression<boolean> {
-    return wrap({
-      type: "in",
-      expr: this._node,
-      values: values.map((v) => autoParam(v)),
-      negated: false,
-    })
-  }
-
-  /** NOT IN */
-  notIn(values: T[]): Expression<boolean> {
-    return wrap({
-      type: "in",
-      expr: this._node,
-      values: values.map((v) => autoParam(v)),
-      negated: true,
-    })
-  }
-
-  /** IS NULL */
-  isNull(): Expression<boolean> {
-    return wrap({ type: "is_null", expr: this._node, negated: false })
-  }
-
-  /** IS NOT NULL */
-  isNotNull(): Expression<boolean> {
-    return wrap({ type: "is_null", expr: this._node, negated: true })
-  }
-
-  /** BETWEEN low AND high */
-  between(low: T, high: T): Expression<boolean> {
+  /** BETWEEN / NOT BETWEEN / BETWEEN SYMMETRIC — one method, opts for variants. */
+  between(
+    low: CmpArg<T>,
+    high: CmpArg<T>,
+    opts?: { negate?: boolean; symmetric?: boolean },
+  ): Expression<boolean> {
     return wrap({
       type: "between",
       expr: this._node,
-      low: autoParam(low),
-      high: autoParam(high),
-      negated: false,
+      low: rhsNode(low),
+      high: rhsNode(high),
+      negated: opts?.negate === true,
+      symmetric: opts?.symmetric === true,
     })
   }
 
-  /** NOT BETWEEN low AND high */
-  notBetween(low: T, high: T): Expression<boolean> {
-    return wrap({
-      type: "between",
-      expr: this._node,
-      low: autoParam(low),
-      high: autoParam(high),
-      negated: true,
-    })
-  }
-
-  /** BETWEEN SYMMETRIC low AND high (PG) — order-independent range check */
-  betweenSymmetric(low: T, high: T): Expression<boolean> {
-    return wrap({
-      type: "between",
-      expr: this._node,
-      low: autoParam(low),
-      high: autoParam(high),
-      negated: false,
-      symmetric: true,
-    })
-  }
-
-  /** IN (SELECT ...) — subquery */
-  inSubquery(query: SelectNode): Expression<boolean> {
-    return wrap({
-      type: "in",
-      expr: this._node,
-      values: query,
-      negated: false,
-    })
-  }
-
-  /** NOT IN (SELECT ...) — subquery */
-  notInSubquery(query: SelectNode): Expression<boolean> {
-    return wrap({
-      type: "in",
-      expr: this._node,
-      values: query,
-      negated: true,
-    })
-  }
-
-  /** = with Expression value */
-  eqExpr(value: Expression<T>): Expression<boolean> {
-    return wrap(binOp("=", this._node, (value as any).node))
-  }
-
-  /** != with Expression value */
-  neqExpr(value: Expression<T>): Expression<boolean> {
-    return wrap(binOp("!=", this._node, (value as any).node))
-  }
-
-  /** > with Expression value */
-  gtExpr(value: Expression<T>): Expression<boolean> {
-    return wrap(binOp(">", this._node, (value as any).node))
-  }
-
-  /** >= with Expression value */
-  gteExpr(value: Expression<T>): Expression<boolean> {
-    return wrap(binOp(">=", this._node, (value as any).node))
-  }
-
-  /** < with Expression value */
-  ltExpr(value: Expression<T>): Expression<boolean> {
-    return wrap(binOp("<", this._node, (value as any).node))
-  }
-
-  /** <= with Expression value */
-  lteExpr(value: Expression<T>): Expression<boolean> {
-    return wrap(binOp("<=", this._node, (value as any).node))
-  }
-
-  /** IS DISTINCT FROM — null-safe inequality */
-  isDistinctFrom(value: T): Expression<boolean> {
-    return wrap(binOp("IS DISTINCT FROM", this._node, autoParam(value)))
-  }
-
-  /** IS NOT DISTINCT FROM — null-safe equality */
-  isNotDistinctFrom(value: T): Expression<boolean> {
-    return wrap(binOp("IS NOT DISTINCT FROM", this._node, autoParam(value)))
-  }
-
-  /** Compare with another column: col1.eqCol(col2) */
-  eqCol(other: Col<T>): Expression<boolean> {
-    return wrap(binOp("=", this._node, other._node))
-  }
-
-  /** != another column */
-  neqCol(other: Col<T>): Expression<boolean> {
-    return wrap(binOp("!=", this._node, other._node))
-  }
-
-  /** > another column */
-  gtCol(other: Col<T>): Expression<boolean> {
-    return wrap(binOp(">", this._node, other._node))
-  }
-
-  /** < another column */
-  ltCol(other: Col<T>): Expression<boolean> {
-    return wrap(binOp("<", this._node, other._node))
-  }
-
-  /** >= another column */
-  gteCol(other: Col<T>): Expression<boolean> {
-    return wrap(binOp(">=", this._node, other._node))
-  }
-
-  /** <= another column */
-  lteCol(other: Col<T>): Expression<boolean> {
-    return wrap(binOp("<=", this._node, other._node))
+  /**
+   * IS DISTINCT FROM — null-safe comparison.
+   * Pass `{ negate: true }` for IS NOT DISTINCT FROM.
+   */
+  distinctFrom(value: T | null, opts?: { negate?: boolean }): Expression<boolean> {
+    const op = opts?.negate === true ? "IS NOT DISTINCT FROM" : "IS DISTINCT FROM"
+    return wrap(binOp(op, this._node, autoParam(value)))
   }
 
   /** As raw Expression<T> for advanced use */
@@ -268,6 +177,100 @@ export class Col<T> {
   /** DESC ordering — for use with orderBy(col.desc()) */
   desc(): { expr: Expression<T>; direction: "DESC" } {
     return { expr: wrap<T>(this._node), direction: "DESC" }
+  }
+
+  // ─── Legacy methods (kept for backwards compatibility; scheduled for removal) ───
+  /** @deprecated Use `.like(pattern, { negate: true })`. */
+  notLike(this: Col<string>, pattern: string): Expression<boolean> {
+    return this.like(pattern, { negate: true })
+  }
+  /** @deprecated Use `.like(pattern, { insensitive: true })`. */
+  ilike(this: Col<string>, pattern: string): Expression<boolean> {
+    return this.like(pattern, { insensitive: true })
+  }
+  /** @deprecated Use `.like(pattern, { negate: true, insensitive: true })`. */
+  notIlike(this: Col<string>, pattern: string): Expression<boolean> {
+    return this.like(pattern, { negate: true, insensitive: true })
+  }
+  /** @deprecated Use `.in(values, { negate: true })`. */
+  notIn(values: T[]): Expression<boolean> {
+    return this.in(values, { negate: true })
+  }
+  /** @deprecated Use `.isNull({ negate: true })`. */
+  isNotNull(): Expression<boolean> {
+    return this.isNull({ negate: true })
+  }
+  /** @deprecated Use `.between(low, high, { negate: true })`. */
+  notBetween(low: T, high: T): Expression<boolean> {
+    return this.between(low, high, { negate: true })
+  }
+  /** @deprecated Use `.between(low, high, { symmetric: true })`. */
+  betweenSymmetric(low: T, high: T): Expression<boolean> {
+    return this.between(low, high, { symmetric: true })
+  }
+  /** @deprecated Use `.in(subquery)`. */
+  inSubquery(query: SelectNode): Expression<boolean> {
+    return this.in(query)
+  }
+  /** @deprecated Use `.in(subquery, { negate: true })`. */
+  notInSubquery(query: SelectNode): Expression<boolean> {
+    return this.in(query, { negate: true })
+  }
+  /** @deprecated Use `.distinctFrom(value)`. */
+  isDistinctFrom(value: T): Expression<boolean> {
+    return this.distinctFrom(value)
+  }
+  /** @deprecated Use `.distinctFrom(value, { negate: true })`. */
+  isNotDistinctFrom(value: T): Expression<boolean> {
+    return this.distinctFrom(value, { negate: true })
+  }
+  /** @deprecated Use `.eq(expr)` — Col and Expression are now unified. */
+  eqExpr(value: Expression<T>): Expression<boolean> {
+    return this.eq(value)
+  }
+  /** @deprecated Use `.neq(expr)`. */
+  neqExpr(value: Expression<T>): Expression<boolean> {
+    return this.neq(value)
+  }
+  /** @deprecated Use `.gt(expr)`. */
+  gtExpr(value: Expression<T>): Expression<boolean> {
+    return this.gt(value)
+  }
+  /** @deprecated Use `.gte(expr)`. */
+  gteExpr(value: Expression<T>): Expression<boolean> {
+    return this.gte(value)
+  }
+  /** @deprecated Use `.lt(expr)`. */
+  ltExpr(value: Expression<T>): Expression<boolean> {
+    return this.lt(value)
+  }
+  /** @deprecated Use `.lte(expr)`. */
+  lteExpr(value: Expression<T>): Expression<boolean> {
+    return this.lte(value)
+  }
+  /** @deprecated Use `.eq(otherCol)` — Col and Expression are now unified. */
+  eqCol(other: Col<T>): Expression<boolean> {
+    return this.eq(other)
+  }
+  /** @deprecated Use `.neq(otherCol)`. */
+  neqCol(other: Col<T>): Expression<boolean> {
+    return this.neq(other)
+  }
+  /** @deprecated Use `.gt(otherCol)`. */
+  gtCol(other: Col<T>): Expression<boolean> {
+    return this.gt(other)
+  }
+  /** @deprecated Use `.lt(otherCol)`. */
+  ltCol(other: Col<T>): Expression<boolean> {
+    return this.lt(other)
+  }
+  /** @deprecated Use `.gte(otherCol)`. */
+  gteCol(other: Col<T>): Expression<boolean> {
+    return this.gte(other)
+  }
+  /** @deprecated Use `.lte(otherCol)`. */
+  lteCol(other: Col<T>): Expression<boolean> {
+    return this.lte(other)
   }
 }
 
