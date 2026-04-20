@@ -14,6 +14,10 @@ const db = sumak({
       id: serial().primaryKey(),
       name: text().notNull(),
     },
+    posts: {
+      id: serial().primaryKey(),
+      title: text().notNull(),
+    },
   },
 })
 
@@ -61,6 +65,24 @@ describe("Row locking", () => {
       .lock({ mode: "share", skipLocked: true })
       .compile(p)
     expect(q.sql).toContain("FOR SHARE SKIP LOCKED")
+  })
+
+  it("FOR UPDATE OF <table> (PG multi-table lock scoping)", () => {
+    const q = db
+      .selectFrom("users")
+      .select("id")
+      .lock({ mode: "update", of: ["users"] })
+      .compile(p)
+    expect(q.sql).toContain('FOR UPDATE OF "users"')
+  })
+
+  it("FOR UPDATE OF <multiple tables>", () => {
+    const q = db
+      .selectFrom("users")
+      .select("id")
+      .lock({ mode: "update", of: ["users", "posts"], noWait: true })
+      .compile(p)
+    expect(q.sql).toContain('FOR UPDATE OF "users", "posts" NOWAIT')
   })
 
   it("MySQL supports FOR UPDATE", () => {

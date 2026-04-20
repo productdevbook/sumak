@@ -1,5 +1,5 @@
 import type { DDLNode } from "./ast/ddl-nodes.ts"
-import type { ASTNode } from "./ast/nodes.ts"
+import type { ASTNode, ExpressionNode, SelectNode, SubqueryNode } from "./ast/nodes.ts"
 import type { TclNode } from "./ast/tcl-nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
 import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
@@ -38,7 +38,7 @@ import { TclPrinter } from "./printer/tcl.ts"
 import type { Printer } from "./printer/types.ts"
 import type { ColumnBuilder } from "./schema/column.ts"
 import type { SelectRow } from "./schema/types.ts"
-import type { CompiledQuery } from "./types.ts"
+import type { CompiledQuery, SQLDialect } from "./types.ts"
 
 /**
  * Tables config constraint.
@@ -236,10 +236,10 @@ export class Sumak<DB> {
    * ```
    */
   selectFromSubquery<Alias extends string>(
-    subquery: { build(): import("./ast/nodes.ts").SelectNode },
+    subquery: { build(): SelectNode },
     alias: Alias,
   ): TypedSelectBuilder<DB, keyof DB & string, Record<string, unknown>> {
-    const sub: import("./ast/nodes.ts").SubqueryNode = {
+    const sub: SubqueryNode = {
       type: "subquery",
       query: subquery.build(),
       alias,
@@ -251,8 +251,8 @@ export class Sumak<DB> {
    * SELECT COUNT(*) FROM table — convenience shorthand.
    */
   selectCount<T extends keyof DB & string>(table: T): TypedSelectBuilder<DB, T, { count: number }> {
-    const star: import("./ast/nodes.ts").ExpressionNode = { type: "star" }
-    const countFn: import("./ast/nodes.ts").ExpressionNode = {
+    const star: ExpressionNode = { type: "star" }
+    const countFn: ExpressionNode = {
       type: "function_call",
       name: "COUNT",
       args: [star],
@@ -385,7 +385,14 @@ export class Sumak<DB> {
       source: makeProxy(alias),
     } as any
     const onExpr = onCallback(proxies)
-    return new TypedMergeBuilder<DB, T, S>(target, source, alias, onExpr)
+    return new TypedMergeBuilder<DB, T, S>(
+      target,
+      source,
+      alias,
+      onExpr,
+      this._dialect.createPrinter(),
+      (node: ASTNode) => this.compile(node),
+    )
   }
 
   /**
@@ -599,9 +606,9 @@ function _extractTableName(node: ASTNode): string | undefined {
  * ```
  */
 export class SchemaBuilder {
-  private _dialect: import("./types.ts").SQLDialect
+  private _dialect: SQLDialect
 
-  constructor(dialect: import("./types.ts").SQLDialect) {
+  constructor(dialect: SQLDialect) {
     this._dialect = dialect
   }
 

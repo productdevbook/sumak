@@ -1,5 +1,5 @@
 import { param } from "../ast/expression.ts"
-import type { ExpressionNode, MergeNode, SelectNode } from "../ast/nodes.ts"
+import type { ASTNode, ExpressionNode, MergeNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -36,6 +36,10 @@ function createMergeProxies<DB, Target extends keyof DB, Source extends keyof DB
 export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof DB> {
   /** @internal */
   readonly _builder: MergeBuilder
+  /** @internal */
+  readonly _printer?: Printer
+  /** @internal */
+  readonly _compile?: (node: ASTNode) => CompiledQuery
   private _targetTable: Target & string
   private _sourceAlias: string
 
@@ -44,9 +48,13 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
     sourceTable: Source & string,
     sourceAlias: string,
     on: Expression<boolean>,
+    printer?: Printer,
+    compile?: (node: ASTNode) => CompiledQuery,
   ) {
     this._targetTable = targetTable
     this._sourceAlias = sourceAlias
+    this._printer = printer
+    this._compile = compile
     this._builder = new MergeBuilder()
       .into(targetTable)
       .using(sourceTable, sourceAlias)
@@ -55,9 +63,14 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
 
   /** @internal */
   private _with(builder: MergeBuilder): TypedMergeBuilder<DB, Target, Source> {
-    const t = new TypedMergeBuilder<DB, Target, Source>("" as any, "" as any, "", {
-      node: { type: "literal", value: true },
-    } as any)
+    const t = new TypedMergeBuilder<DB, Target, Source>(
+      "" as any,
+      "" as any,
+      "",
+      { node: { type: "literal", value: true } } as any,
+      this._printer,
+      this._compile,
+    )
     ;(t as any)._builder = builder
     ;(t as any)._targetTable = this._targetTable
     ;(t as any)._sourceAlias = this._sourceAlias
@@ -108,12 +121,17 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
     return this._with(this._builder.whenNotMatchedInsert(columns, values, condExpr))
   }
 
+  /**
+   * WITH (CTE). Accepts either a raw `SelectNode` or any builder with a
+   * `.build()` method (typically a `TypedSelectBuilder`).
+   */
   with(
     name: string,
-    query: SelectNode,
+    query: SelectNode | { build(): SelectNode },
     options?: { recursive?: boolean },
   ): TypedMergeBuilder<DB, Target, Source> {
-    return this._with(this._builder.with(name, query, options?.recursive === true))
+    const q = "build" in query ? query.build() : query
+    return this._with(this._builder.with(name, q, options?.recursive === true))
   }
 
   build(): MergeNode {
@@ -122,5 +140,14 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
 
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** Compile to SQL using the dialect's printer. */
+  toSQL(): CompiledQuery {
+    if (this._compile) return this._compile(this.build())
+    if (!this._printer) {
+      throw new Error("toSQL() requires a printer. Use db.mergeInto() to construct the builder.")
+    }
+    return this._printer.print(this.build())
   }
 }

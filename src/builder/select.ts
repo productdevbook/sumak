@@ -184,6 +184,15 @@ export class SelectBuilder {
     return new SelectBuilder({ ...this.node, lock: { ...this.node.lock, noWait: true } })
   }
 
+  /**
+   * Restrict `FOR UPDATE / FOR SHARE` to specific tables (PG `OF` clause).
+   * No-op if no lock has been set yet.
+   */
+  lockOf(tables: string[]): SelectBuilder {
+    if (!this.node.lock || tables.length === 0) return this
+    return new SelectBuilder({ ...this.node, lock: { ...this.node.lock, of: tables } })
+  }
+
   with(name: string, query: SelectNode, recursive = false): SelectBuilder {
     const cte: CTENode = { name, query, recursive }
     return new SelectBuilder({ ...this.node, ctes: [...this.node.ctes, cte] })

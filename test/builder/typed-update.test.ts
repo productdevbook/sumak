@@ -72,4 +72,12 @@ describe("TypedUpdateBuilder", () => {
     expect(result.sql).toContain('"target"')
     expect(result.sql).toContain("UPDATE")
   })
+
+  it("accepts a TypedSelectBuilder directly in .with(), no manual .build()", () => {
+    const cteBuilder = db.selectFrom("users").select("id")
+    const q = db.update("users").with("target", cteBuilder).set({ active: false })
+    const result = q.compile(printer)
+    expect(result.sql).toContain("WITH")
+    expect(result.sql).toContain('"target"')
+  })
 })

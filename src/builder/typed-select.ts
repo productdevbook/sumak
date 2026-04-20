@@ -1,8 +1,10 @@
 import type {
   AliasedExprNode,
+  ASTNode,
   ExplainNode,
   ExpressionNode,
   SelectNode,
+  SubqueryNode,
   TemporalClause,
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
@@ -10,7 +12,7 @@ import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Nullable, SelectRow } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
-import type { WhereCallback } from "./eb.ts"
+import type { ColumnProxies, WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
 import { SelectBuilder } from "./select.ts"
@@ -28,13 +30,13 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   private _table: TB & string
   private _printer?: Printer
   /** @internal — full compile pipeline (plugins + hooks + printer) */
-  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
+  _compile?: (node: ASTNode) => CompiledQuery
 
   constructor(
     builder: SelectBuilder,
     table?: string,
     printer?: Printer,
-    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+    compile?: (node: ASTNode) => CompiledQuery,
   ) {
     this._builder = builder
     this._table = (table ?? "") as TB & string
@@ -370,6 +372,13 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     mode: "update" | "share" | "no_key_update" | "key_share"
     skipLocked?: boolean
     noWait?: boolean
+    /**
+     * PostgreSQL `FOR UPDATE OF t1, t2`. Restrict row-level locks to
+     * specific tables — useful for multi-table joins where only one
+     * side genuinely needs locking. Accepts table names from the
+     * current scope.
+     */
+    of?: (keyof DB & string)[]
   }): TypedSelectBuilder<DB, TB, O> {
     if (options.skipLocked === true && options.noWait === true) {
       throw new Error(".lock() cannot set both skipLocked and noWait — SQL only allows one.")
@@ -390,19 +399,24 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
         builder = this._builder.forKeyShare()
         break
     }
+    if (options.of && options.of.length > 0) builder = builder.lockOf(options.of as string[])
     if (options.skipLocked) builder = builder.skipLocked()
     if (options.noWait) builder = builder.noWait()
     return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
   }
 
-  /** WITH (CTE) */
+  /**
+   * WITH (CTE). Accepts either a raw `SelectNode` or any `TypedSelectBuilder`
+   * — passing the builder directly saves a `.build()` at the call site.
+   */
   with(
     name: string,
-    query: SelectNode,
+    query: SelectNode | { build(): SelectNode },
     options?: { recursive?: boolean },
   ): TypedSelectBuilder<DB, TB, O> {
+    const q = "build" in query ? query.build() : query
     return new TypedSelectBuilder(
-      this._builder.with(name, query, options?.recursive === true),
+      this._builder.with(name, q, options?.recursive === true),
       this._table,
       this._printer,
       this._compile,
@@ -489,7 +503,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     alias: Alias,
     on: Expression<boolean>,
   ): TypedSelectBuilder<DB, TB, O & Record<Alias, R>> {
-    const sub: import("../ast/nodes.ts").SubqueryNode = {
+    const sub: SubqueryNode = {
       type: "subquery",
       query: subquery.build(),
       alias,
@@ -508,7 +522,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     alias: Alias,
     on: Expression<boolean>,
   ): TypedSelectBuilder<DB, TB, O & Partial<Record<Alias, R>>> {
-    const sub: import("../ast/nodes.ts").SubqueryNode = {
+    const sub: SubqueryNode = {
       type: "subquery",
       query: subquery.build(),
       alias,
@@ -532,7 +546,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     table: T,
     alias: A,
     onCallback: (cols: {
-      [Table in (TB | A) & string]: import("./eb.ts").ColumnProxies<DB, TB>
+      [Table in (TB | A) & string]: ColumnProxies<DB, TB>
     }) => Expression<boolean>,
   ): TypedSelectBuilder<DB, TB | T, O & SelectRow<DB, T>> {
     const proxies = new Proxy({} as any, {
@@ -563,7 +577,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     table: T,
     alias: A,
     onCallback: (cols: {
-      [Table in (TB | A) & string]: import("./eb.ts").ColumnProxies<DB, TB>
+      [Table in (TB | A) & string]: ColumnProxies<DB, TB>
     }) => Expression<boolean>,
   ): TypedSelectBuilder<DB, TB | T, O & Nullable<SelectRow<DB, T>>> {
     const proxies = new Proxy({} as any, {
@@ -604,7 +618,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     subquery: { build(): SelectNode },
     alias: Alias,
   ): TypedSelectBuilder<DB, TB, O & Record<Alias, R>> {
-    const sub: import("../ast/nodes.ts").SubqueryNode = {
+    const sub: SubqueryNode = {
       type: "subquery",
       query: subquery.build(),
       alias,
@@ -726,7 +740,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     let builder: SelectBuilder = this._builder
 
     if (after !== undefined) {
-      const condition: import("../ast/nodes.ts").ExpressionNode = {
+      const condition: ExpressionNode = {
         type: "binary_op",
         op: ">",
         left: { type: "column_ref", column },
@@ -735,7 +749,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       builder = builder.where(condition)
       builder = builder.orderBy(column, "ASC")
     } else if (before !== undefined) {
-      const condition: import("../ast/nodes.ts").ExpressionNode = {
+      const condition: ExpressionNode = {
         type: "binary_op",
         op: "<",
         left: { type: "column_ref", column },
@@ -794,7 +808,6 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
 // ── Join helpers ──
 
-import type { ColumnProxies } from "./eb.ts"
 import { Col } from "./eb.ts"
 
 type JoinProxies<DB, TB extends keyof DB, T extends keyof DB> = {

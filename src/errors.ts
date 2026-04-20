@@ -20,8 +20,11 @@ export class UnsupportedDialectFeatureError extends SumakError {
 }
 
 export class EmptyQueryError extends SumakError {
-  constructor(queryType: string) {
-    super(`Cannot build ${queryType}: missing required clauses`)
+  constructor(queryType: string, missing?: string) {
+    const detail = missing
+      ? `missing required clause — ${missing} must be set first`
+      : "missing required clauses"
+    super(`Cannot build ${queryType}: ${detail}`)
     this.name = "EmptyQueryError"
   }
 }
