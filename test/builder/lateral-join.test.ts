@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { col, eq, lit, subquery } from "../../src/ast/expression.ts"
+import { col, eq, lit } from "../../src/ast/expression.ts"
 import { SelectBuilder } from "../../src/builder/select.ts"
 import { mysqlDialect } from "../../src/dialect/mysql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"

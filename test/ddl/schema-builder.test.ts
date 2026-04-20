@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest"
 
 import { mysqlDialect } from "../../src/dialect/mysql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
-import { sqliteDialect } from "../../src/dialect/sqlite.ts"
-import { serial, text, integer } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 
 describe("CREATE TABLE", () => {

@@ -2,7 +2,6 @@ import type {
   AlterColumnSet,
   AlterTableAction,
   AlterTableNode,
-  ColumnDefinitionNode,
   ForeignKeyAction,
   ForeignKeyConstraintNode,
   PrimaryKeyConstraintNode,

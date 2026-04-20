@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { AuditTimestampPlugin } from "../../src/plugin/audit-timestamp.ts"
-import { integer, serial, text, timestamptz } from "../../src/schema/column.ts"
+import { serial, text, timestamptz } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 
 describe("AuditTimestampPlugin", () => {

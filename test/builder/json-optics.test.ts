@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import type { AliasedExprNode, CastNode, JsonAccessNode } from "../../src/ast/nodes.ts"
-import { jsonCol, jsonExpr, JsonOptic } from "../../src/builder/json-optics.ts"
+import type { CastNode, JsonAccessNode } from "../../src/ast/nodes.ts"
+import { jsonCol, JsonOptic } from "../../src/builder/json-optics.ts"
 import { PgPrinter } from "../../src/printer/pg.ts"
 
 describe("JsonOptic", () => {

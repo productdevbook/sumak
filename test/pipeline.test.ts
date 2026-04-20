@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 
-import type { SelectNode } from "../src/ast/nodes.ts"
 import { pgDialect } from "../src/dialect/pg.ts"
 import { createRule } from "../src/optimize/optimizer.ts"
 import { integer, serial, text } from "../src/schema/column.ts"

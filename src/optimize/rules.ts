@@ -140,7 +140,6 @@ export const mergeConsecutiveLimits: RewriteRule = {
   },
 
   apply(node: ASTNode): ASTNode {
-    const s = node as SelectNode
     // Keep the outer (more restrictive) limit — the database will apply both anyway.
     // This rule just flags the pattern; actual merging depends on semantics.
     return node

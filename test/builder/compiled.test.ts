@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { col, eq, lit, param } from "../../src/ast/expression.ts"
+import { col, eq, param } from "../../src/ast/expression.ts"
 import { createSelectNode, tableRef } from "../../src/ast/nodes.ts"
 import type { SelectNode } from "../../src/ast/nodes.ts"
 import {

@@ -5,7 +5,6 @@ import {
   arrayContains,
   arrayOverlaps,
   unsafeRawExpr,
-  val,
 } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { serial, text } from "../../src/schema/column.ts"

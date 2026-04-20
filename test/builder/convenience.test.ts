@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { Col, count, val } from "../../src/builder/eb.ts"
+import { Col } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { integer, serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
