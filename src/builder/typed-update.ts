@@ -87,16 +87,19 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * RETURNING specific columns.
+   * RETURNING specific columns. Accumulates across chained calls —
+   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
+   * Use `.returningAll()` to reset to `RETURNING *`.
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
   ): TypedUpdateReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
+    const existing = this._builder.build().returning
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
     return new TypedUpdateReturningBuilder(
       new UpdateBuilder({
         ...this._builder.build(),
-        returning: exprs,
+        returning: [...existing, ...exprs],
       }),
     )
   }
