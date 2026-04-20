@@ -1,3 +1,4 @@
+import { param as rawParam } from "../ast/expression.ts"
 import type {
   AliasedExprNode,
   ASTNode,
@@ -746,7 +747,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
         type: "binary_op",
         op: ">",
         left: { type: "column_ref", column },
-        right: { type: "param", index: 0, value: after },
+        right: rawParam(0, after),
       }
       builder = builder.where(condition)
       builder = builder.orderBy(column, "ASC")
@@ -755,7 +756,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
         type: "binary_op",
         op: "<",
         left: { type: "column_ref", column },
-        right: { type: "param", index: 0, value: before },
+        right: rawParam(0, before),
       }
       builder = builder.where(condition)
       builder = builder.orderBy(column, "DESC")

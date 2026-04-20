@@ -888,6 +888,18 @@ db.selectFrom("users")
 // FOR UPDATE OF "users"
 ```
 
+**Dialect support**
+
+| Feature                                 | PG  |  MySQL  | SQLite | MSSQL |
+| --------------------------------------- | :-: | :-----: | :----: | :---: |
+| `mode: "update"` / `"share"`            | ✅  |   ✅    |   ❌   |  ❌   |
+| `mode: "no_key_update"` / `"key_share"` | ✅  |   ❌    |   ❌   |  ❌   |
+| `skipLocked` / `noWait`                 | ✅  | ✅ (8+) |   ❌   |  ❌   |
+| `of: [...]` (PG `FOR UPDATE OF`)        | ✅  |   ❌    |   ❌   |  ❌   |
+
+SQLite and MSSQL throw `UnsupportedDialectFeatureError` on any `.lock({...})`.
+On MSSQL, use table hints (e.g. `WITH (UPDLOCK)`) instead.
+
 ---
 
 ## EXPLAIN

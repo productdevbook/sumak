@@ -81,6 +81,11 @@ export const subqueryFlattening: RewriteRule = {
     const s = node as SelectNode
     if (!s.from || s.from.type !== "subquery") return false
     const inner = s.from.query
+    // Only flatten when the inner FROM is a plain table. Flattening a
+    // nested subquery or graph_table would either lose the outer alias
+    // or require rewriting GRAPH_TABLE semantics — not worth the
+    // complexity for a rule that just peels trivial wrappers.
+    if (!inner.from || inner.from.type !== "table_ref") return false
     return (
       inner.joins.length === 0 &&
       !inner.where &&
@@ -99,6 +104,14 @@ export const subqueryFlattening: RewriteRule = {
     const s = node as SelectNode
     if (!s.from || s.from.type !== "subquery") return node
     const inner = s.from.query
+    if (!inner.from || inner.from.type !== "table_ref") return node
+    // Preserve the outer subquery alias — dropping it would unbind any
+    // column references qualified by the outer name. `SELECT u.name FROM
+    // (SELECT * FROM users) AS u` should flatten to `SELECT u.name FROM
+    // users AS u`, not `SELECT u.name FROM users`.
+    if (s.from.alias) {
+      return { ...s, from: { ...inner.from, alias: s.from.alias } }
+    }
     return { ...s, from: inner.from }
   },
 }
