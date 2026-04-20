@@ -9,6 +9,7 @@ import type {
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
+import { QueryFlags } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
@@ -114,6 +115,11 @@ export class MultiTenantPlugin implements SumakPlugin {
    *     tenant's id regardless of what the source table looks like.
    */
   private transformMerge(node: MergeNode): MergeNode {
+    const flags = node.flags ?? 0
+    // Idempotent — a second pass (double-registered plugin, cached AST)
+    // would otherwise duplicate `tenant_id = ?` on ON and raise a
+    // "duplicate column" error from the INSERT branch.
+    if (flags & QueryFlags.MultiTenantApplied) return node
     if (!this.isTargetTable(node.target.name)) return node
     const tenantId = this.getTenantId()
     let onExpr = node.on
@@ -161,6 +167,7 @@ export class MultiTenantPlugin implements SumakPlugin {
       ...node,
       on: onExpr,
       whens,
+      flags: flags | QueryFlags.MultiTenantApplied,
     }
   }
 }

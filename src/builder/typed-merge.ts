@@ -40,9 +40,17 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
   readonly _printer?: Printer
   /** @internal */
   readonly _compile?: (node: ASTNode) => CompiledQuery
-  private _targetTable: Target & string
-  private _sourceAlias: string
+  private readonly _targetTable: Target & string
+  private readonly _sourceAlias: string
 
+  /**
+   * Public constructor — called by `db.mergeInto(...)`. Callers pass the
+   * target/source/alias/on and we build the underlying `MergeBuilder`.
+   *
+   * `existingBuilder` is an internal escape hatch used by the chainable
+   * `.whenMatchedThenUpdate()` / `.with()` etc. methods to clone state
+   * without constructing a fresh `MergeBuilder` over empty strings.
+   */
   constructor(
     targetTable: Target & string,
     sourceTable: Source & string,
@@ -50,31 +58,29 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
     on: Expression<boolean>,
     printer?: Printer,
     compile?: (node: ASTNode) => CompiledQuery,
+    /** @internal */
+    existingBuilder?: MergeBuilder,
   ) {
     this._targetTable = targetTable
     this._sourceAlias = sourceAlias
     this._printer = printer
     this._compile = compile
-    this._builder = new MergeBuilder()
-      .into(targetTable)
-      .using(sourceTable, sourceAlias)
-      .on(unwrap(on))
+    this._builder =
+      existingBuilder ??
+      new MergeBuilder().into(targetTable).using(sourceTable, sourceAlias).on(unwrap(on))
   }
 
   /** @internal */
   private _with(builder: MergeBuilder): TypedMergeBuilder<DB, Target, Source> {
-    const t = new TypedMergeBuilder<DB, Target, Source>(
-      "" as any,
-      "" as any,
-      "",
+    return new TypedMergeBuilder<DB, Target, Source>(
+      this._targetTable,
+      "" as Source & string,
+      this._sourceAlias,
       { node: { type: "literal", value: true } } as any,
       this._printer,
       this._compile,
+      builder,
     )
-    ;(t as any)._builder = builder
-    ;(t as any)._targetTable = this._targetTable
-    ;(t as any)._sourceAlias = this._sourceAlias
-    return t
   }
 
   whenMatchedThenUpdate(
@@ -86,6 +92,12 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
       if (val !== undefined) {
         set.push({ column: col, value: param(0, val) })
       }
+    }
+    if (set.length === 0) {
+      throw new Error(
+        ".whenMatchedThenUpdate({}) requires at least one column — an empty object " +
+          "would produce `WHEN MATCHED THEN UPDATE SET ` with no columns (invalid SQL).",
+      )
     }
     let condExpr: ExpressionNode | undefined
     if (condition) {

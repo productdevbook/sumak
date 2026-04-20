@@ -120,9 +120,19 @@ export class InsertBuilder {
     return new InsertBuilder({ ...this.node, source: query }, this.paramIndex)
   }
 
-  /** INSERT INTO ... DEFAULT VALUES */
+  /**
+   * INSERT INTO ... DEFAULT VALUES.
+   *
+   * Clears any previously-added `values` / `columns` / `source` so
+   * subsequent conflicting build state doesn't silently win in the
+   * printer (which prefers `defaultValues` over both `source` and
+   * `values`).
+   */
   defaultValues(): InsertBuilder {
-    return new InsertBuilder({ ...this.node, defaultValues: true }, this.paramIndex)
+    return new InsertBuilder(
+      { ...this.node, defaultValues: true, columns: [], values: [], source: undefined },
+      this.paramIndex,
+    )
   }
 
   with(name: string, query: SelectNode, recursive = false): InsertBuilder {

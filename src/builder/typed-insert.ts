@@ -43,6 +43,12 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
    */
   values(row: Insertable<DB[TB]>): TypedInsertBuilder<DB, TB> {
     const entries = Object.entries(row as Record<string, unknown>)
+    if (entries.length === 0) {
+      throw new Error(
+        ".values({}) requires at least one column — an empty object would produce invalid SQL. " +
+          "Use .defaultValues() if you want `INSERT INTO t DEFAULT VALUES`.",
+      )
+    }
     const cols = entries.map(([k]) => k)
     const vals = entries.map(([_, v]) => param(0, v))
 
@@ -60,9 +66,16 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * Insert multiple rows at once.
+   * Insert multiple rows at once. Empty input throws — an empty array
+   * produces no VALUES clause and invalid SQL.
    */
   valuesMany(rows: Insertable<DB[TB]>[]): TypedInsertBuilder<DB, TB> {
+    if (rows.length === 0) {
+      throw new Error(
+        ".valuesMany([]) requires at least one row — an empty array would emit " +
+          "`INSERT INTO t VALUES` with no rows, which is invalid SQL.",
+      )
+    }
     return rows.reduce<TypedInsertBuilder<DB, TB>>((acc, row) => acc.values(row), this)
   }
 
