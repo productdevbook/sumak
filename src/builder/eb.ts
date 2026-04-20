@@ -337,9 +337,19 @@ export function unsafeSqlFn(name: string, ...args: Expression<any>[]): Expressio
   )
 }
 
-/** COUNT(*) */
-export function count(): Expression<number> {
-  return wrap(rawFn("COUNT", [rawStar()]))
+/**
+ * `COUNT(*)` (no argument) or `COUNT(expr)` (one argument).
+ *
+ * `COUNT(*)` counts every row including nulls; `COUNT(col)` counts
+ * only rows where `col IS NOT NULL`. The two are semantically
+ * different — picking the right one matters.
+ */
+export function count(): Expression<number>
+export function count<T>(expr: Col<T> | Expression<T>): Expression<number>
+export function count<T>(expr?: Col<T> | Expression<T>): Expression<number> {
+  if (expr === undefined) return wrap(rawFn("COUNT", [rawStar()]))
+  const node = expr instanceof Col ? expr._node : (expr as Expression<T>).node
+  return wrap(rawFn("COUNT", [node]))
 }
 
 /** COUNT(DISTINCT expr) */
