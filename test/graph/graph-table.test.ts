@@ -52,10 +52,9 @@ describe("SQL/PGQ spike — db.graphTable().match().columns().toSQL()", () => {
       dialect: mssqlDialect(),
       tables: { _unused: { id: serial() } } as any,
     })
-    const g = msdb
-      .graphTable("social")
-      .match`(p:Person)-[:FOLLOWS]->(f:Person)`
-      .columns({ name: "p.name" })
+    const g = msdb.graphTable("social").match`(p:Person)-[:FOLLOWS]->(f:Person)`.columns({
+      name: "p.name",
+    })
     expect(() => msdb.selectFromGraph(g).select("name").toSQL()).toThrow(/GRAPH_TABLE/)
   })
 
