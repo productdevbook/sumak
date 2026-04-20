@@ -120,6 +120,8 @@ export class BasePrinter implements Printer {
       parts.push("FROM")
       if (node.from.type === "subquery") {
         parts.push(this.printSubquery(node.from))
+      } else if (node.from.type === "graph_table") {
+        parts.push(this.printGraphTable(node.from))
       } else {
         parts.push(this.printTableRef(node.from))
       }
@@ -490,6 +492,41 @@ export class BasePrinter implements Printer {
     }
     if (ref.alias) {
       result += ` AS ${quoteIdentifier(ref.alias, this.dialect)}`
+    }
+    return result
+  }
+
+  /**
+   * Print a GRAPH_TABLE clause — SQL:2023 Part 16 (SQL/PGQ).
+   *
+   * Default emits the standard `GRAPH_TABLE(graph MATCH ... COLUMNS ...)`
+   * form. Dialects with non-standard graph extensions (e.g. Apache AGE's
+   * `cypher('graph', $$...$$) AS g(col agtype)`) override this method.
+   */
+  protected printGraphTable(node: import("../ast/graph-nodes.ts").GraphTableNode): string {
+    const pattern = this._inlineGraphPattern(node.match)
+    const cols = node.columns
+      .map((c) => (c.alias ? `${c.expr} AS ${quoteIdentifier(c.alias, this.dialect)}` : c.expr))
+      .join(", ")
+    const parts = [`GRAPH_TABLE (${quoteIdentifier(node.graph, this.dialect)}`, `MATCH ${pattern}`]
+    if (node.where) parts.push(`WHERE ${this.printExpression(node.where)}`)
+    parts.push(`COLUMNS (${cols}))`)
+    let result = parts.join(" ")
+    if (node.alias) result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+    return result
+  }
+
+  /**
+   * Substitute `GRAPH_PARAM_TOKEN` placeholders in a pattern string with
+   * parameter references collected through the normal params pipeline.
+   */
+  protected _inlineGraphPattern(pattern: import("../ast/graph-nodes.ts").GraphPatternNode): string {
+    const token = "\x00SUMAK_GRAPH_PARAM\x00"
+    const pieces = pattern.pattern.split(token)
+    let result = pieces[0] ?? ""
+    for (let i = 0; i < pattern.paramValues.length; i++) {
+      this.params.push(pattern.paramValues[i])
+      result += formatParam(this.params.length - 1, this.dialect) + (pieces[i + 1] ?? "")
     }
     return result
   }

@@ -46,6 +46,8 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("FROM")
       if (node.from.type === "subquery") {
         parts.push(this.printSubquery(node.from))
+      } else if (node.from.type === "graph_table") {
+        parts.push(this.printGraphTable(node.from))
       } else {
         parts.push(this.printTableRef(node.from))
       }

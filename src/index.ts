@@ -27,6 +27,10 @@ export { TypedMergeBuilder as MergeBuilder } from "./builder/typed-merge.ts"
 export { SoftDeleteBuilder, RestoreBuilder } from "./builder/soft-delete.ts"
 export { ExplainBuilder } from "./builder/explain.ts"
 
+// SQL:2023 Part 16 (SQL/PGQ) Property Graph Queries — @experimental spike.
+export { GraphTableBuilder, graphTable } from "./builder/graph-table.ts"
+export type { GraphColumnNode, GraphPatternNode, GraphTableNode } from "./ast/graph-nodes.ts"
+
 // ─── Namespaces (v0.1 API) ─────────────────────────────────────────────────
 // ast — low-level AST factories & traversal (advanced / plugin authors)
 // win — window functions (rowNumber, rank, lag, lead, over, …)
