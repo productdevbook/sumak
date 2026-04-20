@@ -225,14 +225,32 @@ export type WhereCallback<DB, TB extends keyof DB> = (
 
 // ── Combinators for callback results ──
 
-/** AND expressions — variadic: and(a, b) or and(a, b, c, ...) */
+/**
+ * AND expressions — variadic: `and(a, b)` or `and(a, b, c, ...)`.
+ *
+ * **Warning — empty input:** `and()` with zero arguments returns `TRUE`.
+ * If you spread a dynamic array that ends up empty and pipe the result into
+ * `.where()` on an UPDATE or DELETE, the statement will affect every row.
+ * The normalizer folds `WHERE TRUE` out entirely, so there is no visible
+ * predicate in the emitted SQL. Guard your dynamic filter list before the
+ * spread if a "no filters" branch is not intentional:
+ *
+ * ```ts
+ * // Safe: explicit branch
+ * const filter = preds.length === 0 ? undefined : and(...preds)
+ * const q = filter ? base.where(filter) : base
+ * ```
+ */
 export function and(...exprs: Expression<boolean>[]): Expression<boolean> {
   if (exprs.length === 0) return wrap(rawLit(true))
   if (exprs.length === 1) return exprs[0]!
   return exprs.reduce((acc, expr) => wrap(rawAnd((acc as any).node, (expr as any).node)))
 }
 
-/** OR expressions — variadic: or(a, b) or or(a, b, c, ...) */
+/**
+ * OR expressions — variadic: `or(a, b)` or `or(a, b, c, ...)`.
+ * Empty input returns `FALSE` (matches nothing), which is the safe default.
+ */
 export function or(...exprs: Expression<boolean>[]): Expression<boolean> {
   if (exprs.length === 0) return wrap(rawLit(false))
   if (exprs.length === 1) return exprs[0]!

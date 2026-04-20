@@ -83,18 +83,22 @@ export class Hookable {
     if (!handlers || handlers.length === 0) return undefined
 
     let result: any = undefined
+    // For AST hooks we clone the ctx per iteration so a later handler sees the
+    // previous handler's returned node, without mutating the caller's ctx
+    // (plugins that stored a reference to ctx shouldn't observe the rewrite).
+    const isAstHook =
+      name !== "result:transform" &&
+      args[0] &&
+      typeof args[0] === "object" &&
+      "node" in (args[0] as object)
+    let currentArgs = args
     for (const handler of handlers) {
-      const ret = handler(...args)
+      const ret = handler(...currentArgs)
       if (ret !== undefined) {
         result = ret
-        // For AST hooks, update the context for next handler
-        if (
-          name !== "result:transform" &&
-          args[0] &&
-          typeof args[0] === "object" &&
-          "node" in args[0]
-        ) {
-          ;(args[0] as any).node = ret
+        if (isAstHook) {
+          const ctxCopy = { ...(currentArgs[0] as object), node: ret }
+          currentArgs = [ctxCopy, ...currentArgs.slice(1)] as typeof currentArgs
         }
       }
     }

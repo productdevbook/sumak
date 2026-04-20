@@ -1,4 +1,5 @@
 import type { BeginNode, SetTransactionNode, TclNode } from "../ast/tcl-nodes.ts"
+import { UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 
@@ -37,7 +38,7 @@ export class TclPrinter {
       }
       case "tcl_release_savepoint": {
         if (this.dialect === "mssql") {
-          throw new Error("RELEASE SAVEPOINT is not supported on MSSQL")
+          throw new UnsupportedDialectFeatureError("mssql", "RELEASE SAVEPOINT")
         }
         return `RELEASE SAVEPOINT ${quoteIdentifier(node.name, this.dialect)}`
       }

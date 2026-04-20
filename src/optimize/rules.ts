@@ -99,6 +99,14 @@ export const subqueryFlattening: RewriteRule = {
     const s = node as SelectNode
     if (!s.from || s.from.type !== "subquery") return node
     const inner = s.from.query
+    if (!inner.from) return node
+    // Preserve the outer subquery alias — dropping it would unbind any
+    // column references qualified by the outer name. `SELECT u.name FROM
+    // (SELECT * FROM users) AS u` should flatten to `SELECT u.name FROM
+    // users AS u`, not `SELECT u.name FROM users`.
+    if (inner.from.type === "table_ref" && s.from.alias) {
+      return { ...s, from: { ...inner.from, alias: s.from.alias } }
+    }
     return { ...s, from: inner.from }
   },
 }
