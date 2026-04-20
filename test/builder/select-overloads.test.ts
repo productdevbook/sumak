@@ -179,7 +179,7 @@ describe("JsonExpr integrates with .select({ alias: ... }) object form", () => {
       .toSQL()
     // The JsonExpr should unwrap cleanly — no undefined, no corrupt AST.
     expect(q.sql).toContain('"data"')
-    expect(q.sql).toContain("->")
+    expect(q.sql).toContain("->>")
     expect(q.sql).toContain('AS "city"')
   })
 })
