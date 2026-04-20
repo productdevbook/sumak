@@ -352,6 +352,74 @@ describe("dialect portability — CURRENT_TIMESTAMP is printed without parens", 
   }
 })
 
+describe("SoftDeletePlugin + MERGE", () => {
+  const db = sumak({
+    dialect: pgDialect(),
+    plugins: [softDelete({ tables: ["users"] })],
+    tables: {
+      users: usersTable,
+      staging: { id: serial().primaryKey(), name: text().notNull() },
+    },
+  })
+
+  it("qualifies ON with target.deleted_at IS NULL — deleted rows don't match", () => {
+    const q = db
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "updated" })
+      .toSQL()
+    expect(q.sql).toContain('"users"."deleted_at" IS NULL')
+  })
+
+  it("boolean-flag variant qualifies ON with target.deleted = FALSE", () => {
+    const boolDb = sumak({
+      dialect: pgDialect(),
+      plugins: [softDelete({ tables: ["users"], flag: "boolean" })],
+      tables: {
+        users: {
+          id: serial().primaryKey(),
+          name: text().notNull(),
+          deleted: boolean().defaultTo(false),
+        },
+        staging: { id: serial().primaryKey(), name: text().notNull() },
+      },
+    })
+    const q = boolDb
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "x" })
+      .toSQL()
+    expect(q.sql).toContain('"users"."deleted" = FALSE')
+  })
+
+  it("non-target MERGE is left alone", () => {
+    const otherDb = sumak({
+      dialect: pgDialect(),
+      plugins: [softDelete({ tables: ["users"] })],
+      tables: {
+        users: usersTable,
+        staging: { id: serial().primaryKey(), name: text().notNull() },
+        other: { id: serial().primaryKey(), name: text().notNull() },
+      },
+    })
+    const q = otherDb
+      .mergeInto("other", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "x" })
+      .toSQL()
+    expect(q.sql).not.toContain("deleted_at")
+  })
+})
+
 describe("direct integration: writes via softDelete mutate state such that filter hides them", () => {
   const db = makeDb({ tables: ["users"] })
 

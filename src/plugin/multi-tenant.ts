@@ -4,6 +4,8 @@ import type {
   DeleteNode,
   ExpressionNode,
   InsertNode,
+  MergeNode,
+  MergeWhenNotMatched,
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -50,6 +52,8 @@ export class MultiTenantPlugin implements SumakPlugin {
         return this.transformDelete(node)
       case "insert":
         return this.transformInsert(node)
+      case "merge":
+        return this.transformMerge(node)
       default:
         return node
     }
@@ -91,5 +95,72 @@ export class MultiTenantPlugin implements SumakPlugin {
     const columns = [...node.columns, this.column]
     const values = node.values.map((row) => [...row, param(0, tenantId)])
     return { ...node, columns, values }
+  }
+
+  /**
+   * MERGE tenant isolation — **SECURITY CRITICAL**.
+   *
+   * Without this transform, a `MERGE INTO users USING staging ON
+   * target.id = source.id` with a multi-tenant schema can match rows
+   * across tenants: a source row from tenant A could update a target
+   * row belonging to tenant B, or a WHEN NOT MATCHED INSERT can write
+   * a row with no tenant_id set (or the source's tenant_id).
+   *
+   * We:
+   *  1. Qualify the ON predicate with `target.tenant_id = ?` so only
+   *     rows in the current tenant can match.
+   *  2. Inject `tenant_id` into every WHEN NOT MATCHED INSERT column
+   *     list and values tuple, so new rows always carry the current
+   *     tenant's id regardless of what the source table looks like.
+   */
+  private transformMerge(node: MergeNode): MergeNode {
+    if (!this.isTargetTable(node.target.name)) return node
+    const tenantId = this.getTenantId()
+    let onExpr = node.on
+
+    // Target isolation: `target.tenant_id = ?`.
+    const targetQualified: ExpressionNode = {
+      type: "column_ref",
+      table: node.target.alias ?? node.target.name,
+      column: this.column,
+    }
+    onExpr = and(onExpr, eq(targetQualified, param(0, tenantId)))
+
+    // Source isolation: if the source is also a tenant-aware table, match
+    // only same-tenant rows so a WHEN MATCHED UPDATE cannot copy payload
+    // from a cross-tenant source into our tenant's row.
+    if (node.source.type === "table_ref" && this.isTargetTable(node.source.name)) {
+      const sourceQualified: ExpressionNode = {
+        type: "column_ref",
+        table: node.sourceAlias,
+        column: this.column,
+      }
+      onExpr = and(onExpr, eq(sourceQualified, param(0, tenantId)))
+    } else if (node.source.type === "subquery") {
+      // Subquery source — we can't inspect its tenant handling statically.
+      // The subquery itself should have been transformed by this same
+      // plugin's `transformSelect`, which adds the tenant_id filter to
+      // its WHERE. That makes subquery sources safe *as long as the
+      // inner select is over a tenant-aware table*. We don't guard
+      // against other shapes (CTE, raw), so the author remains
+      // responsible for those.
+    }
+
+    const whens = node.whens.map((w) => {
+      if (w.type !== "not_matched") return w
+      // INSERT branch — add tenant column + value if not already present.
+      if (w.columns.includes(this.column)) return w
+      const patched: MergeWhenNotMatched = {
+        ...w,
+        columns: [...w.columns, this.column],
+        values: [...w.values, param(0, tenantId)],
+      }
+      return patched
+    })
+    return {
+      ...node,
+      on: onExpr,
+      whens,
+    }
   }
 }

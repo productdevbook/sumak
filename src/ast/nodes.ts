@@ -436,6 +436,8 @@ export interface MergeNode {
   on: ExpressionNode
   whens: (MergeWhenMatched | MergeWhenNotMatched)[]
   ctes: CTENode[]
+  /** @see QueryFlags — used by soft-delete plugin for idempotency. */
+  flags?: QueryFlags
 }
 
 export function createMergeNode(

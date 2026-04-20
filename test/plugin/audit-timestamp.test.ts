@@ -71,4 +71,73 @@ describe("AuditTimestampPlugin", () => {
     expect(q.sql).toContain('"createdAt"')
     expect(q.sql).toContain('"updatedAt"')
   })
+
+  describe("MERGE", () => {
+    const mdb = sumak({
+      dialect: pgDialect(),
+      plugins: [new AuditTimestampPlugin({ tables: ["users"] })],
+      tables: {
+        users: {
+          id: serial().primaryKey(),
+          name: text().notNull(),
+          created_at: timestamptz().nullable(),
+          updated_at: timestamptz().nullable(),
+        },
+        staging: { id: serial().primaryKey(), name: text().notNull() },
+      },
+    })
+
+    it("WHEN MATCHED UPDATE appends updated_at = NOW()", () => {
+      const q = mdb
+        .mergeInto("users", {
+          source: "staging",
+          alias: "s",
+          on: ({ target, source }) => target.id.eq(source.id),
+        })
+        .whenMatchedThenUpdate({ name: "x" })
+        .toSQL()
+      expect(q.sql).toContain('"updated_at" = NOW()')
+    })
+
+    it("WHEN NOT MATCHED INSERT appends created_at + updated_at", () => {
+      const q = mdb
+        .mergeInto("users", {
+          source: "staging",
+          alias: "s",
+          on: ({ target, source }) => target.id.eq(source.id),
+        })
+        .whenNotMatchedThenInsert({ name: "Alice" })
+        .toSQL()
+      expect(q.sql).toContain('"created_at"')
+      expect(q.sql).toContain('"updated_at"')
+      // Both values appear in the INSERT tuple.
+      expect((q.sql.match(/NOW\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2)
+    })
+
+    it("WHEN MATCHED DELETE is untouched (no set to stamp)", () => {
+      const q = mdb
+        .mergeInto("users", {
+          source: "staging",
+          alias: "s",
+          on: ({ target, source }) => target.id.eq(source.id),
+        })
+        .whenMatchedThenDelete()
+        .toSQL()
+      expect(q.sql).toContain("WHEN MATCHED THEN DELETE")
+      expect(q.sql).not.toContain("updated_at")
+    })
+
+    it("does not double-stamp when caller already set updated_at in UPDATE", () => {
+      const q = mdb
+        .mergeInto("users", {
+          source: "staging",
+          alias: "s",
+          on: ({ target, source }) => target.id.eq(source.id),
+        })
+        .whenMatchedThenUpdate({ name: "x", updated_at: new Date(0) as any })
+        .toSQL()
+      // updated_at appears exactly once in the SET list (the caller's value).
+      expect((q.sql.match(/"updated_at"/g) ?? []).length).toBe(1)
+    })
+  })
 })
