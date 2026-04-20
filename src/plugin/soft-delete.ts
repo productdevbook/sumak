@@ -53,24 +53,31 @@ export interface SoftDeletePluginConfig {
  * // UPDATE "users" SET "deleted_at" = NULL WHERE ("id" = $1) AND "deleted_at" IS NOT NULL
  * ```
  */
+/**
+ * Resolved soft-delete configuration — read-only view of a SoftDeletePlugin.
+ * Returned by the plugin's `getConfig()` method.
+ */
+export interface ResolvedSoftDeleteConfig {
+  tables: ReadonlySet<string>
+  column: string
+  flag: SoftDeleteFlag
+}
+
 export class SoftDeletePlugin implements SumakPlugin {
   readonly name = "soft-delete"
-  private readonly _tables: ReadonlySet<string>
-  private readonly _column: string
-  private readonly _flag: SoftDeleteFlag
-
-  /** @internal — used by `db.softDelete()` / `db.restore()` to resolve config. */
-  readonly _config: Readonly<{ tables: ReadonlySet<string>; column: string; flag: SoftDeleteFlag }>
+  readonly #tables: ReadonlySet<string>
+  readonly #column: string
+  readonly #flag: SoftDeleteFlag
 
   constructor(config: SoftDeletePluginConfig) {
-    this._flag = config.flag ?? "timestamp"
-    this._column = config.column ?? (this._flag === "timestamp" ? "deleted_at" : "deleted")
-    this._tables = new Set(config.tables)
-    this._config = Object.freeze({
-      tables: this._tables,
-      column: this._column,
-      flag: this._flag,
-    })
+    this.#flag = config.flag ?? "timestamp"
+    this.#column = config.column ?? (this.#flag === "timestamp" ? "deleted_at" : "deleted")
+    this.#tables = new Set(config.tables)
+  }
+
+  /** Read the resolved configuration. Used by `db.softDelete()` / `db.restore()`. */
+  getConfig(): ResolvedSoftDeleteConfig {
+    return { tables: this.#tables, column: this.#column, flag: this.#flag }
   }
 
   transformNode(node: ASTNode): ASTNode {
@@ -86,7 +93,7 @@ export class SoftDeletePlugin implements SumakPlugin {
   }
 
   private _isTargetTable(tableName: string): boolean {
-    return this._tables.has(tableName)
+    return this.#tables.has(tableName)
   }
 
   /**
@@ -95,14 +102,14 @@ export class SoftDeletePlugin implements SumakPlugin {
    *   boolean:   deleted = FALSE
    */
   private _aliveCondition(): ExpressionNode {
-    if (this._flag === "timestamp") return isNull(col(this._column))
-    return binOp("=", col(this._column), lit(false))
+    if (this.#flag === "timestamp") return isNull(col(this.#column))
+    return binOp("=", col(this.#column), lit(false))
   }
 
   /** Inverse — "row is deleted". */
   private _deletedCondition(): ExpressionNode {
-    if (this._flag === "timestamp") return isNull(col(this._column), true)
-    return binOp("=", col(this._column), lit(true))
+    if (this.#flag === "timestamp") return isNull(col(this.#column), true)
+    return binOp("=", col(this.#column), lit(true))
   }
 
   private _addCondition(

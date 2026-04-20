@@ -1,6 +1,6 @@
 import { param } from "../ast/expression.ts"
 import { star } from "../ast/expression.ts"
-import type { ExpressionNode, InsertNode, SelectNode } from "../ast/nodes.ts"
+import type { ASTNode, ExplainNode, ExpressionNode, InsertNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -16,21 +16,24 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   /** @internal */
   readonly _builder: InsertBuilder
   /** @internal */
-  _printer?: Printer
+  readonly _printer?: Printer
   /** @internal */
-  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
+  readonly _compile?: (node: ASTNode) => CompiledQuery
 
-  constructor(table: TB & string) {
-    this._builder = new InsertBuilder().into(table)
+  constructor(
+    table: TB & string,
+    printer?: Printer,
+    compile?: (node: ASTNode) => CompiledQuery,
+    builder?: InsertBuilder,
+  ) {
+    this._builder = builder ?? new InsertBuilder().into(table)
+    this._printer = printer
+    this._compile = compile
   }
 
   /** @internal */
   private _withBuilder(builder: InsertBuilder): TypedInsertBuilder<DB, TB> {
-    const t = new TypedInsertBuilder<DB, TB>("" as TB & string)
-    ;(t as any)._builder = builder
-    ;(t as any)._printer = this._printer
-    ;(t as any)._compile = this._compile
-    return t
+    return new TypedInsertBuilder<DB, TB>("" as TB & string, this._printer, this._compile, builder)
   }
 
   /**
@@ -281,7 +284,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     analyze?: boolean
     format?: "TEXT" | "JSON" | "YAML" | "XML"
   }): ExplainBuilder {
-    const explainNode: import("../ast/nodes.ts").ExplainNode = {
+    const explainNode: ExplainNode = {
       type: "explain",
       statement: this.build(),
       analyze: options?.analyze,
@@ -295,14 +298,14 @@ export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, _R> {
   /** @internal */
   readonly _builder: InsertBuilder
   /** @internal */
-  _printer?: Printer
+  readonly _printer?: Printer
   /** @internal */
-  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
+  readonly _compile?: (node: ASTNode) => CompiledQuery
 
   constructor(
     builder: InsertBuilder,
     printer?: Printer,
-    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+    compile?: (node: ASTNode) => CompiledQuery,
   ) {
     this._builder = builder
     this._printer = printer

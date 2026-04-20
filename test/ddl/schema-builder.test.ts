@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { mysqlDialect } from "../../src/dialect/mysql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
+import { serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 
 describe("CREATE TABLE", () => {
@@ -249,30 +250,45 @@ describe("DROP operations", () => {
 })
 
 describe("CREATE VIEW", () => {
-  const db = sumak({ dialect: pgDialect(), tables: {} })
+  const db = sumak({
+    dialect: pgDialect(),
+    tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
+  })
+  const activeSelect = db.selectFrom("users").select("id", "name").build()
 
   it("basic view", () => {
-    const node = db.schema.createView("active_users").build()
+    const node = db.schema.createView("active_users").asSelect(activeSelect).build()
     const q = db.compileDDL(node)
     expect(q.sql).toContain("CREATE VIEW")
     expect(q.sql).toContain('"active_users"')
+    expect(q.sql).toContain("SELECT")
+    expect(q.sql).toContain('"users"')
   })
 
   it("OR REPLACE", () => {
-    const node = db.schema.createView("my_view").orReplace().build()
+    const node = db.schema.createView("my_view").orReplace().asSelect(activeSelect).build()
     const q = db.compileDDL(node)
     expect(q.sql).toContain("OR REPLACE")
   })
 
   it("MATERIALIZED", () => {
-    const node = db.schema.createView("stats").materialized().build()
+    const node = db.schema.createView("stats").materialized().asSelect(activeSelect).build()
     const q = db.compileDDL(node)
     expect(q.sql).toContain("MATERIALIZED VIEW")
   })
 
   it("with column list", () => {
-    const node = db.schema.createView("my_view").columns("id", "name").build()
+    const node = db.schema
+      .createView("my_view")
+      .columns("id", "name")
+      .asSelect(activeSelect)
+      .build()
     const q = db.compileDDL(node)
     expect(q.sql).toContain('("id", "name")')
+  })
+
+  it("throws with a helpful error if AS SELECT is missing", () => {
+    const node = db.schema.createView("broken").build()
+    expect(() => db.compileDDL(node)).toThrow(/AS SELECT/)
   })
 })

@@ -1,5 +1,5 @@
 import { star } from "../ast/expression.ts"
-import type { DeleteNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
+import type { ASTNode, DeleteNode, ExplainNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -8,6 +8,7 @@ import type { CompiledQuery } from "../types.ts"
 import { DeleteBuilder } from "./delete.ts"
 import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
+import { ExplainBuilder } from "./explain.ts"
 
 /**
  * Type-safe DELETE query builder.
@@ -16,21 +17,24 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   /** @internal */
   readonly _builder: DeleteBuilder
   /** @internal */
-  _printer?: Printer
+  readonly _printer?: Printer
   /** @internal */
-  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
+  readonly _compile?: (node: ASTNode) => CompiledQuery
 
-  constructor(table: TB & string) {
-    this._builder = new DeleteBuilder().from(table)
+  constructor(
+    table: TB & string,
+    printer?: Printer,
+    compile?: (node: ASTNode) => CompiledQuery,
+    builder?: DeleteBuilder,
+  ) {
+    this._builder = builder ?? new DeleteBuilder().from(table)
+    this._printer = printer
+    this._compile = compile
   }
 
   /** @internal */
   private _with(builder: DeleteBuilder): TypedDeleteBuilder<DB, TB> {
-    const t = new TypedDeleteBuilder<DB, TB>("" as TB & string)
-    ;(t as any)._builder = builder
-    ;(t as any)._printer = this._printer
-    ;(t as any)._compile = this._compile
-    return t
+    return new TypedDeleteBuilder<DB, TB>("" as TB & string, this._printer, this._compile, builder)
   }
 
   /**
@@ -173,22 +177,18 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
     return this._printer.print(this.build())
   }
 
-  /** EXPLAIN this query. */
-  explain(options?: { analyze?: boolean; format?: "TEXT" | "JSON" | "YAML" | "XML" }): {
-    build(): import("../ast/nodes.ts").ExplainNode
-    compile(printer: Printer): CompiledQuery
-  } {
-    const node = this.build()
-    const explainNode: import("../ast/nodes.ts").ExplainNode = {
+  /** EXPLAIN — returns a chainable ExplainBuilder. */
+  explain(options?: {
+    analyze?: boolean
+    format?: "TEXT" | "JSON" | "YAML" | "XML"
+  }): ExplainBuilder {
+    const explainNode: ExplainNode = {
       type: "explain",
-      statement: node,
+      statement: this.build(),
       analyze: options?.analyze,
       format: options?.format,
     }
-    return {
-      build: () => explainNode,
-      compile: (p: Printer) => p.print(explainNode),
-    }
+    return new ExplainBuilder(explainNode, this._printer, this._compile)
   }
 }
 
@@ -196,14 +196,14 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, _R> {
   /** @internal */
   readonly _builder: DeleteBuilder
   /** @internal */
-  _printer?: Printer
+  readonly _printer?: Printer
   /** @internal */
-  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
+  readonly _compile?: (node: ASTNode) => CompiledQuery
 
   constructor(
     builder: DeleteBuilder,
     printer?: Printer,
-    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+    compile?: (node: ASTNode) => CompiledQuery,
   ) {
     this._builder = builder
     this._printer = printer
