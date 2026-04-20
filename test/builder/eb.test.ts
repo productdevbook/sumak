@@ -94,6 +94,40 @@ describe("Clean callback API", () => {
       expect(q.compile(p).sql).toContain("NOT IN")
     })
 
+    it("eq(null) auto-lowers to IS NULL (= NULL never matches)", () => {
+      const q = db.selectFrom("users").where(({ age }) => age.eq(null as any))
+      const r = q.compile(p)
+      expect(r.sql).toContain("IS NULL")
+      expect(r.sql).not.toContain("= $")
+      expect(r.params).toEqual([])
+    })
+
+    it("neq(null) auto-lowers to IS NOT NULL", () => {
+      const q = db.selectFrom("users").where(({ age }) => age.neq(null as any))
+      const r = q.compile(p)
+      expect(r.sql).toContain("IS NOT NULL")
+      expect(r.sql).not.toContain("!= $")
+      expect(r.params).toEqual([])
+    })
+
+    it("eq(val(null)) also auto-lowers to IS NULL", async () => {
+      const { val } = await import("../../src/builder/eb.ts")
+      const q = db.selectFrom("users").where(({ age }) => age.eq(val(null) as any))
+      const r = q.compile(p)
+      expect(r.sql).toContain("IS NULL")
+      expect(r.sql).not.toContain("= NULL")
+      expect(r.sql).not.toContain("= $")
+    })
+
+    it("neq(val(null)) also auto-lowers to IS NOT NULL", async () => {
+      const { val } = await import("../../src/builder/eb.ts")
+      const q = db.selectFrom("users").where(({ age }) => age.neq(val(null) as any))
+      const r = q.compile(p)
+      expect(r.sql).toContain("IS NOT NULL")
+      expect(r.sql).not.toContain("!= NULL")
+      expect(r.sql).not.toContain("!= $")
+    })
+
     it("in with empty array → FALSE (never-matches), no invalid SQL", () => {
       const q = db.selectFrom("users").where(({ id }) => id.in([]))
       const r = q.compile(p)
