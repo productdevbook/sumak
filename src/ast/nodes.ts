@@ -295,6 +295,36 @@ export interface LockClause {
   noWait?: boolean
 }
 
+/**
+ * Bitmap flags attached to SELECT/UPDATE/DELETE nodes to carry builder
+ * intent through plugin transforms. Inspired by TypeScript-Go's `NodeFlags`:
+ * a single integer lets plugins signal state (idempotency tokens).
+ *
+ * For mutually-exclusive modes (e.g. soft-delete filter mode), use the
+ * dedicated field on the node (e.g. `softDeleteMode`) instead of flags —
+ * those are tri-state, not bits.
+ *
+ * Treat as internal — sumak builders set and read these; user code
+ * generally shouldn't.
+ */
+export const QueryFlags = {
+  None: 0,
+  /** Plugin has already injected its soft-delete filter — don't double-apply. */
+  SoftDeleteApplied: 1 << 0,
+} as const
+export type QueryFlags = number
+
+/**
+ * Soft-delete filter mode carried on SELECT/UPDATE nodes. Tri-state: only
+ * one mode is ever active per query, so an enum is safer than two flag
+ * bits that could be set simultaneously.
+ *
+ * - `"exclude"` (default, unset) — standard filter: `WHERE deleted_at IS NULL`.
+ * - `"include"` — bypass the filter entirely (`.includeDeleted()`).
+ * - `"only"`    — invert the filter (`.onlyDeleted()`): only deleted rows.
+ */
+export type SoftDeleteMode = "include" | "only"
+
 export interface SelectNode {
   type: "select"
   distinct: boolean
@@ -311,6 +341,10 @@ export interface SelectNode {
   ctes: CTENode[]
   setOp?: { op: SetOperator; query: SelectNode }
   lock?: LockClause
+  /** @see QueryFlags */
+  flags?: QueryFlags
+  /** User-specified soft-delete filter mode. Unset = normal filter. */
+  softDeleteMode?: SoftDeleteMode
 }
 
 export type InsertMode =
@@ -353,6 +387,10 @@ export interface UpdateNode {
   ctes: CTENode[]
   orderBy?: OrderByNode[]
   limit?: ExpressionNode
+  /** @see QueryFlags */
+  flags?: QueryFlags
+  /** User-specified soft-delete filter mode. Unset = normal filter. */
+  softDeleteMode?: SoftDeleteMode
 }
 
 export interface DeleteNode {
@@ -365,6 +403,8 @@ export interface DeleteNode {
   joins: JoinNode[]
   orderBy?: OrderByNode[]
   limit?: ExpressionNode
+  /** @see QueryFlags */
+  flags?: QueryFlags
 }
 
 export interface MergeWhenMatched {

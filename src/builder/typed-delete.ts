@@ -62,16 +62,19 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * RETURNING specific columns.
+   * RETURNING specific columns. Accumulates across chained calls —
+   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
+   * Use `.returningAll()` to reset to `RETURNING *`.
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
   ): TypedDeleteReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
+    const existing = this._builder.build().returning
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
     return new TypedDeleteReturningBuilder(
       new DeleteBuilder({
         ...this._builder.build(),
-        returning: exprs,
+        returning: [...existing, ...exprs],
       }),
     )
   }

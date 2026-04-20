@@ -34,6 +34,23 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /**
+   * Bypass the soft-delete filter for this UPDATE (include rows where
+   * `deleted_at IS NOT NULL`). Useful for admin operations.
+   * Last-call wins: `.onlyDeleted()` after this replaces the mode.
+   */
+  includeDeleted(): TypedUpdateBuilder<DB, TB> {
+    return this._with(this._builder.withSoftDeleteMode("include"))
+  }
+
+  /**
+   * Target ONLY soft-deleted rows (`deleted_at IS NOT NULL`).
+   * Last-call wins: `.includeDeleted()` after this replaces the mode.
+   */
+  onlyDeleted(): TypedUpdateBuilder<DB, TB> {
+    return this._with(this._builder.withSoftDeleteMode("only"))
+  }
+
+  /**
    * SET columns from an object. All keys optional (Updateable).
    */
   set(values: Updateable<DB[TB]>): TypedUpdateBuilder<DB, TB> {
@@ -70,16 +87,19 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * RETURNING specific columns.
+   * RETURNING specific columns. Accumulates across chained calls —
+   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
+   * Use `.returningAll()` to reset to `RETURNING *`.
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
   ): TypedUpdateReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
+    const existing = this._builder.build().returning
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
     return new TypedUpdateReturningBuilder(
       new UpdateBuilder({
         ...this._builder.build(),
-        returning: exprs,
+        returning: [...existing, ...exprs],
       }),
     )
   }

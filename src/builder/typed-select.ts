@@ -61,6 +61,37 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     )
   }
 
+  /**
+   * Bypass the soft-delete filter for this query — includes rows where
+   * `deleted_at IS NOT NULL`. No-op when the softDelete plugin is not
+   * registered for this table.
+   *
+   * Last-call wins: calling `.onlyDeleted()` after this replaces the mode.
+   */
+  includeDeleted(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      this._builder.withSoftDeleteMode("include"),
+      this._table,
+      this._printer,
+      this._compile,
+    )
+  }
+
+  /**
+   * Invert the soft-delete filter for this query — returns ONLY
+   * soft-deleted rows (`deleted_at IS NOT NULL`).
+   *
+   * Last-call wins: calling `.includeDeleted()` after this replaces the mode.
+   */
+  onlyDeleted(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      this._builder.withSoftDeleteMode("only"),
+      this._table,
+      this._printer,
+      this._compile,
+    )
+  }
+
   /** Select with Expression<T> for computed columns. */
   selectExpr<Alias extends string, T>(
     expr: Expression<T>,
@@ -138,6 +169,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.where(unwrap(exprOrCallback)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -154,12 +186,14 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
         this._builder.orWhere(unwrap(result)),
         this._table,
         this._printer,
+        this._compile,
       )
     }
     return new TypedSelectBuilder(
       this._builder.orWhere(unwrap(exprOrCallback)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -179,6 +213,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.innerJoin(table, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -194,6 +229,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.leftJoin(table, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -207,6 +243,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.rightJoin(table, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -232,12 +269,14 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
         this._builder.having(unwrap(result)),
         this._table,
         this._printer,
+        this._compile,
       )
     }
     return new TypedSelectBuilder(
       this._builder.having(unwrap(exprOrCallback)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -252,6 +291,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.orderBy(expr, direction, nulls),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -261,6 +301,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.limit({ type: "literal", value: n }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -270,6 +311,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.offset({ type: "literal", value: n }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -344,6 +386,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.with(name, query, recursive),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -373,6 +416,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.intersect(query.build()),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -382,6 +426,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.intersectAll(query.build()),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -401,6 +446,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.exceptAll(query.build()),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -414,6 +460,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.join("FULL", table, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -432,6 +479,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.innerJoinLateral(sub, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -450,6 +498,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.leftJoinLateral(sub, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -484,6 +533,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.join("INNER", { type: "table_ref", name: table, alias }, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -514,6 +564,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       this._builder.join("LEFT", { type: "table_ref", name: table, alias }, unwrap(on)),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -553,6 +604,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), where: undefined }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -562,6 +614,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), orderBy: [] }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -571,6 +624,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), limit: undefined }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -580,6 +634,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), offset: undefined }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -589,6 +644,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), groupBy: [] }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -598,6 +654,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), having: undefined }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 
@@ -607,6 +664,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       new SelectBuilder({ ...this._builder.build(), columns: [] }),
       this._table,
       this._printer,
+      this._compile,
     )
   }
 

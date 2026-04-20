@@ -46,6 +46,22 @@ import { formatParam } from "../utils/param.ts"
 import { escapeStringLiteral, validateDataType, validateFunctionName } from "../utils/security.ts"
 import type { Printer } from "./types.ts"
 
+/**
+ * SQL:92 niladic functions — these are spelled as bare keywords, without
+ * parentheses, on MSSQL. Other dialects accept either form but the
+ * parens-free version is universally portable.
+ */
+const NILADIC_FUNCTIONS: ReadonlySet<string> = new Set([
+  "CURRENT_TIMESTAMP",
+  "CURRENT_DATE",
+  "CURRENT_TIME",
+  "CURRENT_USER",
+  "SESSION_USER",
+  "SYSTEM_USER",
+  "LOCALTIME",
+  "LOCALTIMESTAMP",
+])
+
 export class BasePrinter implements Printer {
   protected params: unknown[] = []
   protected dialect: SQLDialect
@@ -371,6 +387,16 @@ export class BasePrinter implements Printer {
 
   protected printFunctionCall(node: FunctionCallNode): string {
     validateFunctionName(node.name)
+    // SQL:92 niladic functions are spelled as keywords (no parentheses).
+    // `CURRENT_TIMESTAMP()` is invalid on MSSQL; the bare keyword is
+    // portable across pg/mysql/sqlite/mssql.
+    if (NILADIC_FUNCTIONS.has(node.name.toUpperCase()) && node.args.length === 0 && !node.filter) {
+      let result = node.name.toUpperCase()
+      if (node.alias) {
+        result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+      }
+      return result
+    }
     const distinctPrefix = node.distinct ? "DISTINCT " : ""
     let inner = `${distinctPrefix}${node.args.map((a) => this.printExpression(a)).join(", ")}`
     if (node.orderBy && node.orderBy.length > 0) {

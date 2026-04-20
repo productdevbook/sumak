@@ -36,4 +36,15 @@ export class PluginManager {
     }
     return result
   }
+
+  /**
+   * Find the first registered plugin that is an instance of the given class.
+   * Used by explicit builders like `db.softDelete()` to resolve plugin config.
+   */
+  getByInstance<T extends SumakPlugin>(ctor: new (...args: any[]) => T): T | undefined {
+    for (const p of this.plugins) {
+      if (p instanceof ctor) return p as T
+    }
+    return undefined
+  }
 }

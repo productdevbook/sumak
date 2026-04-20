@@ -65,15 +65,18 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * RETURNING specific columns.
+   * RETURNING specific columns. Accumulates across chained calls —
+   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
+   * Use `.returningAll()` to reset to `RETURNING *`.
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
   ): TypedInsertReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
+    const existing = this._builder.build().returning
     const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
     const builder = new InsertBuilder({
       ...this._builder.build(),
-      returning: exprs,
+      returning: [...existing, ...exprs],
     })
     return new TypedInsertReturningBuilder(builder)
   }

@@ -24,6 +24,7 @@ export { TypedInsertBuilder as InsertBuilder } from "./builder/typed-insert.ts"
 export { TypedUpdateBuilder as UpdateBuilder } from "./builder/typed-update.ts"
 export { TypedDeleteBuilder as DeleteBuilder } from "./builder/typed-delete.ts"
 export { TypedMergeBuilder as MergeBuilder } from "./builder/typed-merge.ts"
+export { SoftDeleteBuilder, RestoreBuilder } from "./builder/soft-delete.ts"
 
 // ─── Namespaces (v0.1 API) ─────────────────────────────────────────────────
 // ast — low-level AST factories & traversal (advanced / plugin authors)
@@ -162,6 +163,9 @@ export type {
 
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
 export type { DDLNode } from "./ast/ddl-nodes.ts"
+
+// QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
+export { QueryFlags } from "./ast/nodes.ts"
 
 // ─── TCL AST types (transactions) ──────────────────────────────────────────
 export type {

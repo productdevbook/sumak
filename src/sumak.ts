@@ -14,6 +14,8 @@ import {
 } from "./builder/ddl/drop.ts"
 import { Col } from "./builder/eb.ts"
 import { SelectBuilder } from "./builder/select.ts"
+import { RestoreBuilder, SoftDeleteBuilder } from "./builder/soft-delete.ts"
+import type { SoftDeleteConfig } from "./builder/soft-delete.ts"
 import { TypedDeleteBuilder } from "./builder/typed-delete.ts"
 import { TypedInsertBuilder } from "./builder/typed-insert.ts"
 import { TypedMergeBuilder } from "./builder/typed-merge.ts"
@@ -27,6 +29,7 @@ import type { OptimizeOptions, RewriteRule } from "./optimize/types.ts"
 import { Hookable } from "./plugin/hooks.ts"
 import type { HookName, SumakHooks } from "./plugin/hooks.ts"
 import { PluginManager } from "./plugin/plugin-manager.ts"
+import { SoftDeletePlugin } from "./plugin/soft-delete.ts"
 import type { SumakPlugin } from "./plugin/types.ts"
 import { DDLPrinter } from "./printer/ddl.ts"
 import { TclPrinter } from "./printer/tcl.ts"
@@ -205,6 +208,62 @@ export class Sumak<DB> {
     ;(b as any)._printer = this._dialect.createPrinter()
     ;(b as any)._compile = (node: ASTNode) => this.compile(node)
     return b
+  }
+
+  /**
+   * Explicit soft-delete — `UPDATE table SET <col> = CURRENT_TIMESTAMP WHERE ... AND <col> IS NULL`.
+   * The trailing `IS NULL` predicate makes the write race-safe against a
+   * concurrent restore. Requires a registered `softDelete` plugin whose
+   * `tables` list contains this table.
+   *
+   * ```ts
+   * db.softDelete("users").where(({ id }) => id.eq(1)).toSQL()
+   * ```
+   */
+  softDelete<T extends keyof DB & string>(table: T): SoftDeleteBuilder<DB, T> {
+    const cfg = this._resolveSoftDeleteConfig(table)
+    return new SoftDeleteBuilder<DB, T>({
+      table,
+      cfg,
+      printer: this._dialect.createPrinter(),
+      compile: (n: ASTNode) => this.compile(n),
+    })
+  }
+
+  /**
+   * Restore a previously soft-deleted row. Race-safe: the generated
+   * UPDATE only targets rows that are currently marked deleted.
+   *
+   * ```ts
+   * db.restore("users").where(({ id }) => id.eq(1)).toSQL()
+   * ```
+   */
+  restore<T extends keyof DB & string>(table: T): RestoreBuilder<DB, T> {
+    const cfg = this._resolveSoftDeleteConfig(table)
+    return new RestoreBuilder<DB, T>({
+      table,
+      cfg,
+      printer: this._dialect.createPrinter(),
+      compile: (n: ASTNode) => this.compile(n),
+    })
+  }
+
+  private _resolveSoftDeleteConfig(table: string): SoftDeleteConfig {
+    const plugin = this._plugins.getByInstance(SoftDeletePlugin)
+    if (!plugin) {
+      throw new Error(
+        `db.softDelete()/restore() requires the softDelete plugin to be registered.\n` +
+          `  Add it in sumak({ plugins: [softDelete({ tables: ["${table}"] })] }).`,
+      )
+    }
+    if (!plugin._config.tables.has(table)) {
+      throw new Error(
+        `Table "${table}" is not configured for soft-delete.\n` +
+          `  Add it to softDelete({ tables: [...] }) — currently configured: ` +
+          `[${[...plugin._config.tables].map((t) => `"${t}"`).join(", ")}].`,
+      )
+    }
+    return { column: plugin._config.column, flag: plugin._config.flag }
   }
 
   /**

@@ -20,7 +20,7 @@ import { WithSchemaPlugin } from "./with-schema.ts"
  * const db = sumak({
  *   dialect: pgDialect(),
  *   plugins: [
- *     softDelete({ tables: ["users"], mode: "convert" }),
+ *     softDelete({ tables: ["users"] }),
  *     audit({ tables: ["users"] }),
  *     multiTenant({ tables: ["users"], tenantId: () => ctx.tenantId }),
  *   ],

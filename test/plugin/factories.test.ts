@@ -21,7 +21,7 @@ import { WithSchemaPlugin } from "../../src/plugin/with-schema.ts"
 
 describe("plugin factories — v0.1 API", () => {
   it("softDelete() returns a SoftDeletePlugin-shaped instance", () => {
-    const p = softDelete({ tables: ["users"], mode: "convert" })
+    const p = softDelete({ tables: ["users"] })
     expect(p).toBeInstanceOf(SoftDeletePlugin)
     expect(p.name).toBe("soft-delete")
   })
