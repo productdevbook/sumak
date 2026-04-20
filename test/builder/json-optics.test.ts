@@ -93,7 +93,8 @@ describe("JsonOptic", () => {
   describe(".as()", () => {
     it("aliases a JSON expression", () => {
       const expr = jsonCol("data").text("name").as("user_name")
-      const node = expr as any
+      // `as()` now returns a branded Expression<T>. Inner AST is on `.node`.
+      const node = (expr as any).node
       expect(node.type).toBe("json_access")
       expect(node.alias).toBe("user_name")
     })
@@ -101,8 +102,8 @@ describe("JsonOptic", () => {
     it("aliases non-json node with aliased_expr", () => {
       const optic = new JsonOptic({ type: "column_ref", column: "data" })
       const expr = optic.asText().as("text_data")
-      // asText on non-json-access creates a cast, then .as wraps it
-      const node = expr as any
+      // asText on non-json-access creates a cast, then .as wraps it.
+      const node = (expr as any).node
       expect(node.type).toBe("aliased_expr")
       expect(node.alias).toBe("text_data")
     })

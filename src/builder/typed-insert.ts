@@ -65,40 +65,73 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * RETURNING specific columns. Accumulates across chained calls —
-   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
-   * Use `.returningAll()` to reset to `RETURNING *`.
+   * RETURNING columns or aliased expressions.
+   *
+   * ```ts
+   * // Plain columns
+   * db.insertInto("users").values(...).returning("id", "name")
+   *
+   * // Aliased expressions (object form)
+   * db.insertInto("users").values(...).returning({
+   *   id: col("id"),
+   *   upperName: str.upper(col("name")),
+   * })
+   * ```
+   *
+   * Accumulates across chained calls — use `.returningAll()` to reset.
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
-  ): TypedInsertReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
+  ): TypedInsertReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>>
+  returning<A extends Record<string, Expression<any>>>(
+    aliased: A,
+  ): TypedInsertReturningBuilder<
+    DB,
+    TB,
+    SelectRow<DB, TB> & { [K in keyof A]: A[K] extends Expression<infer T> ? T : never }
+  >
+  returning(...args: unknown[]): any {
+    if (args.length === 0) {
+      throw new Error(".returning() requires at least one column or expression.")
+    }
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0]) &&
+      Object.keys(args[0] as object).length === 0
+    ) {
+      throw new Error(".returning({}) requires at least one aliased expression.")
+    }
     const existing = this._builder.build().returning
-    const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
+    let exprs: ExpressionNode[]
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0])
+    ) {
+      exprs = Object.entries(args[0] as Record<string, Expression<any>>).map(([alias, expr]) => ({
+        type: "aliased_expr" as const,
+        expr: unwrap(expr as Expression<any>),
+        alias,
+      }))
+    } else {
+      exprs = (args as string[]).map((c) => ({ type: "column_ref" as const, column: c }))
+    }
     const builder = new InsertBuilder({
       ...this._builder.build(),
       returning: [...existing, ...exprs],
     })
-    return new TypedInsertReturningBuilder(builder)
+    return new TypedInsertReturningBuilder(builder, this._printer, this._compile)
   }
 
-  /**
-   * RETURNING with expression and alias.
-   */
+  /** @deprecated — use `.returning({ [alias]: expr })` instead. */
   returningExpr<Alias extends string>(
     expr: Expression<any>,
     alias: Alias,
   ): TypedInsertReturningBuilder<DB, TB, SelectRow<DB, TB> & Record<Alias, any>> {
-    const node = unwrap(expr)
-    const aliased: import("../ast/nodes.ts").AliasedExprNode = {
-      type: "aliased_expr",
-      expr: node,
-      alias,
-    }
-    const builder = new InsertBuilder({
-      ...this._builder.build(),
-      returning: [...this._builder.build().returning, aliased],
-    })
-    return new TypedInsertReturningBuilder(builder)
+    return (this as any).returning({ [alias]: expr })
   }
 
   /**
@@ -109,7 +142,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
       ...this._builder.build(),
       returning: [star()],
     })
-    return new TypedInsertReturningBuilder(builder)
+    return new TypedInsertReturningBuilder(builder, this._printer, this._compile)
   }
 
   /**
@@ -256,9 +289,19 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
 export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, _R> {
   /** @internal */
   readonly _builder: InsertBuilder
+  /** @internal */
+  _printer?: Printer
+  /** @internal */
+  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
 
-  constructor(builder: InsertBuilder) {
+  constructor(
+    builder: InsertBuilder,
+    printer?: Printer,
+    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+  ) {
     this._builder = builder
+    this._printer = printer
+    this._compile = compile
   }
 
   build(): InsertNode {
@@ -267,5 +310,14 @@ export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, _R> {
 
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** Run through the full compile pipeline (plugins, hooks, normalize, optimize, print). */
+  toSQL(): CompiledQuery {
+    if (this._compile) return this._compile(this.build())
+    if (!this._printer) {
+      throw new Error("toSQL() requires a printer. Use db.insertInto() to construct the builder.")
+    }
+    return this._printer.print(this.build())
   }
 }

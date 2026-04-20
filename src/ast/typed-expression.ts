@@ -20,18 +20,57 @@ import {
 import type { ExpressionNode } from "./nodes.ts"
 
 /**
+ * Runtime brand used by `isExpression()` to distinguish
+ * `{ node: ExpressionNode }` expression wrappers from arbitrary user
+ * objects (e.g. a JSON column value that happens to have a `.node` key).
+ *
+ * The symbol is NOT exported — external code cannot forge this brand.
+ */
+const EXPRESSION_BRAND: unique symbol = Symbol("sumak.expression")
+
+/**
  * Type-safe expression wrapper. The T parameter tracks the expression's
- * output type at compile time. At runtime, this is just an ExpressionNode.
+ * output type at compile time. At runtime, this is an `{ node }` object
+ * with a hidden brand symbol for reliable `isExpression()` detection.
  *
  * The `__type` field is a phantom — it never exists at runtime.
  */
 export interface Expression<T> {
   readonly __type: T
   readonly node: ExpressionNode
+  readonly [EXPRESSION_BRAND]?: true
+}
+
+/**
+ * Wrap a raw AST node as a typed, branded Expression. Exported so other
+ * internal builders (`eb.ts`, etc.) can produce Expressions that pass the
+ * `isExpression()` runtime check.
+ *
+ * @internal
+ */
+export function brandExpression<T>(node: ExpressionNode): Expression<T> {
+  return { node, [EXPRESSION_BRAND]: true } as Expression<T>
 }
 
 function expr<T>(node: ExpressionNode): Expression<T> {
-  return { node } as Expression<T>
+  return brandExpression<T>(node)
+}
+
+/**
+ * Runtime check — does this value look like an Expression?
+ *
+ * Used by APIs that accept `T | Expression<T>` (e.g. `.set({ col: val })`
+ * where `val` may be a plain JavaScript value OR an expression) to branch
+ * safely. Uses a hidden Symbol brand so it cannot be confused with user
+ * objects that happen to have a `.node` property.
+ */
+export function isExpression(value: unknown): value is Expression<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as any)[EXPRESSION_BRAND] === true &&
+    typeof (value as any).node === "object"
+  )
 }
 
 /** Unwrap an Expression to its underlying AST node */

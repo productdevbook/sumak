@@ -1,5 +1,6 @@
 import type { ExpressionNode, JsonAccessNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
+import { brandExpression } from "../ast/typed-expression.ts"
 
 /**
  * JSON optics — composable, type-tracked JSON column navigation.
@@ -122,24 +123,36 @@ export class JsonOptic<T = unknown> {
   }
 
   /**
-   * Get the underlying expression node.
+   * Get the underlying expression node as a branded Expression<T>.
    */
   toExpression(): Expression<T> {
-    return this._node as unknown as Expression<T>
+    return brandExpression<T>(this._node)
   }
 }
 
 /**
  * A JSON expression that can be aliased and used in SELECT/WHERE.
  * This is the "leaf" of the optics chain.
+ *
+ * Implements `Expression<T>` at runtime: has a `.node` property and the
+ * hidden `EXPRESSION_BRAND` symbol via a branded object, so
+ * `.select({ alias: expr })` and `.set({ col: expr })` can pass it
+ * directly through `isExpression()` + `unwrap()`.
  */
-export class JsonExpr<T> {
-  /** @internal */
+export class JsonExpr<T> implements Expression<T> {
+  /** @internal legacy alias for node */
   readonly _node: ExpressionNode
+  /** Node accessor that satisfies the `Expression<T>` interface. */
+  readonly node: ExpressionNode
+  declare readonly __type: T
   declare readonly _type: T
 
   constructor(node: ExpressionNode) {
     this._node = node
+    this.node = node
+    // Copy the runtime brand from a freshly-made Expression so
+    // `isExpression(this)` returns true.
+    Object.assign(this, brandExpression(node))
   }
 
   /**
@@ -151,20 +164,20 @@ export class JsonExpr<T> {
    */
   as(alias: string): Expression<T> {
     if (this._node.type === "json_access") {
-      return { ...this._node, alias } as unknown as Expression<T>
+      return brandExpression<T>({ ...this._node, alias } as ExpressionNode)
     }
-    return {
+    return brandExpression<T>({
       type: "aliased_expr",
       expr: this._node,
       alias,
-    } as unknown as Expression<T>
+    } as ExpressionNode)
   }
 
   /**
-   * Get the underlying expression node.
+   * Get the underlying expression node as a branded Expression<T>.
    */
   toExpression(): Expression<T> {
-    return this._node as unknown as Expression<T>
+    return brandExpression<T>(this._node)
   }
 }
 
