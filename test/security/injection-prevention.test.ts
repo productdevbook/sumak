@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { cast, sqlFn, unsafeSqlFn, unsafeRawExpr, val } from "../../src/builder/eb.ts"
+import { cast, sqlFn, unsafeSqlFn, val } from "../../src/builder/eb.ts"
 import { sql } from "../../src/builder/sql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { SecurityError } from "../../src/errors.ts"

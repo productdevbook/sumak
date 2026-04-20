@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { count, filter, sum, val } from "../../src/builder/eb.ts"
+import { count } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { boolean, integer, serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
@@ -17,8 +17,6 @@ const db = sumak({
     },
   },
 })
-
-const p = db.printer()
 
 describe("selectCount()", () => {
   it("generates SELECT COUNT(*) FROM table", () => {

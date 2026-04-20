@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest"
 
-import { col, lit } from "../../src/ast/expression.ts"
 import { InsertBuilder } from "../../src/builder/insert.ts"
 import { SelectBuilder } from "../../src/builder/select.ts"
 import { mssqlDialect } from "../../src/dialect/mssql.ts"
