@@ -88,6 +88,22 @@ const db = sumak({
 
 That's it. `db` now knows every table, column, and type. All queries are fully type-checked.
 
+### README conventions
+
+Many examples below use `col.name`, `col.price`, etc. as shorthand for a
+column reference. This is **documentation shorthand**, not an actual
+import — the real ways to produce a column expression are:
+
+- **Callback form (recommended):** `.where(({ name, price }) => ...)` —
+  the proxy object exposes a typed `Col<T>` per column. Most examples
+  can be rewritten this way.
+- **`new Col("name")`:** when you need a column outside a `.where()`
+  callback (e.g. building an expression for `select({ total: op.mul(...) })`),
+  construct a `Col` directly: `new Col("price")`.
+
+Where the example uses a bare `col.X`, mentally replace it with one of
+the two idioms above.
+
 ---
 
 ## SELECT
@@ -369,7 +385,7 @@ db.selectFrom("users").crossJoinLateral(subquery, "latest").toSQL()
 ### Computed Columns
 
 ```ts
-import { val, cast, rawExpr } from "sumak"
+import { val, cast, unsafeRawExpr } from "sumak"
 
 // Add a computed column with alias
 db.selectFrom("users")
@@ -451,12 +467,16 @@ db.selectFrom("users")
 
 ### PostgreSQL Array Operators
 
-```ts
-import { arrayContains, arrayContainedBy, arrayOverlaps, rawExpr } from "sumak"
+Array operators live under the `arr` namespace. The left-hand side is a
+column reference (via the callback proxy); only the array literal needs
+`unsafeRawExpr`:
 
-.where(() => arrayContains(rawExpr("tags"), rawExpr("ARRAY['sql']")))    // @>
-.where(() => arrayContainedBy(rawExpr("tags"), rawExpr("ARRAY[...]")))   // <@
-.where(() => arrayOverlaps(rawExpr("tags"), rawExpr("ARRAY['sql']")))    // &&
+```ts
+import { arr, unsafeRawExpr } from "sumak"
+
+.where(({ tags }) => arr.contains(tags, unsafeRawExpr("ARRAY['sql']")))    // @>
+.where(({ tags }) => arr.containedBy(tags, unsafeRawExpr("ARRAY[...]")))   // <@
+.where(({ tags }) => arr.overlaps(tags, unsafeRawExpr("ARRAY['sql']")))    // &&
 ```
 
 ---
@@ -554,28 +574,32 @@ over(ntile(4), (w) => w.orderBy("salary", "DESC"))
 
 ### String
 
-```ts
-import { upper, lower, concat, substring, trim, length } from "sumak"
+String functions live under the `str` namespace:
 
-upper(col.name) // UPPER("name")
-lower(col.email) // LOWER("email")
-concat(col.first, val(" "), col.last) // CONCAT(...)
-substring(col.name, 1, 3) // SUBSTRING("name", 1, 3)
-trim(col.name) // TRIM("name")
-length(col.name) // LENGTH("name")
+```ts
+import { str, val } from "sumak"
+
+str.upper(col.name) // UPPER("name")
+str.lower(col.email) // LOWER("email")
+str.concat(col.first, val(" "), col.last) // CONCAT(...)
+str.substring(col.name, 1, 3) // SUBSTRING("name", 1, 3)
+str.trim(col.name) // TRIM("name")
+str.length(col.name) // LENGTH("name")
 ```
 
 ### Numeric
 
-```ts
-import { abs, round, ceil, floor, greatest, least } from "sumak"
+Numeric/math functions live under the `num` namespace:
 
-abs(col.balance) // ABS("balance")
-round(col.price, 2) // ROUND("price", 2)
-ceil(col.amount) // CEIL("amount")
-floor(col.amount) // FLOOR("amount")
-greatest(col.a, col.b) // GREATEST("a", "b")
-least(col.a, col.b) // LEAST("a", "b")
+```ts
+import { num } from "sumak"
+
+num.abs(col.balance) // ABS("balance")
+num.round(col.price, 2) // ROUND("price", 2)
+num.ceil(col.amount) // CEIL("amount")
+num.floor(col.amount) // FLOOR("amount")
+num.greatest(col.a, col.b) // GREATEST("a", "b")
+num.least(col.a, col.b) // LEAST("a", "b")
 ```
 
 ### Conditional
@@ -783,19 +807,27 @@ db.selectFrom("users")
   .toSQL()
 ```
 
-### `rawExpr()` escape hatch
+### `unsafeRawExpr()` escape hatch
+
+> ⚠️ **Warning:** `unsafeRawExpr` embeds its string argument directly into
+> the emitted SQL with **no validation or parameterization**. Never pass
+> user input — doing so opens a SQL injection vector. Reserve this for
+> constant strings (column names, SQL keywords, `ARRAY[...]` literals).
+> For a dynamic function call with parameterized arguments, prefer
+> `unsafeSqlFn(name, ...args)` which only lets you pick the function
+> name while still parameterizing the args.
 
 ```ts
-import { rawExpr } from "sumak"
+import { unsafeRawExpr } from "sumak"
 
 // In WHERE
 db.selectFrom("users")
-  .where(() => rawExpr<boolean>("age > 18"))
+  .where(() => unsafeRawExpr<boolean>("age > 18"))
   .toSQL()
 
 // In SELECT
 db.selectFrom("users")
-  .select({ year: rawExpr<number>("EXTRACT(YEAR FROM created_at)") })
+  .select({ year: unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)") })
   .toSQL()
 ```
 
@@ -990,7 +1022,7 @@ db.schema
   .createIndex("idx_active")
   .on("users")
   .column("email")
-  .where(rawExpr("active = true"))
+  .where(unsafeRawExpr("active = true"))
   .build()
 ```
 
@@ -1534,8 +1566,8 @@ num.round(col.price, 2)
 num.greatest(col.a, col.b)
 
 // PostgreSQL array operators
-arr.contains(col.tags, rawExpr("ARRAY['sql']")) // @>
-arr.overlaps(col.tags, rawExpr("ARRAY['sql','ts']")) // &&
+arr.contains(col.tags, unsafeRawExpr("ARRAY['sql']")) // @>
+arr.overlaps(col.tags, unsafeRawExpr("ARRAY['sql','ts']")) // &&
 
 // Low-level AST (plugin authors, advanced use)
 ast.binOp("=", ast.col("id"), ast.lit(1))
