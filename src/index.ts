@@ -1,149 +1,88 @@
-// AST
-export type {
-  AliasedExprNode,
-  ArrayExprNode,
-  ASTNode,
-  BetweenNode,
-  BinaryOpNode,
-  CaseNode,
-  CastNode,
-  ColumnRefNode,
-  CTENode,
-  DeleteNode,
-  ExistsNode,
-  ExplainNode,
-  ExpressionNode,
-  FrameBound,
-  FrameKind,
-  FrameSpec,
-  FullTextSearchMode,
-  FullTextSearchNode,
-  FunctionCallNode,
-  InNode,
-  InsertMode,
-  InsertNode,
-  IsNullNode,
-  JoinNode,
-  JsonAccessNode,
-  LiteralNode,
-  LockClause,
-  LockMode,
-  MergeNode,
-  MergeWhenMatched,
-  MergeWhenNotMatched,
-  OnConflictNode,
-  OrderByNode,
-  ParamNode,
-  RawNode,
-  SelectNode,
-  SqlDataType,
-  StarNode,
-  SubqueryNode,
-  TableRefNode,
-  TupleNode,
-  TemporalClause,
-  UnaryOpNode,
-  UpdateNode,
-  WindowFunctionNode,
-} from "./ast/nodes.ts"
+// ═══════════════════════════════════════════════════════════════════════════
+//  sumak — v0.1 public API
+//
+//  Target: ~50 named exports (was ~206). Internals are no longer re-exported.
+//  Advanced helpers — low-level AST factories, visitors, document algebra,
+//  printer classes, DDL builder classes, normalize/optimize rule internals —
+//  live under the `ast` namespace or are simply kept internal.
+// ═══════════════════════════════════════════════════════════════════════════
 
-export {
-  createDeleteNode,
-  createInsertNode,
-  createMergeNode,
-  createSelectNode,
-  createUpdateNode,
-  tableRef,
-} from "./ast/nodes.ts"
+// ─── Core ──────────────────────────────────────────────────────────────────
+export { sumak, Sumak } from "./sumak.ts"
+export type { SumakConfig } from "./sumak.ts"
 
-// Low-level AST expression factories (advanced use)
-export {
-  between,
-  binOp,
-  col,
-  colAs,
-  eq,
-  fn,
-  gt,
-  gte,
-  inList,
-  isNull,
-  like,
-  lit,
-  lt,
-  lte,
-  neq,
-  param,
-  raw,
-  star,
-  subquery,
-  unaryOp,
-} from "./ast/expression.ts"
-
-export { ASTTransformer } from "./ast/transformer.ts"
-export { visitNode } from "./ast/visitor.ts"
-export type { ASTVisitor } from "./ast/visitor.ts"
-export type { Expression } from "./ast/typed-expression.ts"
-
-// Builders
-export { merge, MergeBuilder } from "./builder/merge.ts"
-export { select, SelectBuilder } from "./builder/select.ts"
-export { insert, InsertBuilder } from "./builder/insert.ts"
-export { update, UpdateBuilder } from "./builder/update.ts"
-export { deleteFrom, DeleteBuilder } from "./builder/delete.ts"
-
-// Printers
-export { BasePrinter } from "./printer/base.ts"
-export { PgPrinter } from "./printer/pg.ts"
-export { MssqlPrinter } from "./printer/mssql.ts"
-export { MysqlPrinter } from "./printer/mysql.ts"
-export { SqlitePrinter } from "./printer/sqlite.ts"
-export { formatSQL } from "./printer/formatter.ts"
-export type { FormatOptions } from "./printer/formatter.ts"
-export type { Printer, PrinterOptions, PrintMode } from "./printer/types.ts"
-export {
-  concat as docConcat,
-  empty as docEmpty,
-  group as docGroup,
-  join as docJoin,
-  line as docLine,
-  nest as docNest,
-  render as docRender,
-  text as docText,
-  textLine as docTextLine,
-} from "./printer/document.ts"
-export type { Doc } from "./printer/document.ts"
-
-// Dialects
+// ─── Dialects ──────────────────────────────────────────────────────────────
 export { pgDialect } from "./dialect/pg.ts"
 export { mssqlDialect } from "./dialect/mssql.ts"
 export { mysqlDialect } from "./dialect/mysql.ts"
 export { sqliteDialect } from "./dialect/sqlite.ts"
 export type { Dialect } from "./dialect/types.ts"
 
-// Utils
-export { quoteIdentifier, quoteTableRef } from "./utils/identifier.ts"
-export { formatParam } from "./utils/param.ts"
+// ─── Query builders (renamed: Typed* → *, untyped classes are now internal) ─
+export { TypedSelectBuilder as SelectBuilder } from "./builder/typed-select.ts"
+export { TypedInsertBuilder as InsertBuilder } from "./builder/typed-insert.ts"
+export { TypedUpdateBuilder as UpdateBuilder } from "./builder/typed-update.ts"
+export { TypedDeleteBuilder as DeleteBuilder } from "./builder/typed-delete.ts"
+export { TypedMergeBuilder as MergeBuilder } from "./builder/typed-merge.ts"
 
-// Types
-export type {
-  CompiledQuery,
-  DialectConfig,
-  JoinType,
-  OrderDirection,
-  Primitive,
-  SetOperator,
-  SQLDialect,
-} from "./types.ts"
+// ─── Namespaces (v0.1 API) ─────────────────────────────────────────────────
+// ast — low-level AST factories & traversal (advanced / plugin authors)
+// win — window functions (rowNumber, rank, lag, lead, over, …)
+// str — string functions (upper, lower, concat, …)
+// num — math functions (abs, round, greatest, …)
+// arr — PostgreSQL array operators (contains, containedBy, overlaps)
+// tx  — transaction control (begin/commit/rollback/savepoint/…)
+export { arr, ast, num, str, tx, win } from "./ns/index.ts"
+export type { BeginOptions, CommitOptions, SetTransactionOptions } from "./ns/index.ts"
 
-// Schema
+// ─── Expressions (core set, flat for ergonomics) ───────────────────────────
+export {
+  and,
+  case_,
+  cast,
+  coalesce,
+  Col,
+  exists,
+  filter,
+  not,
+  notExists,
+  nullif,
+  or,
+  over,
+  sqlFn,
+  val,
+} from "./builder/eb.ts"
+export { sql } from "./builder/sql.ts"
+export type { ColumnProxies, WhereCallback } from "./builder/eb.ts"
+
+// ─── Aggregates ────────────────────────────────────────────────────────────
+export { avg, count, max, min, sum, stringAgg, arrayAgg, jsonAgg } from "./builder/eb.ts"
+
+// ─── Date/time helpers ─────────────────────────────────────────────────────
+export { now, currentTimestamp } from "./builder/eb.ts"
+
+// ─── Full-text search & JSON helpers (stable subset) ───────────────────────
+export { textSearch, jsonRef, jsonBuildObject } from "./builder/eb.ts"
+
+// ─── JSON optics (composable, typed JSON navigation) ───────────────────────
+export { JsonOptic, JsonExpr, jsonCol, jsonExpr } from "./builder/json-optics.ts"
+
+// ─── Compiled queries (pre-baked SQL with placeholders) ────────────────────
+export { compileQuery, placeholder } from "./builder/compiled.ts"
+export type { CompiledQueryFn, PlaceholderMarker } from "./builder/compiled.ts"
+
+// ─── Pipeline knobs (NbE + rewrite rules) ──────────────────────────────────
+export { createRule } from "./optimize/index.ts"
+export type { RewriteRule, OptimizeOptions } from "./optimize/index.ts"
+export type { NormalizeOptions } from "./normalize/index.ts"
+
+// ─── Schema — column factories & table helpers ─────────────────────────────
 export {
   bigint,
   bigserial,
   boolean,
   bytea,
   char,
-  ColumnBuilder,
   date,
   defineTable,
   doublePrecision,
@@ -180,175 +119,65 @@ export type {
   UpdateType,
 } from "./schema/index.ts"
 
-// Expression builder (clean API)
+// ─── Plugins (factory functions — preferred API) ───────────────────────────
 export {
-  abs,
-  add,
-  aggOrderBy,
-  and,
-  arrayAgg,
-  arrayContainedBy,
-  arrayContains,
-  arrayOverlaps,
-  avg,
-  avgDistinct,
-  case_,
-  CaseBuilder,
-  cast,
-  ceil,
-  coalesce,
-  Col,
-  concat,
-  count,
-  countDistinct,
-  currentTimestamp,
-  denseRank,
-  div,
-  exists,
-  filter,
-  floor,
-  greatest,
-  jsonAgg,
-  jsonBuildObject,
-  jsonRef,
-  lag,
-  lead,
-  least,
-  length,
-  lower,
-  max,
-  min,
-  mod,
-  mul,
-  neg,
-  not,
-  notExists,
-  now,
-  ntile,
-  nullif,
-  or,
-  over,
-  rank,
-  round,
-  rowNumber,
-  sqlFn,
-  unsafeRawExpr,
-  unsafeSqlFn,
-  stringAgg,
-  subqueryExpr,
-  sub,
-  substring,
-  sum,
-  sumDistinct,
-  textSearch,
-  toJson,
-  trim,
-  tuple,
-  upper,
-  val,
-  WindowBuilder,
-} from "./builder/eb.ts"
-export type { ColumnProxies, WhereCallback } from "./builder/eb.ts"
-
-// SQL tagged template
-export { sql } from "./builder/sql.ts"
-
-// Typed builders
-export { sumak, Sumak } from "./sumak.ts"
-export type { SumakConfig } from "./sumak.ts"
-export { TypedSelectBuilder } from "./builder/typed-select.ts"
-export { TypedInsertBuilder, TypedInsertReturningBuilder } from "./builder/typed-insert.ts"
-export { TypedUpdateBuilder, TypedUpdateReturningBuilder } from "./builder/typed-update.ts"
-export { TypedDeleteBuilder, TypedDeleteReturningBuilder } from "./builder/typed-delete.ts"
-export { TypedMergeBuilder } from "./builder/typed-merge.ts"
-
-// Plugins
+  audit,
+  camelCase,
+  dataMasking,
+  multiTenant,
+  optimisticLock,
+  queryLimit,
+  softDelete,
+  withSchema,
+} from "./plugin/factories.ts"
 export type { SumakPlugin } from "./plugin/types.ts"
-export { PluginManager } from "./plugin/plugin-manager.ts"
-export { WithSchemaPlugin } from "./plugin/with-schema.ts"
-export { SoftDeletePlugin } from "./plugin/soft-delete.ts"
-export { CamelCasePlugin } from "./plugin/camel-case.ts"
-export { AuditTimestampPlugin } from "./plugin/audit-timestamp.ts"
-export { OptimisticLockPlugin } from "./plugin/optimistic-lock.ts"
-export { DataMaskingPlugin } from "./plugin/data-masking.ts"
-export { MultiTenantPlugin } from "./plugin/multi-tenant.ts"
-export { QueryLimitPlugin } from "./plugin/query-limit.ts"
 
-// Hooks
-export { Hookable } from "./plugin/hooks.ts"
+// ─── Hooks ─────────────────────────────────────────────────────────────────
 export type { HookContext, HookName, SumakHooks } from "./plugin/hooks.ts"
 
-// DDL builders
-export {
-  CreateTableBuilder,
-  ColumnDefBuilder,
-  ForeignKeyBuilder,
-} from "./builder/ddl/create-table.ts"
-export { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
-export { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
-export { CreateViewBuilder } from "./builder/ddl/create-view.ts"
-export {
-  DropTableBuilder,
-  DropIndexBuilder,
-  DropViewBuilder,
-  TruncateTableBuilder,
-} from "./builder/ddl/drop.ts"
-export { DDLPrinter } from "./printer/ddl.ts"
-export { SchemaBuilder } from "./sumak.ts"
-
-// DDL AST types
+// ─── Core types ────────────────────────────────────────────────────────────
 export type {
-  AlterColumnSet,
-  AlterTableAction,
-  AlterTableNode,
-  CheckConstraintNode,
-  ColumnDefinitionNode,
-  CreateIndexNode,
-  CreateTableNode,
-  CreateViewNode,
-  DDLNode,
-  DropIndexNode,
-  DropTableNode,
-  DropViewNode,
-  ForeignKeyAction,
-  ForeignKeyConstraintNode,
-  PrimaryKeyConstraintNode,
-  TableConstraintNode,
-  TruncateTableNode,
-  UniqueConstraintNode,
-} from "./ast/ddl-nodes.ts"
+  CompiledQuery,
+  DialectConfig,
+  JoinType,
+  OrderDirection,
+  Primitive,
+  SetOperator,
+  SQLDialect,
+} from "./types.ts"
+export type { Expression } from "./ast/typed-expression.ts"
+export type { Printer } from "./printer/types.ts"
 
-// Normalize (NbE)
-export { normalizeExpression, normalizeQuery, toCNF, fromCNF } from "./normalize/index.ts"
-export type { CNF, NormalizeOptions } from "./normalize/index.ts"
+// ─── AST node types (for type-level work & custom plugins) ─────────────────
+export type {
+  ASTNode,
+  SelectNode,
+  InsertNode,
+  UpdateNode,
+  DeleteNode,
+  MergeNode,
+  ExplainNode,
+  ExpressionNode,
+} from "./ast/nodes.ts"
 
-// Optimize (rewrite rules)
-export {
-  optimize,
-  createRule,
-  predicatePushdown,
-  subqueryFlattening,
-  removeWhereTrue,
-  BUILTIN_RULES,
-} from "./optimize/index.ts"
-export type { RewriteRule, OptimizeOptions } from "./optimize/index.ts"
+// ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
+export type { DDLNode } from "./ast/ddl-nodes.ts"
 
-// Compiled queries (partial evaluation)
-export {
-  placeholder,
-  compileQuery,
-  collectPlaceholders,
-  isPlaceholder,
-} from "./builder/compiled.ts"
-export type { CompiledQueryFn, PlaceholderMarker } from "./builder/compiled.ts"
+// ─── TCL AST types (transactions) ──────────────────────────────────────────
+export type {
+  AccessMode,
+  BeginNode,
+  CommitNode,
+  IsolationLevel,
+  ReleaseSavepointNode,
+  RollbackNode,
+  SavepointNode,
+  SetTransactionNode,
+  SQLiteLockingMode,
+  TclNode,
+} from "./ast/tcl-nodes.ts"
 
-// JSON optics
-export { JsonOptic, JsonExpr, jsonCol, jsonExpr } from "./builder/json-optics.ts"
-
-// Security
-export { escapeStringLiteral, validateDataType, validateFunctionName } from "./utils/security.ts"
-
-// Errors
+// ─── Errors ────────────────────────────────────────────────────────────────
 export {
   EmptyQueryError,
   InvalidExpressionError,

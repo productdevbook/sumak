@@ -47,6 +47,8 @@
 - [Plugins](#plugins)
 - [Hooks](#hooks)
 - [Dialects](#dialects)
+- [Namespaces](#namespaces)
+- [Transactions](#transactions)
 - [Architecture](#architecture)
 
 ---
@@ -231,35 +233,37 @@ Every `.where()` takes a callback with typed column proxies.
 
 ### Pattern Matching
 
+One `.like()` method — opts flip it to `NOT LIKE` / `ILIKE` / `NOT ILIKE`:
+
 ```ts
-.where(({ name }) => name.like("%ali%"))         // LIKE
-.where(({ name }) => name.notLike("%bob%"))      // NOT LIKE
-.where(({ name }) => name.ilike("%alice%"))      // ILIKE (PG)
-.where(({ email }) => email.notIlike("%spam%"))  // NOT ILIKE
+.where(({ name }) => name.like("%ali%"))                                // LIKE
+.where(({ name }) => name.like("%bob%", { negate: true }))              // NOT LIKE
+.where(({ name }) => name.like("%alice%", { insensitive: true }))       // ILIKE (PG)
+.where(({ email }) => email.like("%spam%", { negate: true, insensitive: true }))  // NOT ILIKE
 ```
 
 ### Range & Lists
 
 ```ts
-.where(({ age }) => age.between(18, 65))           // BETWEEN
-.where(({ age }) => age.notBetween(0, 17))         // NOT BETWEEN
-.where(({ age }) => age.betweenSymmetric(65, 18))  // BETWEEN SYMMETRIC (PG)
-.where(({ id }) => id.in([1, 2, 3]))               // IN
-.where(({ id }) => id.notIn([99, 100]))             // NOT IN
+.where(({ age }) => age.between(18, 65))                              // BETWEEN
+.where(({ age }) => age.between(0, 17, { negate: true }))             // NOT BETWEEN
+.where(({ age }) => age.between(65, 18, { symmetric: true }))         // BETWEEN SYMMETRIC (PG)
+.where(({ id }) => id.in([1, 2, 3]))                                  // IN
+.where(({ id }) => id.in([99, 100], { negate: true }))                // NOT IN
 ```
 
 ### Null Checks
 
 ```ts
-.where(({ bio }) => bio.isNull())       // IS NULL
-.where(({ email }) => email.isNotNull()) // IS NOT NULL
+.where(({ bio }) => bio.isNull())                       // IS NULL
+.where(({ email }) => email.isNull({ negate: true }))   // IS NOT NULL
 ```
 
 ### Null-Safe Comparisons
 
 ```ts
-.where(({ age }) => age.isDistinctFrom(null))      // IS DISTINCT FROM
-.where(({ age }) => age.isNotDistinctFrom(25))     // IS NOT DISTINCT FROM
+.where(({ age }) => age.distinctFrom(null))                     // IS DISTINCT FROM
+.where(({ age }) => age.distinctFrom(25, { negate: true }))     // IS NOT DISTINCT FROM
 ```
 
 ### IN Subquery
@@ -270,8 +274,8 @@ const deptIds = db
   .select("id")
   .build()
 
-  .where(({ dept_id }) => dept_id.inSubquery(deptIds)) // IN (SELECT ...)
-  .where(({ dept_id }) => dept_id.notInSubquery(deptIds)) // NOT IN (SELECT ...)
+  .where(({ dept_id }) => dept_id.in(deptIds)) // IN (SELECT ...)
+  .where(({ dept_id }) => dept_id.in(deptIds, { negate: true })) // NOT IN (SELECT ...)
 ```
 
 ### Logical Combinators
@@ -310,13 +314,15 @@ db.selectFrom("users")
 
 ### Column-to-Column Comparisons
 
+Column comparisons collapse into the same `.eq` / `.gt` / `.lt` methods — pass another `Col` instead of a value:
+
 ```ts
-.where(({ price, cost }) => price.gtCol(cost))    // "price" > "cost"
-.where(({ a, b }) => a.eqCol(b))                  // "a" = "b"
-.where(({ a, b }) => a.neqCol(b))                 // "a" != "b"
-.where(({ a, b }) => a.gteCol(b))                 // "a" >= "b"
-.where(({ a, b }) => a.ltCol(b))                  // "a" < "b"
-.where(({ a, b }) => a.lteCol(b))                 // "a" <= "b"
+.where(({ price, cost }) => price.gt(cost))       // "price" > "cost"
+.where(({ a, b }) => a.eq(b))                     // "a" = "b"
+.where(({ a, b }) => a.neq(b))                    // "a" != "b"
+.where(({ a, b }) => a.gte(b))                    // "a" >= "b"
+.where(({ a, b }) => a.lt(b))                     // "a" < "b"
+.where(({ a, b }) => a.lte(b))                    // "a" <= "b"
 ```
 
 ---
@@ -326,23 +332,23 @@ db.selectFrom("users")
 ```ts
 // INNER JOIN
 db.selectFrom("users")
-  .innerJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .innerJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
   .select("id", "title")
   .toSQL()
 
 // LEFT JOIN — joined columns become nullable
 db.selectFrom("users")
-  .leftJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .leftJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
   .toSQL()
 
 // RIGHT JOIN
 db.selectFrom("users")
-  .rightJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .rightJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
   .toSQL()
 
 // FULL JOIN — both sides nullable
 db.selectFrom("users")
-  .fullJoin("posts", ({ users, posts }) => users.id.eqCol(posts.userId))
+  .fullJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
   .toSQL()
 
 // CROSS JOIN
@@ -806,13 +812,13 @@ db.insertInto("users")
 ## MERGE (SQL:2003)
 
 ```ts
-db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(source.id))
+db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
   .whenMatchedThenUpdate({ name: "updated" })
   .whenNotMatchedThenInsert({ name: "Alice", email: "a@b.com" })
   .toSQL()
 
 // Conditional delete
-db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eqCol(source.id))
+db.mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
   .whenMatchedThenDelete()
   .toSQL()
 ```
@@ -1149,22 +1155,24 @@ Rules are applied bottom-up until a fixpoint (no more changes). Max 10 iteration
 
 ## Plugins
 
-### WithSchemaPlugin
+Plugins are plain factory functions — no `new`, no class imports.
+
+### withSchema
 
 ```ts
 const db = sumak({
-  plugins: [new WithSchemaPlugin("public")],
+  plugins: [withSchema("public")],
   ...
 })
 // SELECT * FROM "public"."users"
 ```
 
-### SoftDeletePlugin
+### softDelete
 
 ```ts
 // Mode "convert" (default) — DELETE becomes UPDATE SET deleted_at = NOW()
 const db = sumak({
-  plugins: [new SoftDeletePlugin({ tables: ["users"], mode: "convert" })],
+  plugins: [softDelete({ tables: ["users"], mode: "convert" })],
   ...
 })
 
@@ -1172,15 +1180,15 @@ db.deleteFrom("users").where(({ id }) => id.eq(1)).toSQL()
 // UPDATE "users" SET "deleted_at" = NOW() WHERE ("id" = $1) AND ("deleted_at" IS NULL)
 
 // Mode "filter" — just adds WHERE deleted_at IS NULL (no DELETE conversion)
-new SoftDeletePlugin({ tables: ["users"], mode: "filter" })
+softDelete({ tables: ["users"], mode: "filter" })
 ```
 
-### AuditTimestampPlugin
+### audit
 
 ```ts
 // Auto-inject created_at/updated_at timestamps
 const db = sumak({
-  plugins: [new AuditTimestampPlugin({ tables: ["users"] })],
+  plugins: [audit({ tables: ["users"] })],
   ...
 })
 
@@ -1191,14 +1199,14 @@ db.update("users").set({ name: "Bob" }).where(({ id }) => id.eq(1)).toSQL()
 // UPDATE "users" SET "name" = $1, "updated_at" = NOW() WHERE ...
 ```
 
-### MultiTenantPlugin
+### multiTenant
 
 ```ts
 // Auto-inject tenant_id on all queries
 // Use a callback for per-request tenant resolution:
 const db = sumak({
   plugins: [
-    new MultiTenantPlugin({
+    multiTenant({
       tables: ["users", "posts"],
       tenantId: () => getCurrentTenantId(),  // called per query
     }),
@@ -1213,12 +1221,12 @@ db.insertInto("users").values({ name: "Alice" }).toSQL()
 // INSERT INTO "users" ("name", "tenant_id") VALUES ($1, $2)
 ```
 
-### QueryLimitPlugin
+### queryLimit
 
 ```ts
 // Auto-inject LIMIT on unbounded SELECTs
 const db = sumak({
-  plugins: [new QueryLimitPlugin({ maxRows: 1000 })],
+  plugins: [queryLimit({ maxRows: 1000 })],
   ...
 })
 
@@ -1229,17 +1237,17 @@ db.selectFrom("users").select("id").limit(5).toSQL()
 // SELECT "id" FROM "users" LIMIT 5  — explicit limit preserved
 ```
 
-### CamelCasePlugin
+### camelCase
 
 ```ts
 // Transform snake_case result columns to camelCase
 const db = sumak({
-  plugins: [new CamelCasePlugin()],
+  plugins: [camelCase()],
   ...
 })
 ```
 
-### OptimisticLockPlugin
+### optimisticLock
 
 ```ts
 // Auto-inject WHERE version = N and SET version = version + 1 on UPDATE
@@ -1247,7 +1255,7 @@ const db = sumak({
 let rowVersion = 3
 const db = sumak({
   plugins: [
-    new OptimisticLockPlugin({
+    optimisticLock({
       tables: ["users"],
       currentVersion: () => rowVersion,  // called per query
     }),
@@ -1261,37 +1269,47 @@ db.update("users").set({ name: "Bob" }).where(({ id }) => id.eq(1)).toSQL()
 //   WHERE ("id" = $2) AND ("version" = $3)
 ```
 
-### DataMaskingPlugin
+### dataMasking
 
 ```ts
 // Mask sensitive data in query results
-const plugin = new DataMaskingPlugin({
-  rules: [
-    { column: "email", mask: "email" },    // "alice@example.com" → "al***@example.com"
-    { column: "phone", mask: "phone" },    // "+1234567890" → "***7890"
-    { column: "name", mask: "partial" },   // "John Doe" → "Jo***"
-    { column: "ssn", mask: (v) => `***-**-${String(v).slice(-4)}` },  // custom
+const db = sumak({
+  plugins: [
+    dataMasking({
+      rules: [
+        { column: "email", mask: "email" },    // "alice@example.com" → "al***@example.com"
+        { column: "phone", mask: "phone" },    // "+1234567890" → "***7890"
+        { column: "name", mask: "partial" },   // "John Doe" → "Jo***"
+        { column: "ssn", mask: (v) => `***-**-${String(v).slice(-4)}` },  // custom
+      ],
+    }),
   ],
+  ...
 })
-
-const db = sumak({ plugins: [plugin], ... })
 ```
 
-### Combining Plugins
+### Combining plugins
 
 ```ts
+import {
+  sumak, pgDialect,
+  withSchema, softDelete, audit, multiTenant, queryLimit,
+} from "sumak"
+
 const db = sumak({
   dialect: pgDialect(),
   plugins: [
-    new WithSchemaPlugin("public"),
-    new SoftDeletePlugin({ tables: ["users"] }),
-    new AuditTimestampPlugin({ tables: ["users", "posts"] }),
-    new MultiTenantPlugin({ tables: ["users", "posts"], tenantId: () => currentTenantId }),
-    new QueryLimitPlugin({ maxRows: 5000 }),
+    withSchema("public"),
+    softDelete({ tables: ["users"] }),
+    audit({ tables: ["users", "posts"] }),
+    multiTenant({ tables: ["users", "posts"], tenantId: () => currentTenantId }),
+    queryLimit({ maxRows: 5000 }),
   ],
   tables: { ... },
 })
 ```
+
+> Plugins are plain factory functions (`softDelete(...)`, `audit(...)`, …) — no `new` keyword, no class imports. The previous `SoftDeletePlugin`, `AuditTimestampPlugin`, etc. classes are now internal.
 
 ---
 
@@ -1347,6 +1365,109 @@ import { sumak } from "sumak"
 import { pgDialect } from "sumak/pg"
 import { serial, text } from "sumak/schema"
 ```
+
+---
+
+## Namespaces
+
+Grouped helpers live under short namespaces instead of polluting the top-level import. Everything in a namespace tree-shakes identically to a flat export.
+
+```ts
+import { win, str, num, arr, ast, tx, over, val } from "sumak"
+
+// Window functions
+over(win.rowNumber(), (w) => w.partitionBy("dept").orderBy("salary", "DESC"))
+over(win.rank(), (w) => w.orderBy("score", "DESC"))
+over(win.lag(col.price, 1), (w) => w.orderBy("date"))
+
+// String functions
+str.upper(col.name)
+str.concat(col.first, val(" "), col.last)
+str.length(col.email)
+
+// Math
+num.abs(col.balance)
+num.round(col.price, 2)
+num.greatest(col.a, col.b)
+
+// PostgreSQL array operators
+arr.contains(col.tags, rawExpr("ARRAY['sql']")) // @>
+arr.overlaps(col.tags, rawExpr("ARRAY['sql','ts']")) // &&
+
+// Low-level AST (plugin authors, advanced use)
+ast.binOp("=", ast.col("id"), ast.lit(1))
+ast.visit(node, visitor)
+```
+
+| Namespace | What it covers                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| `win`     | Window fns: `rowNumber`, `rank`, `denseRank`, `lag`, `lead`, `ntile`, `over`, `filter`           |
+| `str`     | String fns: `upper`, `lower`, `concat`, `substring`, `trim`, `length`                            |
+| `num`     | Math fns: `abs`, `round`, `ceil`, `floor`, `greatest`, `least`                                   |
+| `arr`     | Array ops (PG): `contains`, `containedBy`, `overlaps`                                            |
+| `tx`      | Transactions: `begin`, `commit`, `rollback`, `savepoint`, …                                      |
+| `ast`     | Node factories & traversal: `col`, `lit`, `binOp`, `visit`, `Transformer`, `select`, `insert`, … |
+
+---
+
+## Transactions
+
+Generate dialect-aware TCL SQL — `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, and isolation levels. Same philosophy as DDL: sumak builds the SQL, your driver executes it.
+
+```ts
+import { sumak, pgDialect, tx } from "sumak"
+
+const db = sumak({ dialect: pgDialect(), tables: { ... } })
+
+db.compile(tx.begin())
+// { sql: "BEGIN", params: [] }
+
+db.compile(tx.begin({ isolation: "SERIALIZABLE", readOnly: true }))
+// { sql: "BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY", params: [] }
+
+db.compile(tx.begin({ isolation: "SERIALIZABLE", readOnly: true, deferrable: true }))
+// { sql: "BEGIN ISOLATION LEVEL SERIALIZABLE READ ONLY DEFERRABLE", params: [] }
+
+db.compile(tx.commit())                    // COMMIT
+db.compile(tx.rollback())                  // ROLLBACK
+db.compile(tx.commit({ chain: true }))     // COMMIT AND CHAIN
+
+db.compile(tx.savepoint("sp1"))            // SAVEPOINT "sp1"
+db.compile(tx.releaseSavepoint("sp1"))     // RELEASE SAVEPOINT "sp1"
+db.compile(tx.rollbackTo("sp1"))           // ROLLBACK TO SAVEPOINT "sp1"
+
+// MySQL/MSSQL-style explicit SET TRANSACTION
+db.compile(tx.setTransaction({ isolation: "READ COMMITTED" }))
+// SET TRANSACTION ISOLATION LEVEL READ COMMITTED
+```
+
+### Dialect-specific options
+
+```ts
+// MySQL: START TRANSACTION WITH CONSISTENT SNAPSHOT
+tx.begin({ consistentSnapshot: true, readOnly: true })
+// START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY
+
+// SQLite: BEGIN DEFERRED / IMMEDIATE / EXCLUSIVE
+tx.begin({ locking: "IMMEDIATE" })
+// BEGIN IMMEDIATE
+
+// MSSQL: SNAPSHOT isolation
+tx.setTransaction({ isolation: "SNAPSHOT" })
+// SET TRANSACTION ISOLATION LEVEL SNAPSHOT
+```
+
+### Dialect differences
+
+|                   | PostgreSQL            | MySQL                       | SQLite                                   | MSSQL                |
+| ----------------- | --------------------- | --------------------------- | ---------------------------------------- | -------------------- |
+| Begin             | `BEGIN`               | `START TRANSACTION`         | `BEGIN`                                  | `BEGIN TRANSACTION`  |
+| Isolation level   | Inline in BEGIN       | `SET TRANSACTION`           | Not supported                            | `SET TRANSACTION`    |
+| Access mode       | Inline in BEGIN       | Inline in START TRANSACTION | Not supported                            | Not supported        |
+| SQLite locking    | -                     | -                           | `BEGIN DEFERRED / IMMEDIATE / EXCLUSIVE` | -                    |
+| Savepoint         | `SAVEPOINT x`         | `SAVEPOINT x`               | `SAVEPOINT x`                            | `SAVE TRANSACTION x` |
+| Release savepoint | `RELEASE SAVEPOINT x` | `RELEASE SAVEPOINT x`       | `RELEASE SAVEPOINT x`                    | Not supported        |
+| Commit            | `COMMIT`              | `COMMIT`                    | `COMMIT`                                 | `COMMIT TRANSACTION` |
 
 ---
 
