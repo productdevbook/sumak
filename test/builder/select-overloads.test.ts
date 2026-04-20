@@ -161,6 +161,29 @@ describe("empty-object guards", () => {
   })
 })
 
+describe("JsonExpr integrates with .select({ alias: ... }) object form", () => {
+  it("jsonCol(...).asText() can be used directly as an aliased expression", async () => {
+    const { jsonCol } = await import("../../src/builder/json-optics.ts")
+    const db2 = sumak({
+      dialect: pgDialect(),
+      tables: {
+        docs: {
+          id: serial().primaryKey(),
+          data: integer(),
+        },
+      },
+    })
+    const q = db2
+      .selectFrom("docs")
+      .select({ city: jsonCol("data").at("address").at("city").asText() as any })
+      .toSQL()
+    // The JsonExpr should unwrap cleanly — no undefined, no corrupt AST.
+    expect(q.sql).toContain('"data"')
+    expect(q.sql).toContain("->")
+    expect(q.sql).toContain('AS "city"')
+  })
+})
+
 describe("Expression detection — JSON columns with `.node` key are not misidentified", () => {
   it(".set() with a JSON column value shaped like { node: ... } is auto-parameterized, not unwrapped", () => {
     // User stores a JSON object that happens to have a `node` key.
