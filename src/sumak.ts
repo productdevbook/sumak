@@ -700,4 +700,29 @@ export class ScopedSumak<DB> {
   restore<T extends keyof DB & string>(table: T): RestoreBuilder<DB, T> {
     return this._db.restore(this._qualify(table) as T)
   }
+
+  mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
+    target: T,
+    options: {
+      source: S
+      alias?: string
+      on: (proxies: {
+        target: { [K in keyof DB[T] & string]: Col<any> }
+        source: { [K in keyof DB[S] & string]: Col<any> }
+      }) => Expression<boolean>
+    },
+  ): TypedMergeBuilder<DB, T, S> {
+    // If the caller didn't pass an alias, derive it from the source's
+    // unqualified name — otherwise `Sumak.mergeInto`'s default
+    // (`alias ?? source`) would set the alias to the fully-qualified
+    // name `"schema.table"`, which the printer then quotes as one
+    // identifier (`"schema.table"`) instead of two.
+    const sourceName = options.source as unknown as string
+    const derivedAlias = options.alias ?? (sourceName.split(".").at(-1) as string)
+    return this._db.mergeInto(this._qualify(target) as T, {
+      ...options,
+      source: this._qualify(options.source) as S,
+      alias: derivedAlias,
+    })
+  }
 }

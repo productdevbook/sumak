@@ -1,4 +1,10 @@
-import type { BinaryOpNode, ExpressionNode, LiteralNode, UnaryOpNode } from "../ast/nodes.ts"
+import type {
+  BinaryOpNode,
+  ExpressionNode,
+  LiteralNode,
+  SelectNode,
+  UnaryOpNode,
+} from "../ast/nodes.ts"
 import type { CNF, NormalizeOptions } from "./types.ts"
 import { DEFAULT_NORMALIZE_OPTIONS } from "./types.ts"
 
@@ -122,7 +128,7 @@ function flattenLogical(expr: ExpressionNode): ExpressionNode {
  * Remove duplicate AND clauses.
  * `a = 1 AND b = 2 AND a = 1` → `a = 1 AND b = 2`
  */
-function deduplicatePredicates(expr: ExpressionNode): ExpressionNode {
+export function deduplicatePredicates(expr: ExpressionNode): ExpressionNode {
   if (expr.type !== "binary_op" || (expr as BinaryOpNode).op !== "AND") return expr
 
   const parts = flattenAnd(expr)
@@ -315,16 +321,38 @@ function exprFingerprint(expr: ExpressionNode): string {
     case "cast":
       return `cast:${expr.dataType}:${exprFingerprint(expr.expr)}`
     case "exists":
-      return `exists:${expr.negated}`
+      return `exists:${expr.negated}:${selectFingerprint(expr.query)}`
     case "star":
       return `star:${expr.table ?? ""}`
     case "raw":
       return `raw:${expr.sql}`
     case "subquery":
-      return `subq:${expr.alias ?? ""}`
+      return `subq:${expr.alias ?? ""}:${selectFingerprint(expr.query)}`
     default:
       return `unknown:${expr.type}`
   }
+}
+
+/**
+ * Shallow-ish structural fingerprint for a SELECT node — enough to
+ * distinguish two different subqueries / EXISTS predicates for
+ * deduplication. Recurses into WHERE and the table reference; the
+ * column/order/group-by lists are folded into a count+types summary
+ * so very large subqueries don't blow up fingerprint length.
+ */
+function selectFingerprint(q: SelectNode): string {
+  const from = q.from
+    ? q.from.type === "table_ref"
+      ? `t:${q.from.name}:${q.from.alias ?? ""}`
+      : from_extraKind(q.from)
+    : "none"
+  const where = q.where ? exprFingerprint(q.where) : "no-where"
+  const cols = q.columns.map((c) => c.type).join(",")
+  return `sel(${from}|${where}|cols=${cols})`
+}
+
+function from_extraKind(from: { type: string }): string {
+  return `other:${from.type}`
 }
 
 /**

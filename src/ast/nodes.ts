@@ -320,6 +320,8 @@ export const QueryFlags = {
   SoftDeleteApplied: 1 << 0,
   /** Plugin has already injected its multi-tenant filter — don't double-apply. */
   MultiTenantApplied: 1 << 1,
+  /** Plugin has already injected its optimistic-lock predicate + SET. */
+  OptimisticLockApplied: 1 << 2,
 } as const
 export type QueryFlags = number
 

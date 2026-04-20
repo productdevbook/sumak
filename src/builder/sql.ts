@@ -48,8 +48,17 @@ export function sql<T = unknown>(
           params.push(...exprNode.params)
           sqlParts.push(exprNode.sql)
         } else {
-          // For complex expressions, embed as raw SQL fragment
-          sqlParts.push("(?)")
+          // The sql`` template only knows how to inline the primitive
+          // expression node types above. Anything else (window_function,
+          // subquery, case, etc.) needs the full printer pipeline, which
+          // the template doesn't have access to. Refuse instead of
+          // silently emitting `(?)` (which is not valid scalar SQL).
+          throw new TypeError(
+            "sql`` template cannot inline a " +
+              `${exprNode.type} expression. Extract it to a named column ` +
+              "via `.select({ alias: expr })` and reference the alias, or " +
+              "use the builder API directly.",
+          )
         }
       } else {
         // Primitive value → parameterize

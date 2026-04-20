@@ -1,10 +1,11 @@
 import type {
   ASTNode,
-  SelectNode,
-  InsertNode,
-  UpdateNode,
   DeleteNode,
+  InsertNode,
+  MergeNode,
+  SelectNode,
   TableRefNode,
+  UpdateNode,
 } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
@@ -34,6 +35,8 @@ export class WithSchemaPlugin implements SumakPlugin {
         return this.transformUpdate(node)
       case "delete":
         return this.transformDelete(node)
+      case "merge":
+        return this.transformMerge(node)
       default:
         return node
     }
@@ -73,5 +76,13 @@ export class WithSchemaPlugin implements SumakPlugin {
 
   private transformDelete(node: DeleteNode): DeleteNode {
     return { ...node, table: this.addSchema(node.table) }
+  }
+
+  private transformMerge(node: MergeNode): MergeNode {
+    return {
+      ...node,
+      target: this.addSchema(node.target),
+      source: node.source.type === "table_ref" ? this.addSchema(node.source) : node.source,
+    }
   }
 }
