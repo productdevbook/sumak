@@ -162,9 +162,9 @@ db.update("users")
   .where(({ id }) => id.eq(1))
   .toSQL()
 
-// SET with expression
+// SET with expression (mix values and expressions freely)
 db.update("users")
-  .setExpr("name", val("Anonymous"))
+  .set({ name: val("Anonymous") })
   .where(({ active }) => active.eq(false))
   .toSQL()
 
@@ -372,11 +372,13 @@ db.selectFrom("users").crossJoinLateral(subquery, "latest").toSQL()
 import { val, cast, rawExpr } from "sumak"
 
 // Add a computed column with alias
-db.selectFrom("users").selectExpr(val("hello"), "greeting").toSQL()
+db.selectFrom("users")
+  .select({ greeting: val("hello") })
+  .toSQL()
 
 // Multiple expressions at once
 db.selectFrom("users")
-  .selectExprs({
+  .select({
     total: count(),
     greeting: val("hello"),
   })
@@ -384,7 +386,7 @@ db.selectFrom("users")
 
 // CAST
 db.selectFrom("users")
-  .selectExpr(cast(val(42), "text"), "idAsText")
+  .select({ idAsText: cast(val(42), "text") })
   .toSQL()
 ```
 
@@ -393,11 +395,13 @@ db.selectFrom("users")
 ```ts
 import { add, sub, mul, div, mod, neg } from "sumak"
 
-db.selectFrom("orders").selectExpr(mul(col.price, col.qty), "total").toSQL()
+db.selectFrom("orders")
+  .select({ total: mul(col.price, col.qty) })
+  .toSQL()
 // ("price" * "qty") AS "total"
 
 db.selectFrom("orders")
-  .selectExpr(add(col.price, val(10)), "adjusted")
+  .select({ adjusted: add(col.price, val(10)) })
   .toSQL()
 ```
 
@@ -407,14 +411,13 @@ db.selectFrom("orders")
 import { case_, val } from "sumak"
 
 db.selectFrom("users")
-  .selectExpr(
-    case_()
+  .select({
+    status: case_()
       .when(col.active.eq(true), val("active"))
       .when(col.active.eq(false), val("inactive"))
       .else_(val("unknown"))
       .end(),
-    "status",
-  )
+  })
   .toSQL()
 ```
 
@@ -425,15 +428,17 @@ import { jsonRef, jsonAgg, toJson, jsonBuildObject } from "sumak"
 
 // Access: ->  (JSON object), ->> (text value)
 db.selectFrom("users")
-  .selectExpr(jsonRef(col.meta, "name", "->>"), "metaName")
+  .select({ metaName: jsonRef(col.meta, "name", "->>") })
   .toSQL()
 
 // JSON_AGG / TO_JSON
-db.selectFrom("users").selectExpr(jsonAgg(col.name), "namesJson").toSQL()
+db.selectFrom("users")
+  .select({ namesJson: jsonAgg(col.name) })
+  .toSQL()
 
 // JSON_BUILD_OBJECT
 db.selectFrom("users")
-  .selectExpr(jsonBuildObject(["name", col.name], ["age", col.age]), "obj")
+  .select({ obj: jsonBuildObject(["name", col.name], ["age", col.age]) })
   .toSQL()
 ```
 
@@ -456,14 +461,20 @@ import { arrayContains, arrayContainedBy, arrayOverlaps, rawExpr } from "sumak"
 ```ts
 import { count, countDistinct, sum, sumDistinct, avg, avgDistinct, min, max, coalesce } from "sumak"
 
-db.selectFrom("users").selectExpr(count(), "total").toSQL()
-db.selectFrom("users").selectExpr(countDistinct(col.dept), "uniqueDepts").toSQL()
-db.selectFrom("orders").selectExpr(sumDistinct(col.amount), "uniqueSum").toSQL()
-db.selectFrom("orders").selectExpr(avg(col.amount), "avgAmount").toSQL()
+db.selectFrom("users").select({ total: count() }).toSQL()
+db.selectFrom("users")
+  .select({ uniqueDepts: countDistinct(col.dept) })
+  .toSQL()
+db.selectFrom("orders")
+  .select({ uniqueSum: sumDistinct(col.amount) })
+  .toSQL()
+db.selectFrom("orders")
+  .select({ avgAmount: avg(col.amount) })
+  .toSQL()
 
 // COALESCE (variadic)
 db.selectFrom("users")
-  .selectExpr(coalesce(col.nick, col.name, val("Anonymous")), "displayName")
+  .select({ displayName: coalesce(col.nick, col.name, val("Anonymous")) })
   .toSQL()
 ```
 
@@ -472,7 +483,9 @@ db.selectFrom("users")
 ```ts
 import { filter, count } from "sumak"
 
-db.selectFrom("users").selectExpr(filter(count(), activeExpr), "activeCount").toSQL()
+db.selectFrom("users")
+  .select({ activeCount: filter(count(), activeExpr) })
+  .toSQL()
 // COUNT(*) FILTER (WHERE ...)
 ```
 
@@ -483,12 +496,14 @@ import { stringAgg, arrayAgg } from "sumak"
 
 // STRING_AGG with ORDER BY
 db.selectFrom("users")
-  .selectExpr(stringAgg(col.name, ", ", [{ expr: col.name, direction: "ASC" }]), "names")
+  .select({ names: stringAgg(col.name, ", ", [{ expr: col.name, direction: "ASC" }]) })
   .toSQL()
 // STRING_AGG("name", ', ' ORDER BY "name" ASC)
 
 // ARRAY_AGG
-db.selectFrom("users").selectExpr(arrayAgg(col.id), "ids").toSQL()
+db.selectFrom("users")
+  .select({ ids: arrayAgg(col.id) })
+  .toSQL()
 ```
 
 ---
@@ -500,8 +515,7 @@ import { over, rowNumber, rank, denseRank, lag, lead, ntile, count, sum } from "
 
 // ROW_NUMBER
 db.selectFrom("employees")
-  .selectExpr(
-    over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary", "DESC")),
+  .select({ DESC: over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary" })),
     "rn",
   )
   .toSQL()
@@ -753,7 +767,7 @@ sql`SELECT ${sql.ref("id")} FROM ${sql.table("users", "public")}`
 
 // In queries
 db.selectFrom("users")
-  .selectExpr(sql`CURRENT_DATE`, "today")
+  .select({ today: sql`CURRENT_DATE` })
   .toSQL()
 ```
 
@@ -768,7 +782,9 @@ db.selectFrom("users")
   .toSQL()
 
 // In SELECT
-db.selectFrom("users").selectExpr(rawExpr<number>("EXTRACT(YEAR FROM created_at)"), "year").toSQL()
+db.selectFrom("users")
+  .select({ year: rawExpr<number>("EXTRACT(YEAR FROM created_at)") })
+  .toSQL()
 ```
 
 ---

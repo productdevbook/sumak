@@ -41,10 +41,49 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     this._compile = compile
   }
 
-  /** Select specific columns. Narrows O. */
-  select<K extends keyof O & string>(...cols: K[]): TypedSelectBuilder<DB, TB, Pick<O, K>> {
+  /**
+   * Select specific columns or aliased expressions.
+   *
+   * Two forms, both supported in a single method:
+   *
+   * ```ts
+   * // Column names (narrows output row)
+   * db.selectFrom("users").select("id", "name")
+   * // → SELECT "id", "name" FROM "users"
+   *
+   * // Aliased expressions (object form — alias on the left)
+   * db.selectFrom("users").select({ total: count(), upperName: str.upper(col.name) })
+   * // → SELECT count() AS "total", UPPER("name") AS "upperName" FROM "users"
+   * ```
+   *
+   * The two forms can be chained: `.select("id", "name").select({ total: count() })`.
+   */
+  select<K extends keyof O & string>(...cols: K[]): TypedSelectBuilder<DB, TB, Pick<O, K>>
+  select<A extends Record<string, Expression<any>>>(
+    aliased: A,
+  ): TypedSelectBuilder<
+    DB,
+    TB,
+    O & { [K in keyof A]: A[K] extends Expression<infer T> ? T : never }
+  >
+  select(...args: unknown[]): any {
+    // Aliased-expression object form: single arg, plain object.
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0])
+    ) {
+      let builder = this._builder
+      for (const [alias, expr] of Object.entries(args[0] as Record<string, Expression<any>>)) {
+        const node = unwrap(expr as Expression<any>)
+        builder = builder.columns(aliasExpr(node, alias))
+      }
+      return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
+    }
+    // Column-name form.
     return new TypedSelectBuilder(
-      this._builder.columns(...cols),
+      this._builder.columns(...(args as string[])),
       this._table,
       this._printer,
       this._compile,
@@ -92,32 +131,19 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     )
   }
 
-  /** Select with Expression<T> for computed columns. */
+  /** @deprecated — use `.select(alias, expr)` via `.select({ [alias]: expr })`. */
   selectExpr<Alias extends string, T>(
     expr: Expression<T>,
     alias: Alias,
   ): TypedSelectBuilder<DB, TB, O & Record<Alias, T>> {
-    const node = unwrap(expr)
-    const aliased = aliasExpr(node, alias)
-    return new TypedSelectBuilder(
-      this._builder.columns(aliased),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return (this as any).select({ [alias]: expr })
   }
 
-  /** Select multiple aliased expressions at once. */
+  /** @deprecated — use `.select({ ...aliased })`. Same contract. */
   selectExprs<Aliases extends Record<string, Expression<any>>>(
     exprs: Aliases,
   ): TypedSelectBuilder<DB, TB, O & { [K in keyof Aliases]: any }> {
-    let builder = this._builder
-    for (const [alias, expr] of Object.entries(exprs)) {
-      const node = unwrap(expr as Expression<any>)
-      const aliased = aliasExpr(node, alias)
-      builder = builder.columns(aliased)
-    }
-    return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
+    return (this as any).select(exprs)
   }
 
   /** DISTINCT */

@@ -51,21 +51,39 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * SET columns from an object. All keys optional (Updateable).
+   * SET columns. Accepts either raw values (auto-parameterized) or
+   * Expression<T> — mix them freely in a single object:
+   *
+   * ```ts
+   * db.update("users").set({
+   *   name: "Alice",                           // value → $1
+   *   updated_at: fn("CURRENT_TIMESTAMP", []),  // expression → inline SQL
+   * })
+   * ```
    */
-  set(values: Updateable<DB[TB]>): TypedUpdateBuilder<DB, TB> {
+  set(values: {
+    [K in keyof Updateable<DB[TB]>]?: Updateable<DB[TB]>[K] | Expression<any>
+  }): TypedUpdateBuilder<DB, TB> {
     let builder = this._builder
     for (const [col, val] of Object.entries(values as Record<string, unknown>)) {
-      if (val !== undefined) {
+      if (val === undefined) continue
+      // If the value has the Expression shape ({ node: ExpressionNode }),
+      // unwrap it; otherwise auto-parameterize.
+      if (
+        typeof val === "object" &&
+        val !== null &&
+        "node" in (val as any) &&
+        typeof (val as any).node === "object"
+      ) {
+        builder = builder.set(col, unwrap(val as Expression<any>))
+      } else {
         builder = builder.set(col, param(0, val))
       }
     }
     return this._with(builder)
   }
 
-  /**
-   * SET a single column with an expression.
-   */
+  /** @deprecated — use `.set({ [column]: expr })` instead. */
   setExpr(column: keyof DB[TB] & string, value: Expression<any>): TypedUpdateBuilder<DB, TB> {
     return this._with(this._builder.set(column, unwrap(value)))
   }
@@ -87,20 +105,49 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * RETURNING specific columns. Accumulates across chained calls —
-   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
-   * Use `.returningAll()` to reset to `RETURNING *`.
+   * RETURNING columns or aliased expressions.
+   *
+   * ```ts
+   * db.update("users").set(...).where(...).returning("id", "name")
+   * db.update("users").set(...).where(...).returning({ newName: col("name") })
+   * ```
+   *
+   * Accumulates across chained calls — use `.returningAll()` to reset.
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
-  ): TypedUpdateReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
+  ): TypedUpdateReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>>
+  returning<A extends Record<string, Expression<any>>>(
+    aliased: A,
+  ): TypedUpdateReturningBuilder<
+    DB,
+    TB,
+    SelectRow<DB, TB> & { [K in keyof A]: A[K] extends Expression<infer T> ? T : never }
+  >
+  returning(...args: unknown[]): any {
     const existing = this._builder.build().returning
-    const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
+    let exprs: ExpressionNode[]
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0])
+    ) {
+      exprs = Object.entries(args[0] as Record<string, Expression<any>>).map(([alias, expr]) => ({
+        type: "aliased_expr" as const,
+        expr: unwrap(expr as Expression<any>),
+        alias,
+      }))
+    } else {
+      exprs = (args as string[]).map((c) => ({ type: "column_ref" as const, column: c }))
+    }
     return new TypedUpdateReturningBuilder(
       new UpdateBuilder({
         ...this._builder.build(),
         returning: [...existing, ...exprs],
       }),
+      this._printer,
+      this._compile,
     )
   }
 
@@ -113,6 +160,8 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
         ...this._builder.build(),
         returning: [star()],
       }),
+      this._printer,
+      this._compile,
     )
   }
 
@@ -186,9 +235,19 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
 export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, _R> {
   /** @internal */
   readonly _builder: UpdateBuilder
+  /** @internal */
+  _printer?: Printer
+  /** @internal */
+  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
 
-  constructor(builder: UpdateBuilder) {
+  constructor(
+    builder: UpdateBuilder,
+    printer?: Printer,
+    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+  ) {
     this._builder = builder
+    this._printer = printer
+    this._compile = compile
   }
 
   build(): UpdateNode {
@@ -197,5 +256,14 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, _R> {
 
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** Run through the full compile pipeline (plugins, hooks, normalize, optimize, print). */
+  toSQL(): CompiledQuery {
+    if (this._compile) return this._compile(this.build())
+    if (!this._printer) {
+      throw new Error("toSQL() requires a printer. Use db.update() to construct the builder.")
+    }
+    return this._printer.print(this.build())
   }
 }

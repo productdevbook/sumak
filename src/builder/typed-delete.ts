@@ -62,20 +62,49 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * RETURNING specific columns. Accumulates across chained calls —
-   * `.returning("id").returning("name")` → `RETURNING "id", "name"`.
-   * Use `.returningAll()` to reset to `RETURNING *`.
+   * RETURNING columns or aliased expressions.
+   *
+   * ```ts
+   * db.deleteFrom("users").where(...).returning("id", "name")
+   * db.deleteFrom("users").where(...).returning({ deletedId: col("id") })
+   * ```
+   *
+   * Accumulates across chained calls — use `.returningAll()` to reset.
    */
   returning<K extends keyof DB[TB] & string>(
     ...cols: K[]
-  ): TypedDeleteReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>> {
+  ): TypedDeleteReturningBuilder<DB, TB, Pick<SelectRow<DB, TB>, K>>
+  returning<A extends Record<string, Expression<any>>>(
+    aliased: A,
+  ): TypedDeleteReturningBuilder<
+    DB,
+    TB,
+    SelectRow<DB, TB> & { [K in keyof A]: A[K] extends Expression<infer T> ? T : never }
+  >
+  returning(...args: unknown[]): any {
     const existing = this._builder.build().returning
-    const exprs: ExpressionNode[] = cols.map((c) => ({ type: "column_ref" as const, column: c }))
+    let exprs: ExpressionNode[]
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0])
+    ) {
+      exprs = Object.entries(args[0] as Record<string, Expression<any>>).map(([alias, expr]) => ({
+        type: "aliased_expr" as const,
+        expr: unwrap(expr as Expression<any>),
+        alias,
+      }))
+    } else {
+      exprs = (args as string[]).map((c) => ({ type: "column_ref" as const, column: c }))
+    }
     return new TypedDeleteReturningBuilder(
       new DeleteBuilder({
         ...this._builder.build(),
         returning: [...existing, ...exprs],
       }),
+      this._printer,
+      this._compile,
     )
   }
 
@@ -88,6 +117,8 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
         ...this._builder.build(),
         returning: [star()],
       }),
+      this._printer,
+      this._compile,
     )
   }
 
@@ -148,9 +179,19 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
 export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, _R> {
   /** @internal */
   readonly _builder: DeleteBuilder
+  /** @internal */
+  _printer?: Printer
+  /** @internal */
+  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
 
-  constructor(builder: DeleteBuilder) {
+  constructor(
+    builder: DeleteBuilder,
+    printer?: Printer,
+    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+  ) {
     this._builder = builder
+    this._printer = printer
+    this._compile = compile
   }
 
   build(): DeleteNode {
@@ -159,5 +200,14 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, _R> {
 
   compile(printer: Printer): CompiledQuery {
     return printer.print(this.build())
+  }
+
+  /** Run through the full compile pipeline (plugins, hooks, normalize, optimize, print). */
+  toSQL(): CompiledQuery {
+    if (this._compile) return this._compile(this.build())
+    if (!this._printer) {
+      throw new Error("toSQL() requires a printer. Use db.deleteFrom() to construct the builder.")
+    }
+    return this._printer.print(this.build())
   }
 }
