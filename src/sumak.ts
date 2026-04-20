@@ -1,4 +1,6 @@
+import type { DDLNode } from "./ast/ddl-nodes.ts"
 import type { ASTNode } from "./ast/nodes.ts"
+import type { TclNode } from "./ast/tcl-nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
 import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
 import { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
@@ -27,6 +29,7 @@ import type { HookName, SumakHooks } from "./plugin/hooks.ts"
 import { PluginManager } from "./plugin/plugin-manager.ts"
 import type { SumakPlugin } from "./plugin/types.ts"
 import { DDLPrinter } from "./printer/ddl.ts"
+import { TclPrinter } from "./printer/tcl.ts"
 import type { Printer } from "./printer/types.ts"
 import type { ColumnBuilder } from "./schema/column.ts"
 import type { SelectRow } from "./schema/types.ts"
@@ -249,9 +252,18 @@ export class Sumak<DB> {
    * AST → Plugin transform → Hooks → Normalize (NbE) → Optimize (rewrite rules) → Print → Plugin query transform → Hooks
    * ```
    */
-  compile(node: ASTNode): CompiledQuery {
+  compile(node: ASTNode | DDLNode | TclNode): CompiledQuery {
+    // Route TCL nodes directly — no plugins, hooks, normalize, or optimize apply.
+    if (typeof node.type === "string" && node.type.startsWith("tcl_")) {
+      return new TclPrinter(this._dialect.name).print(node as TclNode)
+    }
+    // Route DDL nodes directly — same reasoning.
+    if (isDDLNode(node)) {
+      return new DDLPrinter(this._dialect.name).print(node as DDLNode)
+    }
+
     // 1. Plugin AST transform
-    let ast = this._plugins.transformNode(node)
+    let ast = this._plugins.transformNode(node as ASTNode)
 
     // 2. Type-specific before hooks
     const table = this._extractTableName(ast)
@@ -392,20 +404,39 @@ export class Sumak<DB> {
   }
 
   private _extractTableName(node: ASTNode): string | undefined {
-    switch (node.type) {
-      case "select":
-        return node.from?.type === "table_ref" ? node.from.name : undefined
-      case "insert":
-        return node.table.name
-      case "update":
-        return node.table.name
-      case "delete":
-        return node.table.name
-      case "merge":
-        return node.target.name
-      default:
-        return undefined
-    }
+    return _extractTableName(node)
+  }
+}
+
+const DDL_NODE_TYPES = new Set<string>([
+  "create_table",
+  "alter_table",
+  "drop_table",
+  "create_index",
+  "drop_index",
+  "create_view",
+  "drop_view",
+  "truncate_table",
+])
+
+function isDDLNode(node: { type: string }): boolean {
+  return DDL_NODE_TYPES.has(node.type)
+}
+
+function _extractTableName(node: ASTNode): string | undefined {
+  switch (node.type) {
+    case "select":
+      return node.from?.type === "table_ref" ? node.from.name : undefined
+    case "insert":
+      return node.table.name
+    case "update":
+      return node.table.name
+    case "delete":
+      return node.table.name
+    case "merge":
+      return node.target.name
+    default:
+      return undefined
   }
 }
 
