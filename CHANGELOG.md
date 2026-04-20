@@ -51,7 +51,7 @@
 
 ### Experimental
 
-- **SQL:2023 Part 16 (SQL/PGQ) spike** — `db.graphTable(name).match\`...\`.columns({...}).as(...)` + `db.selectFromGraph(g)`. Emits standard `FROM GRAPH_TABLE(graph MATCH ... COLUMNS (...))` today on all dialects. Apache AGE routing (`FROM cypher(...)`), multi-pattern joins, quantified patterns, and path variables are deferred to follow-up PRs. Design doc: `/tmp/pgq-spike.md`. See `GraphTableBuilder`, `GraphTableNode`, `GraphPatternNode`, `GraphColumnNode`. Marked `@experimental` — the surface may change.
+- **SQL:2023 Part 16 (SQL/PGQ) spike** — `db.graphTable(name).match\`...\`.columns({...}).as(...)`+`db.selectFromGraph(g)`. Emits standard `FROM GRAPH_TABLE(graph MATCH ... COLUMNS (...))` today on all dialects. Apache AGE routing (`FROM cypher(...)`), multi-pattern joins, quantified patterns, and path variables are deferred to follow-up PRs. Design doc: `/tmp/pgq-spike.md`. See `GraphTableBuilder`, `GraphTableNode`, `GraphPatternNode`, `GraphColumnNode`. Marked `@experimental` — the surface may change.
 
 ### Rationale
 

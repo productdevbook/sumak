@@ -523,6 +523,16 @@ export class BasePrinter implements Printer {
   protected _inlineGraphPattern(pattern: import("../ast/graph-nodes.ts").GraphPatternNode): string {
     const token = "\x00SUMAK_GRAPH_PARAM\x00"
     const pieces = pattern.pattern.split(token)
+    // Defensive: if the user's literal pattern text contained the
+    // internal sentinel, the split produces too many pieces and we'd
+    // misalign params silently. Very unlikely (null bytes around a
+    // reserved identifier) but the failure mode is data corruption.
+    if (pieces.length !== pattern.paramValues.length + 1) {
+      throw new Error(
+        "GraphPatternNode: pattern text contains the internal SUMAK_GRAPH_PARAM sentinel — " +
+          "cannot safely substitute parameters. Please report this at the sumak issue tracker.",
+      )
+    }
     let result = pieces[0] ?? ""
     for (let i = 0; i < pattern.paramValues.length; i++) {
       this.params.push(pattern.paramValues[i])

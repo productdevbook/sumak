@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { mssqlDialect } from "../../src/dialect/mssql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { serial } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
@@ -44,6 +45,18 @@ describe("SQL/PGQ spike — db.graphTable().match().columns().toSQL()", () => {
     expect(() => db.graphTable("social").columns({ x: "p.name" }).build()).toThrow(
       /requires a \.match/,
     )
+  })
+
+  it("MSSQL throws UnsupportedDialectFeatureError instead of emitting invalid GRAPH_TABLE SQL", () => {
+    const msdb = sumak({
+      dialect: mssqlDialect(),
+      tables: { _unused: { id: serial() } } as any,
+    })
+    const g = msdb
+      .graphTable("social")
+      .match`(p:Person)-[:FOLLOWS]->(f:Person)`
+      .columns({ name: "p.name" })
+    expect(() => msdb.selectFromGraph(g).select("name").toSQL()).toThrow(/GRAPH_TABLE/)
   })
 
   it("top-level where() is emitted between MATCH and COLUMNS", () => {

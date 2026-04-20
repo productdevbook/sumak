@@ -95,6 +95,15 @@ export class MssqlPrinter extends BasePrinter {
     return parts.join(" ")
   }
 
+  protected override printGraphTable(
+    _node: import("../ast/graph-nodes.ts").GraphTableNode,
+  ): string {
+    throw new UnsupportedDialectFeatureError(
+      "mssql",
+      "SQL:2023 GRAPH_TABLE (MSSQL has its own node/edge MATCH() graph syntax — not the SQL/PGQ standard)",
+    )
+  }
+
   protected override printInsert(node: InsertNode): string {
     if (node.onConflict) {
       throw new UnsupportedDialectFeatureError(
