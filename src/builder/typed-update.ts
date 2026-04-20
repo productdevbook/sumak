@@ -1,5 +1,5 @@
 import { param, star } from "../ast/expression.ts"
-import type { ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
+import type { ASTNode, ExplainNode, ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { isExpression, unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -17,21 +17,24 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   /** @internal */
   readonly _builder: UpdateBuilder
   /** @internal */
-  _printer?: Printer
+  readonly _printer?: Printer
   /** @internal */
-  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
+  readonly _compile?: (node: ASTNode) => CompiledQuery
 
-  constructor(table: TB & string) {
-    this._builder = new UpdateBuilder().table(table)
+  constructor(
+    table: TB & string,
+    printer?: Printer,
+    compile?: (node: ASTNode) => CompiledQuery,
+    builder?: UpdateBuilder,
+  ) {
+    this._builder = builder ?? new UpdateBuilder().table(table)
+    this._printer = printer
+    this._compile = compile
   }
 
   /** @internal */
   private _with(builder: UpdateBuilder): TypedUpdateBuilder<DB, TB> {
-    const t = new TypedUpdateBuilder<DB, TB>("" as TB & string)
-    ;(t as any)._builder = builder
-    ;(t as any)._printer = this._printer
-    ;(t as any)._compile = this._compile
-    return t
+    return new TypedUpdateBuilder<DB, TB>("" as TB & string, this._printer, this._compile, builder)
   }
 
   /**
@@ -231,7 +234,7 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     analyze?: boolean
     format?: "TEXT" | "JSON" | "YAML" | "XML"
   }): ExplainBuilder {
-    const explainNode: import("../ast/nodes.ts").ExplainNode = {
+    const explainNode: ExplainNode = {
       type: "explain",
       statement: this.build(),
       analyze: options?.analyze,
@@ -245,14 +248,14 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, _R> {
   /** @internal */
   readonly _builder: UpdateBuilder
   /** @internal */
-  _printer?: Printer
+  readonly _printer?: Printer
   /** @internal */
-  _compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery
+  readonly _compile?: (node: ASTNode) => CompiledQuery
 
   constructor(
     builder: UpdateBuilder,
     printer?: Printer,
-    compile?: (node: import("../ast/nodes.ts").ASTNode) => CompiledQuery,
+    compile?: (node: ASTNode) => CompiledQuery,
   ) {
     this._builder = builder
     this._printer = printer

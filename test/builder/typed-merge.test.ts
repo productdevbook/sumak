@@ -26,7 +26,11 @@ const printer = db.printer()
 describe("TypedMergeBuilder", () => {
   it("builds MERGE with whenMatchedThenUpdate", () => {
     const q = db
-      .mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
       .whenMatchedThenUpdate({ name: "updated" })
     const r = q.compile(printer)
     expect(r.sql).toContain("MERGE INTO")
@@ -37,7 +41,11 @@ describe("TypedMergeBuilder", () => {
 
   it("builds MERGE with whenNotMatchedThenInsert", () => {
     const q = db
-      .mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
       .whenNotMatchedThenInsert({ name: "Alice", email: "a@b.com" })
     const r = q.compile(printer)
     expect(r.sql).toContain("WHEN NOT MATCHED THEN INSERT")
@@ -46,7 +54,11 @@ describe("TypedMergeBuilder", () => {
 
   it("builds MERGE with whenMatchedThenDelete", () => {
     const q = db
-      .mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
       .whenMatchedThenDelete()
     const r = q.compile(printer)
     expect(r.sql).toContain("WHEN MATCHED THEN DELETE")
@@ -54,7 +66,11 @@ describe("TypedMergeBuilder", () => {
 
   it("builds MERGE with multiple WHEN clauses", () => {
     const q = db
-      .mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
       .whenMatchedThenUpdate({ name: "updated" })
       .whenNotMatchedThenInsert({ name: "new", email: "n@b.com" })
     const r = q.compile(printer)
@@ -79,7 +95,11 @@ describe("TypedMergeBuilder", () => {
       },
     })
     const q = mdb
-      .mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
       .whenMatchedThenUpdate({ name: "Bob" })
       .whenNotMatchedThenInsert({ name: "Alice", email: "a@b.com" })
     const r = q.compile(mdb.printer())
@@ -119,14 +139,5 @@ describe("mergeInto() — options-object form", () => {
     expect(r.sql).toContain("USING")
     // Alias is the source name — the unaliased source appears in SQL.
     expect(r.sql).toContain('"staging"')
-  })
-
-  it("legacy 4-arg positional form still works (deprecated)", () => {
-    const q = db
-      .mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
-      .whenMatchedThenUpdate({ name: "x" })
-    const r = q.compile(printer)
-    expect(r.sql).toContain("MERGE INTO")
-    expect(r.sql).toContain('"s"')
   })
 })

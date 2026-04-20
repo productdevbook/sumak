@@ -12,7 +12,6 @@ export class CreateViewBuilder {
         type: "create_view",
         name: nameOrNode,
         schema,
-        asSelect: undefined as unknown as SelectNode,
       }
     } else {
       this.node = nameOrNode

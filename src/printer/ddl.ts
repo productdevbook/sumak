@@ -14,16 +14,27 @@ import type {
   TableConstraintNode,
   TruncateTableNode,
 } from "../ast/ddl-nodes.ts"
+import type { SelectNode } from "../ast/nodes.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { escapeStringLiteral } from "../utils/security.ts"
 
+/**
+ * Optional callback used by CREATE TABLE ... AS SELECT and CREATE VIEW ... AS
+ * to render the embedded SELECT using the dialect's BasePrinter. Without it
+ * the SELECT body falls back to a placeholder; callers using DDLPrinter
+ * through `db.generateDDL()` will always have it wired up.
+ */
+export type SelectPrinter = (node: SelectNode) => CompiledQuery
+
 export class DDLPrinter {
   private dialect: SQLDialect
   private params: unknown[] = []
+  private selectPrinter?: SelectPrinter
 
-  constructor(dialect: SQLDialect) {
+  constructor(dialect: SQLDialect, selectPrinter?: SelectPrinter) {
     this.dialect = dialect
+    this.selectPrinter = selectPrinter
   }
 
   print(node: DDLNode): CompiledQuery {
@@ -84,8 +95,7 @@ export class DDLPrinter {
 
     if (node.asSelect) {
       parts.push("AS")
-      // We'd need the base printer for SELECT, but we'll emit a placeholder
-      parts.push("(SELECT ...)")
+      parts.push(`(${this.renderSelect(node.asSelect)})`)
       return parts.join(" ")
     }
 
@@ -264,11 +274,32 @@ export class DDLPrinter {
       parts.push(`(${node.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)
     }
 
+    if (!node.asSelect) {
+      throw new Error(
+        `CREATE VIEW "${node.name}" requires an AS SELECT clause. ` +
+          "Call .asSelect(query) on the view builder before compiling.",
+      )
+    }
     parts.push("AS")
-    // View body requires SELECT printing — we'll need the base printer
-    // For now we use a simple approach
-    parts.push("SELECT ...")
+    parts.push(this.renderSelect(node.asSelect))
     return parts.join(" ")
+  }
+
+  /**
+   * Render a SELECT using the injected callback, merging its params into the
+   * DDL output. Throws if no callback was wired up — the bare string stub was
+   * a silent data-corruption bug.
+   */
+  private renderSelect(node: SelectNode): string {
+    if (!this.selectPrinter) {
+      throw new Error(
+        "DDLPrinter: CREATE TABLE ... AS SELECT / CREATE VIEW AS requires a SELECT printer. " +
+          "Use db.compileDDL()/db.generateDDL() so the dialect's printer is wired up.",
+      )
+    }
+    const rendered = this.selectPrinter(node)
+    this.params.push(...rendered.params)
+    return rendered.sql
   }
 
   private printDropView(node: DropViewNode): string {

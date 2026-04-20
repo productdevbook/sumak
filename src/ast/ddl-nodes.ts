@@ -140,7 +140,8 @@ export interface CreateViewNode {
   name: string
   schema?: string
   columns?: string[]
-  asSelect: SelectNode
+  /** Required at print time. Builder returns a node without it set; `.asSelect(...)` populates it. */
+  asSelect?: SelectNode
   orReplace?: boolean
   temporary?: boolean
   materialized?: boolean

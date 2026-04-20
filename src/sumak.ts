@@ -267,24 +267,21 @@ export class Sumak<DB> {
   }
 
   insertInto<T extends keyof DB & string>(table: T): TypedInsertBuilder<DB, T> {
-    const b = new TypedInsertBuilder<DB, T>(table)
-    ;(b as any)._printer = this._dialect.createPrinter()
-    ;(b as any)._compile = (node: ASTNode) => this.compile(node)
-    return b
+    return new TypedInsertBuilder<DB, T>(table, this._dialect.createPrinter(), (node: ASTNode) =>
+      this.compile(node),
+    )
   }
 
   update<T extends keyof DB & string>(table: T): TypedUpdateBuilder<DB, T> {
-    const b = new TypedUpdateBuilder<DB, T>(table)
-    ;(b as any)._printer = this._dialect.createPrinter()
-    ;(b as any)._compile = (node: ASTNode) => this.compile(node)
-    return b
+    return new TypedUpdateBuilder<DB, T>(table, this._dialect.createPrinter(), (node: ASTNode) =>
+      this.compile(node),
+    )
   }
 
   deleteFrom<T extends keyof DB & string>(table: T): TypedDeleteBuilder<DB, T> {
-    const b = new TypedDeleteBuilder<DB, T>(table)
-    ;(b as any)._printer = this._dialect.createPrinter()
-    ;(b as any)._compile = (node: ASTNode) => this.compile(node)
-    return b
+    return new TypedDeleteBuilder<DB, T>(table, this._dialect.createPrinter(), (node: ASTNode) =>
+      this.compile(node),
+    )
   }
 
   /**
@@ -333,14 +330,15 @@ export class Sumak<DB> {
           `  Add it in sumak({ plugins: [softDelete({ tables: ["${table}"] })] }).`,
       )
     }
-    if (!plugin._config.tables.has(table)) {
+    const cfg = plugin.getConfig()
+    if (!cfg.tables.has(table)) {
       throw new Error(
         `Table "${table}" is not configured for soft-delete.\n` +
           `  Add it to softDelete({ tables: [...] }) — currently configured: ` +
-          `[${[...plugin._config.tables].map((t) => `"${t}"`).join(", ")}].`,
+          `[${[...cfg.tables].map((t) => `"${t}"`).join(", ")}].`,
       )
     }
-    return { column: plugin._config.column, flag: plugin._config.flag }
+    return { column: cfg.column, flag: cfg.flag }
   }
 
   /**
@@ -357,7 +355,6 @@ export class Sumak<DB> {
    *   .toSQL()
    * ```
    *
-   * A legacy 4-positional-arg form is kept as a `@deprecated` overload.
    */
   mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
     target: T,
@@ -369,51 +366,10 @@ export class Sumak<DB> {
         source: { [K in keyof DB[S] & string]: Col<any> }
       }) => Expression<boolean>
     },
-  ): TypedMergeBuilder<DB, T, S>
-  /** @deprecated Use the options-object form: `mergeInto(target, { source, alias, on })`. */
-  mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
-    target: T,
-    source: S,
-    sourceAlias: string,
-    on: (proxies: {
-      target: { [K in keyof DB[T] & string]: Col<any> }
-      source: { [K in keyof DB[S] & string]: Col<any> }
-    }) => Expression<boolean>,
-  ): TypedMergeBuilder<DB, T, S>
-  mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
-    target: T,
-    sourceOrOptions:
-      | S
-      | {
-          source: S
-          alias?: string
-          on: (proxies: {
-            target: { [K in keyof DB[T] & string]: Col<any> }
-            source: { [K in keyof DB[S] & string]: Col<any> }
-          }) => Expression<boolean>
-        },
-    sourceAlias?: string,
-    on?: (proxies: {
-      target: { [K in keyof DB[T] & string]: Col<any> }
-      source: { [K in keyof DB[S] & string]: Col<any> }
-    }) => Expression<boolean>,
   ): TypedMergeBuilder<DB, T, S> {
-    let source: S
-    let alias: string
-    let onCallback: (proxies: {
-      target: { [K in keyof DB[T] & string]: Col<any> }
-      source: { [K in keyof DB[S] & string]: Col<any> }
-    }) => Expression<boolean>
-
-    if (typeof sourceOrOptions === "object" && sourceOrOptions !== null) {
-      source = sourceOrOptions.source
-      alias = sourceOrOptions.alias ?? (source as unknown as string)
-      onCallback = sourceOrOptions.on
-    } else {
-      source = sourceOrOptions as S
-      alias = sourceAlias!
-      onCallback = on!
-    }
+    const source = options.source
+    const alias = options.alias ?? (source as unknown as string)
+    const onCallback = options.on
 
     const makeProxy = (prefix: string) =>
       new Proxy(
@@ -444,9 +400,11 @@ export class Sumak<DB> {
     if (typeof node.type === "string" && node.type.startsWith("tcl_")) {
       return new TclPrinter(this._dialect.name).print(node as TclNode)
     }
-    // Route DDL nodes directly — same reasoning.
+    // Route DDL nodes directly — same reasoning. Wire in the dialect's printer
+    // so CREATE TABLE ... AS SELECT / CREATE VIEW AS can render the SELECT body.
     if (isDDLNode(node)) {
-      return new DDLPrinter(this._dialect.name).print(node as DDLNode)
+      const base = this._dialect.createPrinter()
+      return new DDLPrinter(this._dialect.name, (sel) => base.print(sel)).print(node as DDLNode)
     }
 
     // 1. Plugin AST transform
@@ -542,7 +500,8 @@ export class Sumak<DB> {
    * ```
    */
   generateDDL(options?: { ifNotExists?: boolean }): CompiledQuery[] {
-    const printer = new DDLPrinter(this._dialect.name)
+    const base = this._dialect.createPrinter()
+    const printer = new DDLPrinter(this._dialect.name, (sel) => base.print(sel))
     const results: CompiledQuery[] = []
 
     for (const [tableName, columns] of Object.entries(this._tables)) {
@@ -585,8 +544,9 @@ export class Sumak<DB> {
   }
 
   /** Compile a DDL node to SQL. */
-  compileDDL(node: import("./ast/ddl-nodes.ts").DDLNode): CompiledQuery {
-    const printer = new DDLPrinter(this._dialect.name)
+  compileDDL(node: DDLNode): CompiledQuery {
+    const base = this._dialect.createPrinter()
+    const printer = new DDLPrinter(this._dialect.name, (sel) => base.print(sel))
     return printer.print(node)
   }
 
