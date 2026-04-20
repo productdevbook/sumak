@@ -392,18 +392,19 @@ db.selectFrom("users")
 
 ### Arithmetic
 
-Arithmetic combinators live under the `op` namespace:
+Arithmetic combinators live under the `op` namespace. Use `Col` to reference
+columns, or `val()` for literal operands:
 
 ```ts
-import { op, val } from "sumak"
+import { Col, op, val } from "sumak"
 
 db.selectFrom("orders")
-  .select({ total: op.mul(col.price, col.qty) })
+  .select({ total: op.mul(new Col("price"), new Col("qty")) })
   .toSQL()
 // ("price" * "qty") AS "total"
 
 db.selectFrom("orders")
-  .select({ adjusted: op.add(col.price, val(10)) })
+  .select({ adjusted: op.add(new Col("price"), val(10)) })
   .toSQL()
 
 // op.add, op.sub, op.mul, op.div, op.mod, op.neg
