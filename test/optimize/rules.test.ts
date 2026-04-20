@@ -63,6 +63,67 @@ describe("predicatePushdown", () => {
     }
     expect(predicatePushdown.match(node)).toBe(false)
   })
+
+  it("CASE expression column refs are traced into the correct scope", () => {
+    // `CASE WHEN p.active THEN 1 ELSE 0 END = 1` references only `p`,
+    // so it should push into the `p` join's ON.
+    const caseExpr = {
+      type: "case" as const,
+      whens: [{ condition: col("active", "p"), result: lit(1) }],
+      else_: lit(0),
+    }
+    const node: SelectNode = {
+      ...createSelectNode(),
+      from: tableRef("users", "u"),
+      columns: [{ type: "star" }],
+      joins: [
+        {
+          type: "join",
+          joinType: "INNER",
+          table: tableRef("posts", "p"),
+          on: eq(col("id", "u"), col("user_id", "p")),
+        },
+      ],
+      where: eq(caseExpr, lit(1)),
+    }
+    expect(predicatePushdown.match(node)).toBe(true)
+    const result = predicatePushdown.apply(node) as SelectNode
+    expect(result.where).toBeUndefined()
+    expect((result.joins[0].on as BinaryOpNode).op).toBe("AND")
+  })
+
+  it("EXISTS subquery predicate stays in WHERE (opaque by design)", () => {
+    // A bare EXISTS(...) predicate has no outer-scope column refs visible
+    // to `collectTableRefs`; `tables.size === 0` so it stays in WHERE.
+    const existsPred = {
+      type: "exists" as const,
+      negated: false,
+      query: {
+        ...createSelectNode(),
+        from: tableRef("logs"),
+        columns: [{ type: "star" as const }],
+      },
+    }
+    const node: SelectNode = {
+      ...createSelectNode(),
+      from: tableRef("users", "u"),
+      columns: [{ type: "star" }],
+      joins: [
+        {
+          type: "join",
+          joinType: "INNER",
+          table: tableRef("posts", "p"),
+          on: eq(col("id", "u"), col("user_id", "p")),
+        },
+      ],
+      where: existsPred,
+    }
+    // Matches because join(s) exist and where is present; but no push happens.
+    if (predicatePushdown.match(node)) {
+      const result = predicatePushdown.apply(node) as SelectNode
+      expect(result.where).toBeDefined() // still in WHERE, not pushed
+    }
+  })
 })
 
 describe("subqueryFlattening", () => {
