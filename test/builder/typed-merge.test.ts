@@ -88,3 +88,45 @@ describe("TypedMergeBuilder", () => {
     expect(r.sql).toContain("@p")
   })
 })
+
+describe("mergeInto() — options-object form", () => {
+  it("builds MERGE with { source, alias, on }", () => {
+    const q = db
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "updated" })
+      .whenNotMatchedThenInsert({ name: "Alice", email: "a@b.com" })
+    const r = q.compile(printer)
+    expect(r.sql).toContain("MERGE INTO")
+    expect(r.sql).toContain("USING")
+    expect(r.sql).toContain('"s"')
+    expect(r.sql).toContain("WHEN MATCHED THEN UPDATE SET")
+    expect(r.sql).toContain("WHEN NOT MATCHED THEN INSERT")
+  })
+
+  it("alias defaults to source table name when omitted", () => {
+    const q = db
+      .mergeInto("users", {
+        source: "staging",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "x" })
+    const r = q.compile(printer)
+    expect(r.sql).toContain("MERGE INTO")
+    expect(r.sql).toContain("USING")
+    // Alias is the source name — the unaliased source appears in SQL.
+    expect(r.sql).toContain('"staging"')
+  })
+
+  it("legacy 4-arg positional form still works (deprecated)", () => {
+    const q = db
+      .mergeInto("users", "staging", "s", ({ target, source }) => target.id.eq(source.id))
+      .whenMatchedThenUpdate({ name: "x" })
+    const r = q.compile(printer)
+    expect(r.sql).toContain("MERGE INTO")
+    expect(r.sql).toContain('"s"')
+  })
+})
