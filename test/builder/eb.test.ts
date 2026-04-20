@@ -6,6 +6,7 @@ import {
   case_,
   cast,
   coalesce,
+  Col,
   count,
   exists,
   jsonRef,
@@ -229,10 +230,20 @@ describe("Clean callback API", () => {
   })
 
   describe("aggregate functions", () => {
-    it("count()", () => {
+    it("count() — no argument emits COUNT(*)", () => {
       const q = db.selectFrom("users").select({ total: count() })
       const r = q.compile(p)
       expect(r.sql).toContain("COUNT(*)")
+    })
+
+    it("count(col) — argument emits COUNT(<col>), not COUNT(*)", () => {
+      // Semantically distinct from COUNT(*) — COUNT(col) skips nulls.
+      // Previously the overload was missing and any extra argument was
+      // silently dropped, always yielding COUNT(*).
+      const q = db.selectFrom("users").select({ total: count(new Col("name")) })
+      const r = q.compile(p)
+      expect(r.sql).toContain('COUNT("name")')
+      expect(r.sql).not.toContain("COUNT(*)")
     })
 
     it("sum()", () => {
