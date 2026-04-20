@@ -20,6 +20,7 @@ import type {
   FullTextSearchNode,
   FunctionCallNode,
   JsonAccessNode,
+  LiteralNode,
   OrderByNode,
   SelectNode,
   TupleNode,
@@ -52,6 +53,21 @@ function rhsNode<T>(value: CmpArg<T>): ExpressionNode {
   return autoParam(value)
 }
 
+/**
+ * True when the RHS of a comparison is semantically `null` — either the
+ * raw JS value or a wrapped `val(null)` / `Expression<null>` whose
+ * underlying node is a literal `NULL`. Used by `Col.eq()` / `Col.neq()`
+ * to auto-lower to `IS NULL` / `IS NOT NULL` (SQL's three-valued logic
+ * makes `col = NULL` always UNKNOWN — it never matches).
+ */
+function isNullRhs<T>(value: CmpArg<T>): boolean {
+  if (value === null) return true
+  if (value instanceof Col) return false
+  if (!isExpression(value)) return false
+  const node = (value as Expression<T>).node
+  return node.type === "literal" && (node as LiteralNode).value === null
+}
+
 export class Col<T> {
   /** @internal */
   readonly _node: ExpressionNode
@@ -64,21 +80,22 @@ export class Col<T> {
   /**
    * `=` — accepts raw value, another Col, or Expression.
    *
-   * Passing `null` auto-lowers to `IS NULL` because `col = NULL` always
-   * evaluates to `UNKNOWN` in SQL three-valued logic and never matches.
-   * This is a footgun every ORM eventually works around; we do it at
-   * the builder level so the emitted SQL matches user intent.
+   * Passing `null` (either as a raw value or `val(null)`) auto-lowers to
+   * `IS NULL` because `col = NULL` always evaluates to `UNKNOWN` in SQL
+   * three-valued logic and never matches. This is a footgun every ORM
+   * eventually works around; we do it at the builder level so the
+   * emitted SQL matches user intent.
    */
   eq(value: CmpArg<T>): Expression<boolean> {
-    if (value === null) {
+    if (isNullRhs(value)) {
       return wrap({ type: "is_null", expr: this._node, negated: false })
     }
     return wrap(binOp("=", this._node, rhsNode(value)))
   }
 
-  /** `!=` — passing `null` auto-lowers to `IS NOT NULL` (same reason as `.eq(null)`). */
+  /** `!=` — `null` / `val(null)` auto-lowers to `IS NOT NULL` (same reason as `.eq(null)`). */
   neq(value: CmpArg<T>): Expression<boolean> {
-    if (value === null) {
+    if (isNullRhs(value)) {
       return wrap({ type: "is_null", expr: this._node, negated: true })
     }
     return wrap(binOp("!=", this._node, rhsNode(value)))
