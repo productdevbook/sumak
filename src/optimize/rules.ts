@@ -207,7 +207,43 @@ function collectTableRefs(expr: ExpressionNode, refs: Set<string>): void {
       break
     case "function_call":
       for (const a of expr.args) collectTableRefs(a, refs)
+      if (expr.filter) collectTableRefs(expr.filter, refs)
       break
+    case "case":
+      if (expr.operand) collectTableRefs(expr.operand, refs)
+      for (const w of expr.whens) {
+        collectTableRefs(w.condition, refs)
+        collectTableRefs(w.result, refs)
+      }
+      if (expr.else_) collectTableRefs(expr.else_, refs)
+      break
+    case "json_access":
+      collectTableRefs(expr.expr, refs)
+      break
+    case "aliased_expr":
+      collectTableRefs(expr.expr, refs)
+      break
+    case "full_text_search":
+      for (const c of expr.columns) collectTableRefs(c, refs)
+      collectTableRefs(expr.query, refs)
+      break
+    case "tuple":
+      for (const e of expr.elements) collectTableRefs(e, refs)
+      break
+    case "array_expr":
+      for (const e of expr.elements) collectTableRefs(e, refs)
+      break
+    case "window_function":
+      collectTableRefs(expr.fn, refs)
+      for (const p of expr.partitionBy) collectTableRefs(p, refs)
+      for (const o of expr.orderBy) collectTableRefs(o.expr, refs)
+      break
+    // Intentionally not recursed: `subquery`, `exists` — they scope their
+    // own FROM/JOIN graph, so any column_refs inside belong to that scope,
+    // not the outer WHERE's. Treating them as opaque keeps the pushdown
+    // conservative (false negative: predicate stays in WHERE, which is
+    // always safe; vs. false positive: pushes into an ON clause of the
+    // wrong scope, which would be a bug).
   }
 }
 
