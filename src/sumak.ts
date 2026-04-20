@@ -12,6 +12,7 @@ import {
   DropViewBuilder,
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
+import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
 import { Col } from "./builder/eb.ts"
 import { SelectBuilder } from "./builder/select.ts"
 import { RestoreBuilder, SoftDeleteBuilder } from "./builder/soft-delete.ts"
@@ -147,6 +148,31 @@ export class Sumak<DB> {
       this._dialect.createPrinter(),
       (node: ASTNode) => this.compile(node),
     )
+  }
+
+  /**
+   * Scope every unqualified table reference in chained builder calls to
+   * the given schema. Returns a proxy with the same builder API that
+   * prefixes table names with `"<schema>."` when they don't already
+   * contain a dot.
+   *
+   * ```ts
+   * db.withSchema("tenant_42")
+   *   .selectFrom("users")       // → FROM "tenant_42"."users"
+   *   .select("id")
+   *   .toSQL()
+   *
+   * // Fully-qualified names are left alone:
+   * db.withSchema("tenant_42").selectFrom("audit.logs")
+   * // → FROM "audit"."logs"
+   * ```
+   *
+   * The scope is request-local: the `db` instance itself is unchanged,
+   * and any other query started from `db` (not the returned proxy) uses
+   * the default schema.
+   */
+  withSchema(schema: string): ScopedSumak<DB> {
+    return new ScopedSumak<DB>(this, schema)
   }
 
   /**
@@ -596,5 +622,57 @@ export class SchemaBuilder {
 
   truncateTable(table: string, schema?: string): TruncateTableBuilder {
     return new TruncateTableBuilder(table, schema)
+  }
+
+  createSchema(name: string): CreateSchemaBuilder {
+    return new CreateSchemaBuilder(name)
+  }
+
+  dropSchema(name: string): DropSchemaBuilder {
+    return new DropSchemaBuilder(name)
+  }
+}
+
+/**
+ * Scope-limited view of a Sumak instance — returned by `db.withSchema()`.
+ * Prefixes unqualified table names with the configured schema before
+ * delegating to the parent instance. Fully-qualified dotted names
+ * (`"audit.logs"`) are left alone.
+ */
+export class ScopedSumak<DB> {
+  constructor(
+    private readonly _db: Sumak<DB>,
+    private readonly _schema: string,
+  ) {}
+
+  private _qualify<T extends keyof DB & string>(table: T): string {
+    return table.includes(".") ? table : `${this._schema}.${table}`
+  }
+
+  selectFrom<T extends keyof DB & string>(
+    table: T,
+    alias?: string,
+  ): TypedSelectBuilder<DB, T, SelectRow<DB, T>> {
+    return this._db.selectFrom(this._qualify(table) as T, alias)
+  }
+
+  insertInto<T extends keyof DB & string>(table: T): TypedInsertBuilder<DB, T> {
+    return this._db.insertInto(this._qualify(table) as T)
+  }
+
+  update<T extends keyof DB & string>(table: T): TypedUpdateBuilder<DB, T> {
+    return this._db.update(this._qualify(table) as T)
+  }
+
+  deleteFrom<T extends keyof DB & string>(table: T): TypedDeleteBuilder<DB, T> {
+    return this._db.deleteFrom(this._qualify(table) as T)
+  }
+
+  softDelete<T extends keyof DB & string>(table: T): SoftDeleteBuilder<DB, T> {
+    return this._db.softDelete(this._qualify(table) as T)
+  }
+
+  restore<T extends keyof DB & string>(table: T): RestoreBuilder<DB, T> {
+    return this._db.restore(this._qualify(table) as T)
   }
 }

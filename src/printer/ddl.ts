@@ -48,7 +48,29 @@ export class DDLPrinter {
         return this.printDropView(node)
       case "truncate_table":
         return this.printTruncateTable(node)
+      case "create_schema":
+        return this.printCreateSchema(node)
+      case "drop_schema":
+        return this.printDropSchema(node)
     }
+  }
+
+  private printCreateSchema(node: import("../ast/ddl-nodes.ts").CreateSchemaNode): string {
+    const parts = ["CREATE SCHEMA"]
+    if (node.ifNotExists) parts.push("IF NOT EXISTS")
+    parts.push(quoteIdentifier(node.name, this.dialect))
+    if (node.authorization) {
+      parts.push("AUTHORIZATION", quoteIdentifier(node.authorization, this.dialect))
+    }
+    return parts.join(" ")
+  }
+
+  private printDropSchema(node: import("../ast/ddl-nodes.ts").DropSchemaNode): string {
+    const parts = ["DROP SCHEMA"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(quoteIdentifier(node.name, this.dialect))
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
   }
 
   private printCreateTable(node: CreateTableNode): string {

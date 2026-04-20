@@ -9,6 +9,7 @@ import type {
   TableRefNode,
 } from "../ast/nodes.ts"
 import { createInsertNode } from "../ast/nodes.ts"
+import { parseTableRef } from "../utils/table-ref.ts"
 
 export class InsertBuilder {
   private node: InsertNode
@@ -20,7 +21,7 @@ export class InsertBuilder {
   }
 
   into(table: string | TableRefNode): InsertBuilder {
-    const ref: TableRefNode = typeof table === "string" ? { type: "table_ref", name: table } : table
+    const ref: TableRefNode = typeof table === "string" ? parseTableRef(table) : table
     return new InsertBuilder({ ...this.node, table: ref }, this.paramIndex)
   }
 

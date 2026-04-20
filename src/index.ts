@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Core ──────────────────────────────────────────────────────────────────
-export { sumak, Sumak } from "./sumak.ts"
+export { sumak, Sumak, ScopedSumak } from "./sumak.ts"
 export type { SumakConfig } from "./sumak.ts"
 
 // ─── Dialects ──────────────────────────────────────────────────────────────
@@ -162,7 +162,7 @@ export type {
 } from "./ast/nodes.ts"
 
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
-export type { DDLNode } from "./ast/ddl-nodes.ts"
+export type { DDLNode, CreateSchemaNode, DropSchemaNode } from "./ast/ddl-nodes.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"
