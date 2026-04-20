@@ -467,14 +467,16 @@ db.selectFrom("users")
 
 ### PostgreSQL Array Operators
 
-Array operators live under the `arr` namespace:
+Array operators live under the `arr` namespace. The left-hand side is a
+column reference (via the callback proxy); only the array literal needs
+`unsafeRawExpr`:
 
 ```ts
 import { arr, unsafeRawExpr } from "sumak"
 
-.where(() => arr.contains(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql']")))    // @>
-.where(() => arr.containedBy(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY[...]")))   // <@
-.where(() => arr.overlaps(unsafeRawExpr("tags"), unsafeRawExpr("ARRAY['sql']")))    // &&
+.where(({ tags }) => arr.contains(tags, unsafeRawExpr("ARRAY['sql']")))    // @>
+.where(({ tags }) => arr.containedBy(tags, unsafeRawExpr("ARRAY[...]")))   // <@
+.where(({ tags }) => arr.overlaps(tags, unsafeRawExpr("ARRAY['sql']")))    // &&
 ```
 
 ---
@@ -806,6 +808,14 @@ db.selectFrom("users")
 ```
 
 ### `unsafeRawExpr()` escape hatch
+
+> ⚠️ **Warning:** `unsafeRawExpr` embeds its string argument directly into
+> the emitted SQL with **no validation or parameterization**. Never pass
+> user input — doing so opens a SQL injection vector. Reserve this for
+> constant strings (column names, SQL keywords, `ARRAY[...]` literals).
+> For a dynamic function call with parameterized arguments, prefer
+> `unsafeSqlFn(name, ...args)` which only lets you pick the function
+> name while still parameterizing the args.
 
 ```ts
 import { unsafeRawExpr } from "sumak"
