@@ -55,7 +55,7 @@ describe("$if() conditional query building", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", age: 30 })
-      .$if(withConflict, (qb) => qb.onConflictDoNothing("id"))
+      .$if(withConflict, (qb) => qb.onConflict({ columns: ["id"], do: "nothing" }))
       .compile(p)
     expect(q.sql).toContain("ON CONFLICT")
   })

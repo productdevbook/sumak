@@ -23,7 +23,7 @@ describe("onConflictDoUpdateSet (plain object)", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "a@b.com" })
-      .onConflictDoUpdateSet(["email"], { name: "Alice Updated" })
+      .onConflict({ columns: ["email"], do: { update: { name: "Alice Updated" } } })
       .compile(p)
     expect(q.sql).toContain("ON CONFLICT")
     expect(q.sql).toContain("DO UPDATE SET")
@@ -34,7 +34,7 @@ describe("onConflictDoUpdateSet (plain object)", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "a@b.com" })
-      .onConflictDoUpdateSet(["email"], { name: "Bob", email: "b@b.com" })
+      .onConflict({ columns: ["email"], do: { update: { name: "Bob", email: "b@b.com" } } })
       .compile(p)
     expect(q.sql).toContain("DO UPDATE SET")
     expect(q.params).toContain("Bob")
@@ -45,7 +45,10 @@ describe("onConflictDoUpdateSet (plain object)", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "a@b.com" })
-      .onConflictDoUpdate(["email"], [{ column: "name", value: val("Updated") }])
+      .onConflict({
+        columns: ["email"],
+        do: { update: [{ column: "name", value: val("Updated") }] },
+      })
       .compile(p)
     expect(q.sql).toContain("DO UPDATE SET")
   })

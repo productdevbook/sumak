@@ -669,7 +669,7 @@ const activeCte = db
 db.selectFrom("users").with("active_users", activeCte).toSQL()
 
 // Recursive CTE
-db.selectFrom("categories").with("tree", recursiveQuery, true).toSQL()
+db.selectFrom("categories").with("tree", recursiveQuery, { recursive: true }).toSQL()
 ```
 
 ---
@@ -791,29 +791,34 @@ db.selectFrom("users")
 
 ## ON CONFLICT / Upsert
 
+A single `.onConflict({ ... })` method handles every PostgreSQL conflict scenario. Exactly one of `columns` or `constraint` is required; `do` picks the action.
+
 ```ts
-// PostgreSQL: ON CONFLICT DO NOTHING
+// ON CONFLICT (email) DO NOTHING
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
-  .onConflictDoNothing("email")
+  .onConflict({ columns: ["email"], do: "nothing" })
   .toSQL()
 
-// ON CONFLICT DO UPDATE (with Expression)
+// ON CONFLICT (email) DO UPDATE — with Expression values
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
-  .onConflictDoUpdate(["email"], [{ column: "name", value: val("Updated") }])
+  .onConflict({
+    columns: ["email"],
+    do: { update: [{ column: "name", value: val("Updated") }] },
+  })
   .toSQL()
 
-// ON CONFLICT DO UPDATE (with plain object — auto-parameterized)
+// ON CONFLICT (email) DO UPDATE — with plain object (auto-parameterized)
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
-  .onConflictDoUpdateSet(["email"], { name: "Alice Updated" })
+  .onConflict({ columns: ["email"], do: { update: { name: "Alice Updated" } } })
   .toSQL()
 
-// ON CONFLICT ON CONSTRAINT
+// ON CONFLICT ON CONSTRAINT name DO NOTHING
 db.insertInto("users")
   .values({ name: "Alice", email: "a@b.com" })
-  .onConflictConstraintDoNothing("users_email_key")
+  .onConflict({ constraint: "users_email_key", do: "nothing" })
   .toSQL()
 
 // MySQL: ON DUPLICATE KEY UPDATE
@@ -850,15 +855,17 @@ db.mergeInto("users", {
 
 ## Row Locking
 
-```ts
-db.selectFrom("users").select("id").forUpdate().toSQL() // FOR UPDATE
-db.selectFrom("users").select("id").forShare().toSQL() // FOR SHARE
-db.selectFrom("users").select("id").forNoKeyUpdate().toSQL() // FOR NO KEY UPDATE (PG)
-db.selectFrom("users").select("id").forKeyShare().toSQL() // FOR KEY SHARE (PG)
+One `.lock({ ... })` method handles every row-lock combination.
 
-// Modifiers
-db.selectFrom("users").select("id").forUpdate().skipLocked().toSQL() // SKIP LOCKED
-db.selectFrom("users").select("id").forUpdate().noWait().toSQL() // NOWAIT
+```ts
+db.selectFrom("users").select("id").lock({ mode: "update" }).toSQL() // FOR UPDATE
+db.selectFrom("users").select("id").lock({ mode: "share" }).toSQL() // FOR SHARE
+db.selectFrom("users").select("id").lock({ mode: "no_key_update" }).toSQL() // FOR NO KEY UPDATE (PG)
+db.selectFrom("users").select("id").lock({ mode: "key_share" }).toSQL() // FOR KEY SHARE (PG)
+
+// Modifiers (mutually exclusive — both at once throws)
+db.selectFrom("users").select("id").lock({ mode: "update", skipLocked: true }).toSQL() // SKIP LOCKED
+db.selectFrom("users").select("id").lock({ mode: "update", noWait: true }).toSQL() // NOWAIT
 ```
 
 ---

@@ -108,8 +108,12 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
     return this._with(this._builder.whenNotMatchedInsert(columns, values, condExpr))
   }
 
-  with(name: string, query: SelectNode, recursive = false): TypedMergeBuilder<DB, Target, Source> {
-    return this._with(this._builder.with(name, query, recursive))
+  with(
+    name: string,
+    query: SelectNode,
+    options?: { recursive?: boolean },
+  ): TypedMergeBuilder<DB, Target, Source> {
+    return this._with(this._builder.with(name, query, options?.recursive === true))
   }
 
   build(): MergeNode {

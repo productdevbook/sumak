@@ -135,8 +135,12 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   }
 
   /** WITH (CTE) */
-  with(name: string, query: SelectNode, recursive = false): TypedDeleteBuilder<DB, TB> {
-    return this._with(this._builder.with(name, query, recursive))
+  with(
+    name: string,
+    query: SelectNode,
+    options?: { recursive?: boolean },
+  ): TypedDeleteBuilder<DB, TB> {
+    return this._with(this._builder.with(name, query, options?.recursive === true))
   }
 
   /** Conditionally apply a transformation. */

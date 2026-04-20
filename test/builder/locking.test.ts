@@ -21,37 +21,45 @@ const p = db.printer()
 
 describe("Row locking", () => {
   it("FOR UPDATE", () => {
-    const q = db.selectFrom("users").select("id").forUpdate().compile(p)
+    const q = db.selectFrom("users").select("id").lock({ mode: "update" }).compile(p)
     expect(q.sql).toContain("FOR UPDATE")
   })
 
   it("FOR SHARE", () => {
-    const q = db.selectFrom("users").select("id").forShare().compile(p)
+    const q = db.selectFrom("users").select("id").lock({ mode: "share" }).compile(p)
     expect(q.sql).toContain("FOR SHARE")
   })
 
   it("FOR NO KEY UPDATE", () => {
-    const q = db.selectFrom("users").select("id").forNoKeyUpdate().compile(p)
+    const q = db.selectFrom("users").select("id").lock({ mode: "no_key_update" }).compile(p)
     expect(q.sql).toContain("FOR NO KEY UPDATE")
   })
 
   it("FOR KEY SHARE", () => {
-    const q = db.selectFrom("users").select("id").forKeyShare().compile(p)
+    const q = db.selectFrom("users").select("id").lock({ mode: "key_share" }).compile(p)
     expect(q.sql).toContain("FOR KEY SHARE")
   })
 
   it("FOR UPDATE NOWAIT", () => {
-    const q = db.selectFrom("users").select("id").forUpdate().noWait().compile(p)
+    const q = db.selectFrom("users").select("id").lock({ mode: "update", noWait: true }).compile(p)
     expect(q.sql).toContain("FOR UPDATE NOWAIT")
   })
 
   it("FOR UPDATE SKIP LOCKED", () => {
-    const q = db.selectFrom("users").select("id").forUpdate().skipLocked().compile(p)
+    const q = db
+      .selectFrom("users")
+      .select("id")
+      .lock({ mode: "update", skipLocked: true })
+      .compile(p)
     expect(q.sql).toContain("FOR UPDATE SKIP LOCKED")
   })
 
   it("FOR SHARE SKIP LOCKED", () => {
-    const q = db.selectFrom("users").select("id").forShare().skipLocked().compile(p)
+    const q = db
+      .selectFrom("users")
+      .select("id")
+      .lock({ mode: "share", skipLocked: true })
+      .compile(p)
     expect(q.sql).toContain("FOR SHARE SKIP LOCKED")
   })
 
@@ -60,7 +68,7 @@ describe("Row locking", () => {
       dialect: mysqlDialect(),
       tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
     })
-    const q = mydb.selectFrom("users").select("id").forUpdate().compile(mydb.printer())
+    const q = mydb.selectFrom("users").select("id").lock({ mode: "update" }).compile(mydb.printer())
     expect(q.sql).toContain("FOR UPDATE")
   })
 
@@ -69,7 +77,7 @@ describe("Row locking", () => {
       dialect: mysqlDialect(),
       tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
     })
-    const q = mydb.selectFrom("users").select("id").forShare().compile(mydb.printer())
+    const q = mydb.selectFrom("users").select("id").lock({ mode: "share" }).compile(mydb.printer())
     expect(q.sql).toContain("FOR SHARE")
   })
 
@@ -79,7 +87,7 @@ describe("Row locking", () => {
       tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
     })
     expect(() =>
-      msdb.selectFrom("users").select("id").forUpdate().compile(msdb.printer()),
+      msdb.selectFrom("users").select("id").lock({ mode: "update" }).compile(msdb.printer()),
     ).toThrow()
   })
 
@@ -89,7 +97,7 @@ describe("Row locking", () => {
       tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
     })
     expect(() =>
-      sldb.selectFrom("users").select("id").forUpdate().compile(sldb.printer()),
+      sldb.selectFrom("users").select("id").lock({ mode: "update" }).compile(sldb.printer()),
     ).toThrow()
   })
 })

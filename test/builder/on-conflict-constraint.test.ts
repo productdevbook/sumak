@@ -23,7 +23,7 @@ describe("ON CONFLICT ON CONSTRAINT", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "a@b.com" })
-      .onConflictConstraintDoNothing("users_email_key")
+      .onConflict({ constraint: "users_email_key", do: "nothing" })
       .compile(p)
     expect(q.sql).toContain("ON CONFLICT ON CONSTRAINT")
     expect(q.sql).toContain('"users_email_key"')
@@ -34,9 +34,10 @@ describe("ON CONFLICT ON CONSTRAINT", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "a@b.com" })
-      .onConflictConstraintDoUpdate("users_email_key", [
-        { column: "name", value: val("Alice Updated") },
-      ])
+      .onConflict({
+        constraint: "users_email_key",
+        do: { update: [{ column: "name", value: val("Alice Updated") }] },
+      })
       .compile(p)
     expect(q.sql).toContain("ON CONFLICT ON CONSTRAINT")
     expect(q.sql).toContain("DO UPDATE SET")
@@ -46,7 +47,7 @@ describe("ON CONFLICT ON CONSTRAINT", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "a@b.com" })
-      .onConflictDoNothing("email")
+      .onConflict({ columns: ["email"], do: "nothing" })
       .compile(p)
     expect(q.sql).toContain("ON CONFLICT")
     expect(q.sql).not.toContain("ON CONSTRAINT")
