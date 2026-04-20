@@ -13,6 +13,7 @@ import type {
 } from "../ast/nodes.ts"
 import { createSelectNode } from "../ast/nodes.ts"
 import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
+import { parseTableRef } from "../utils/table-ref.ts"
 
 export class SelectBuilder {
   private node: SelectNode
@@ -51,8 +52,8 @@ export class SelectBuilder {
 
   from(table: string | TableRefNode | SubqueryNode, alias?: string): SelectBuilder {
     if (typeof table === "string") {
-      const ref: TableRefNode = { type: "table_ref", name: table, alias }
-      return new SelectBuilder({ ...this.node, from: ref })
+      // Parse optional "schema.table" dotted form; single-part stays flat.
+      return new SelectBuilder({ ...this.node, from: parseTableRef(table, alias) })
     }
     if (alias && table.type !== "subquery") {
       return new SelectBuilder({ ...this.node, from: { ...table, alias } })

@@ -10,6 +10,7 @@ import type {
 } from "../ast/nodes.ts"
 import { createUpdateNode } from "../ast/nodes.ts"
 import type { JoinType } from "../types.ts"
+import { parseTableRef } from "../utils/table-ref.ts"
 
 export class UpdateBuilder {
   private node: UpdateNode
@@ -29,7 +30,7 @@ export class UpdateBuilder {
   }
 
   table(table: string | TableRefNode): UpdateBuilder {
-    const ref: TableRefNode = typeof table === "string" ? { type: "table_ref", name: table } : table
+    const ref: TableRefNode = typeof table === "string" ? parseTableRef(table) : table
     return new UpdateBuilder({ ...this.node, table: ref })
   }
 

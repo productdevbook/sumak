@@ -166,6 +166,24 @@ export interface TruncateTableNode {
   restartIdentity?: boolean
 }
 
+// ── CREATE SCHEMA ──
+
+export interface CreateSchemaNode {
+  type: "create_schema"
+  name: string
+  ifNotExists?: boolean
+  authorization?: string
+}
+
+// ── DROP SCHEMA ──
+
+export interface DropSchemaNode {
+  type: "drop_schema"
+  name: string
+  ifExists?: boolean
+  cascade?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -177,3 +195,5 @@ export type DDLNode =
   | CreateViewNode
   | DropViewNode
   | TruncateTableNode
+  | CreateSchemaNode
+  | DropSchemaNode
