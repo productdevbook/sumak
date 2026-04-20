@@ -5,6 +5,7 @@ import type {
   SelectNode,
   TemporalClause,
 } from "../ast/nodes.ts"
+import { QueryFlags } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -55,6 +56,33 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   selectAll(): TypedSelectBuilder<DB, TB, O> {
     return new TypedSelectBuilder(
       this._builder.allColumns(),
+      this._table,
+      this._printer,
+      this._compile,
+    )
+  }
+
+  /**
+   * Bypass the soft-delete filter for this query — includes rows where
+   * `deleted_at IS NOT NULL`. No-op when the softDelete plugin is not
+   * registered for this table.
+   */
+  includeDeleted(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      this._builder.withFlags(QueryFlags.IncludeDeleted),
+      this._table,
+      this._printer,
+      this._compile,
+    )
+  }
+
+  /**
+   * Invert the soft-delete filter for this query — returns ONLY
+   * soft-deleted rows (`deleted_at IS NOT NULL`).
+   */
+  onlyDeleted(): TypedSelectBuilder<DB, TB, O> {
+    return new TypedSelectBuilder(
+      this._builder.withFlags(QueryFlags.OnlyDeleted),
       this._table,
       this._printer,
       this._compile,

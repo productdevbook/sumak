@@ -1169,19 +1169,75 @@ const db = sumak({
 
 ### softDelete
 
+The plugin is **filter-only** — it adds `WHERE deleted_at IS NULL` to every SELECT and UPDATE on configured tables. **DELETE is left untouched**: calling `db.deleteFrom()` still performs a hard DELETE. For soft delete writes, use the explicit `db.softDelete(table)` / `db.restore(table)` builders below.
+
 ```ts
-// Mode "convert" (default) — DELETE becomes UPDATE SET deleted_at = NOW()
 const db = sumak({
-  plugins: [softDelete({ tables: ["users"], mode: "convert" })],
+  plugins: [softDelete({ tables: ["users"] })],
   ...
 })
 
-db.deleteFrom("users").where(({ id }) => id.eq(1)).toSQL()
-// UPDATE "users" SET "deleted_at" = NOW() WHERE ("id" = $1) AND ("deleted_at" IS NULL)
+db.selectFrom("users").toSQL()
+// SELECT * FROM "users" WHERE "deleted_at" IS NULL
 
-// Mode "filter" — just adds WHERE deleted_at IS NULL (no DELETE conversion)
-softDelete({ tables: ["users"], mode: "filter" })
+db.update("users").set({ name: "Bob" }).where(({ id }) => id.eq(1)).toSQL()
+// UPDATE "users" SET "name" = $1 WHERE ("id" = $2) AND "deleted_at" IS NULL
+
+// Hard delete still works — no silent rewrite:
+db.deleteFrom("users").where(({ id }) => id.eq(1)).toSQL()
+// DELETE FROM "users" WHERE ("id" = $1)
 ```
+
+#### Explicit soft delete / restore
+
+```ts
+// Soft delete — race-safe (AND deleted_at IS NULL prevents double-toggle):
+db.softDelete("users")
+  .where(({ id }) => id.eq(1))
+  .toSQL()
+// UPDATE "users" SET "deleted_at" = NOW()
+// WHERE ("id" = $1) AND "deleted_at" IS NULL
+
+// Restore — only affects currently-deleted rows:
+db.restore("users")
+  .where(({ id }) => id.eq(1))
+  .toSQL()
+// UPDATE "users" SET "deleted_at" = NULL
+// WHERE ("id" = $1) AND "deleted_at" IS NOT NULL
+```
+
+#### Bypass with `.includeDeleted()` / `.onlyDeleted()`
+
+```ts
+db.selectFrom("users").includeDeleted().toSQL()
+// SELECT * FROM "users"   — no filter
+
+db.selectFrom("users").onlyDeleted().toSQL()
+// SELECT * FROM "users" WHERE "deleted_at" IS NOT NULL
+
+db.update("users").set({ ... }).includeDeleted().toSQL()
+// Targets deleted rows too (admin operations).
+```
+
+#### Column name & boolean flag
+
+```ts
+// Custom column:
+softDelete({ tables: ["users"], column: "removed_at" })
+
+// Boolean flag — WHERE deleted = FALSE / SET deleted = TRUE
+// Faster to index on some databases; Hibernate 6.4-style.
+softDelete({ tables: ["users"], flag: "boolean", column: "deleted" })
+```
+
+#### Caveats
+
+- ⚠ **Soft delete does not cascade.** If a user has posts, soft-deleting the user leaves posts visible. Handle cascades at the application layer or via DB triggers.
+- ⚠ **Unique constraint + soft delete**: `UNIQUE(email)` will break if you soft-delete then re-insert the same email. Use a partial unique index (sumak cannot generate it):
+  ```sql
+  CREATE UNIQUE INDEX users_email_active ON users(email) WHERE deleted_at IS NULL;
+  ```
+- `softDelete` / `restore` require the plugin to be registered for the table — they throw an explicit error otherwise.
 
 ### audit
 

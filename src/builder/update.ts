@@ -2,6 +2,7 @@ import type {
   CTENode,
   ExpressionNode,
   JoinNode,
+  QueryFlags as QueryFlagsType,
   SelectNode,
   TableRefNode,
   UpdateNode,
@@ -14,6 +15,11 @@ export class UpdateBuilder {
 
   constructor(node?: UpdateNode) {
     this.node = node ?? createUpdateNode({ type: "table_ref", name: "" })
+  }
+
+  /** Merge a QueryFlags bitmap into the underlying node. */
+  withFlags(flags: QueryFlagsType): UpdateBuilder {
+    return new UpdateBuilder({ ...this.node, flags: (this.node.flags ?? 0) | flags })
   }
 
   table(table: string | TableRefNode): UpdateBuilder {

@@ -4,6 +4,7 @@ import type {
   ExpressionNode,
   JoinNode,
   OrderByNode,
+  QueryFlags as QueryFlagsType,
   SelectNode,
   SubqueryNode,
   TableRefNode,
@@ -17,6 +18,11 @@ export class SelectBuilder {
 
   constructor(node?: SelectNode) {
     this.node = node ?? createSelectNode()
+  }
+
+  /** Merge a QueryFlags bitmap into the underlying node. */
+  withFlags(flags: QueryFlagsType): SelectBuilder {
+    return new SelectBuilder({ ...this.node, flags: (this.node.flags ?? 0) | flags })
   }
 
   columns(...cols: (string | ExpressionNode)[]): SelectBuilder {

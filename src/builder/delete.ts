@@ -3,6 +3,7 @@ import type {
   DeleteNode,
   ExpressionNode,
   JoinNode,
+  QueryFlags as QueryFlagsType,
   SelectNode,
   TableRefNode,
 } from "../ast/nodes.ts"
@@ -14,6 +15,11 @@ export class DeleteBuilder {
 
   constructor(node?: DeleteNode) {
     this.node = node ?? createDeleteNode({ type: "table_ref", name: "" })
+  }
+
+  /** Merge a QueryFlags bitmap into the underlying node. */
+  withFlags(flags: QueryFlagsType): DeleteBuilder {
+    return new DeleteBuilder({ ...this.node, flags: (this.node.flags ?? 0) | flags })
   }
 
   from(table: string | TableRefNode): DeleteBuilder {

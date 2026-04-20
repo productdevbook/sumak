@@ -295,6 +295,27 @@ export interface LockClause {
   noWait?: boolean
 }
 
+/**
+ * Bitmap flags attached to SELECT/UPDATE/DELETE nodes to carry builder
+ * intent through plugin transforms. Inspired by TypeScript-Go's `NodeFlags`:
+ * a single integer lets plugins signal state (idempotency) and users opt
+ * out of automatic rewrites (`.includeDeleted()` bypasses the soft-delete
+ * filter).
+ *
+ * Treat as internal — sumak builders set and read these; user code
+ * generally shouldn't.
+ */
+export const QueryFlags = {
+  None: 0,
+  /** User explicitly opted into seeing soft-deleted rows for this query. */
+  IncludeDeleted: 1 << 0,
+  /** User asked to see ONLY soft-deleted rows (inverse of the filter). */
+  OnlyDeleted: 1 << 1,
+  /** Plugin has already injected its soft-delete filter — don't double-apply. */
+  SoftDeleteApplied: 1 << 2,
+} as const
+export type QueryFlags = number
+
 export interface SelectNode {
   type: "select"
   distinct: boolean
@@ -311,6 +332,8 @@ export interface SelectNode {
   ctes: CTENode[]
   setOp?: { op: SetOperator; query: SelectNode }
   lock?: LockClause
+  /** @see QueryFlags */
+  flags?: QueryFlags
 }
 
 export type InsertMode =
@@ -353,6 +376,8 @@ export interface UpdateNode {
   ctes: CTENode[]
   orderBy?: OrderByNode[]
   limit?: ExpressionNode
+  /** @see QueryFlags */
+  flags?: QueryFlags
 }
 
 export interface DeleteNode {
@@ -365,6 +390,8 @@ export interface DeleteNode {
   joins: JoinNode[]
   orderBy?: OrderByNode[]
   limit?: ExpressionNode
+  /** @see QueryFlags */
+  flags?: QueryFlags
 }
 
 export interface MergeWhenMatched {
