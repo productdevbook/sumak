@@ -241,7 +241,7 @@ describe("PGlite Integration — INSERT", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "alice@example.com" })
-      .onConflictDoNothing("email")
+      .onConflict({ columns: ["email"], do: "nothing" })
       .compile(printer)
     // Should not throw
     const result = await run(q)

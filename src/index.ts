@@ -25,6 +25,7 @@ export { TypedUpdateBuilder as UpdateBuilder } from "./builder/typed-update.ts"
 export { TypedDeleteBuilder as DeleteBuilder } from "./builder/typed-delete.ts"
 export { TypedMergeBuilder as MergeBuilder } from "./builder/typed-merge.ts"
 export { SoftDeleteBuilder, RestoreBuilder } from "./builder/soft-delete.ts"
+export { ExplainBuilder } from "./builder/explain.ts"
 
 // ─── Namespaces (v0.1 API) ─────────────────────────────────────────────────
 // ast — low-level AST factories & traversal (advanced / plugin authors)

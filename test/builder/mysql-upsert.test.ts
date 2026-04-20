@@ -58,7 +58,7 @@ describe("MySQL ON DUPLICATE KEY UPDATE", () => {
     const q = pgdb
       .insertInto("users")
       .values({ name: "Alice" })
-      .onConflictDoNothing("id")
+      .onConflict({ columns: ["id"], do: "nothing" })
       .compile(pgdb.printer())
     expect(q.sql).toContain("ON CONFLICT")
   })

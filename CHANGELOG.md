@@ -25,6 +25,30 @@
   - `TypedUpdateBuilder.setExpr("col", expr)` → `.set({ col: expr })`.
   - `TypedInsertBuilder.returningExpr(expr, "alias")` → `.returning({ alias: expr })`.
 
+- **`.explain()` now returns a chainable `ExplainBuilder`** instead of a bare `{ build, compile }` object. Call `.toSQL()` / `.compile(printer)` / `.build()` on the returned builder.
+
+- **Row-locking methods unified into `.lock({ ... })`.** Six methods removed:
+  - `.forUpdate()` → `.lock({ mode: "update" })`.
+  - `.forShare()` → `.lock({ mode: "share" })`.
+  - `.forNoKeyUpdate()` → `.lock({ mode: "no_key_update" })`.
+  - `.forKeyShare()` → `.lock({ mode: "key_share" })`.
+  - `.forUpdate().skipLocked()` → `.lock({ mode: "update", skipLocked: true })`.
+  - `.forUpdate().noWait()` → `.lock({ mode: "update", noWait: true })`.
+  - `skipLocked` and `noWait` cannot be set simultaneously — throws at runtime.
+
+- **`onConflict*` methods unified into `.onConflict({ ... })`.** Five methods removed:
+  - `.onConflictDoNothing(...cols)` → `.onConflict({ columns: [...], do: "nothing" })`.
+  - `.onConflictDoUpdate(cols, set)` → `.onConflict({ columns, do: { update: set } })`.
+  - `.onConflictDoUpdateSet(cols, values)` → `.onConflict({ columns, do: { update: values } })` (same object shape).
+  - `.onConflictConstraintDoNothing(name)` → `.onConflict({ constraint: name, do: "nothing" })`.
+  - `.onConflictConstraintDoUpdate(name, set)` → `.onConflict({ constraint: name, do: { update: set } })`.
+
+- **`.with(name, query, recursive = false)` is now `.with(name, query, options?)`** with `{ recursive?: boolean }`.
+  ```ts
+  // Before: .with("tree", query, true)
+  // After:  .with("tree", query, { recursive: true })
+  ```
+
 ### Rationale
 
 Each removed method had a deprecation-period covering PRs #42–#45 and was kept as a

@@ -12,6 +12,7 @@ import type { Nullable, SelectRow } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
 import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
+import { ExplainBuilder } from "./explain.ts"
 import { SelectBuilder } from "./select.ts"
 
 /**
@@ -346,65 +347,62 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     )
   }
 
-  /** FOR UPDATE */
-  forUpdate(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.forUpdate(),
-      this._table,
-      this._printer,
-      this._compile,
-    )
-  }
-
-  /** FOR SHARE */
-  forShare(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.forShare(),
-      this._table,
-      this._printer,
-      this._compile,
-    )
-  }
-
-  /** FOR NO KEY UPDATE (PG) */
-  forNoKeyUpdate(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.forNoKeyUpdate(),
-      this._table,
-      this._printer,
-      this._compile,
-    )
-  }
-
-  /** FOR KEY SHARE (PG) */
-  forKeyShare(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.forKeyShare(),
-      this._table,
-      this._printer,
-      this._compile,
-    )
-  }
-
-  /** SKIP LOCKED — must follow a FOR lock mode */
-  skipLocked(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.skipLocked(),
-      this._table,
-      this._printer,
-      this._compile,
-    )
-  }
-
-  /** NOWAIT — must follow a FOR lock mode */
-  noWait(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(this._builder.noWait(), this._table, this._printer, this._compile)
+  /**
+   * Row-level lock — unified form for `FOR UPDATE` / `FOR SHARE` /
+   * `FOR NO KEY UPDATE` / `FOR KEY SHARE` with optional `SKIP LOCKED`
+   * or `NOWAIT` modifiers.
+   *
+   * ```ts
+   * .lock({ mode: "update" })                          // FOR UPDATE
+   * .lock({ mode: "share" })                           // FOR SHARE
+   * .lock({ mode: "no_key_update" })                   // FOR NO KEY UPDATE (PG)
+   * .lock({ mode: "key_share" })                       // FOR KEY SHARE (PG)
+   * .lock({ mode: "update", skipLocked: true })        // FOR UPDATE SKIP LOCKED
+   * .lock({ mode: "update", noWait: true })            // FOR UPDATE NOWAIT
+   * ```
+   *
+   * `skipLocked` and `noWait` are mutually exclusive — setting both
+   * throws. The old `forUpdate() / forShare() / forNoKeyUpdate() /
+   * forKeyShare() / skipLocked() / noWait()` methods have been removed
+   * in favor of this single options-object form.
+   */
+  lock(options: {
+    mode: "update" | "share" | "no_key_update" | "key_share"
+    skipLocked?: boolean
+    noWait?: boolean
+  }): TypedSelectBuilder<DB, TB, O> {
+    if (options.skipLocked === true && options.noWait === true) {
+      throw new Error(".lock() cannot set both skipLocked and noWait — SQL only allows one.")
+    }
+    const mode = options.mode
+    let builder: SelectBuilder
+    switch (mode) {
+      case "update":
+        builder = this._builder.forUpdate()
+        break
+      case "share":
+        builder = this._builder.forShare()
+        break
+      case "no_key_update":
+        builder = this._builder.forNoKeyUpdate()
+        break
+      case "key_share":
+        builder = this._builder.forKeyShare()
+        break
+    }
+    if (options.skipLocked) builder = builder.skipLocked()
+    if (options.noWait) builder = builder.noWait()
+    return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
   }
 
   /** WITH (CTE) */
-  with(name: string, query: SelectNode, recursive = false): TypedSelectBuilder<DB, TB, O> {
+  with(
+    name: string,
+    query: SelectNode,
+    options?: { recursive?: boolean },
+  ): TypedSelectBuilder<DB, TB, O> {
     return new TypedSelectBuilder(
-      this._builder.with(name, query, recursive),
+      this._builder.with(name, query, options?.recursive === true),
       this._table,
       this._printer,
       this._compile,
@@ -775,22 +773,22 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return this._printer.print(this.build())
   }
 
-  /** EXPLAIN this query. */
-  explain(options?: { analyze?: boolean; format?: "TEXT" | "JSON" | "YAML" | "XML" }): {
-    build(): ExplainNode
-    compile(printer: Printer): CompiledQuery
-  } {
-    const node = this.build()
+  /**
+   * Wrap this query in `EXPLAIN` — returns a chainable `ExplainBuilder` with
+   * the same `build()` / `compile(printer)` / `toSQL()` surface as DML
+   * builders. No more awkward `{ build, compile }` destructuring.
+   */
+  explain(options?: {
+    analyze?: boolean
+    format?: "TEXT" | "JSON" | "YAML" | "XML"
+  }): ExplainBuilder {
     const explainNode: ExplainNode = {
       type: "explain",
-      statement: node,
+      statement: this.build(),
       analyze: options?.analyze,
       format: options?.format,
     }
-    return {
-      build: () => explainNode,
-      compile: (printer: Printer) => printer.print(explainNode),
-    }
+    return new ExplainBuilder(explainNode, this._printer, this._compile)
   }
 }
 

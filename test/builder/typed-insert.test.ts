@@ -56,7 +56,7 @@ describe("TypedInsertBuilder", () => {
     const q = db
       .insertInto("users")
       .values({ name: "Alice", email: "a@b.com" })
-      .onConflictDoNothing("email")
+      .onConflict({ columns: ["email"], do: "nothing" })
     expect(q.compile(printer).sql).toContain("DO NOTHING")
   })
 

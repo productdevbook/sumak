@@ -90,7 +90,7 @@ describe("TypedSelectBuilder", () => {
   })
 
   it("builds SELECT FOR UPDATE", () => {
-    const q = db.selectFrom("users").forUpdate()
+    const q = db.selectFrom("users").lock({ mode: "update" })
     expect(q.compile(printer).sql).toContain("FOR UPDATE")
   })
 

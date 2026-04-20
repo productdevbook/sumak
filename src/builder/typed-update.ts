@@ -7,6 +7,7 @@ import type { SelectRow, Updateable } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
 import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
+import { ExplainBuilder } from "./explain.ts"
 import { UpdateBuilder } from "./update.ts"
 
 /**
@@ -189,8 +190,12 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /** WITH (CTE) */
-  with(name: string, query: SelectNode, recursive = false): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.with(name, query, recursive))
+  with(
+    name: string,
+    query: SelectNode,
+    options?: { recursive?: boolean },
+  ): TypedUpdateBuilder<DB, TB> {
+    return this._with(this._builder.with(name, query, options?.recursive === true))
   }
 
   /** Conditionally apply a transformation. */
@@ -221,22 +226,18 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     return this._printer.print(this.build())
   }
 
-  /** EXPLAIN this query. */
-  explain(options?: { analyze?: boolean; format?: "TEXT" | "JSON" | "YAML" | "XML" }): {
-    build(): import("../ast/nodes.ts").ExplainNode
-    compile(printer: Printer): CompiledQuery
-  } {
-    const node = this.build()
+  /** EXPLAIN — returns a chainable ExplainBuilder. */
+  explain(options?: {
+    analyze?: boolean
+    format?: "TEXT" | "JSON" | "YAML" | "XML"
+  }): ExplainBuilder {
     const explainNode: import("../ast/nodes.ts").ExplainNode = {
       type: "explain",
-      statement: node,
+      statement: this.build(),
       analyze: options?.analyze,
       format: options?.format,
     }
-    return {
-      build: () => explainNode,
-      compile: (p: Printer) => p.print(explainNode),
-    }
+    return new ExplainBuilder(explainNode, this._printer, this._compile)
   }
 }
 

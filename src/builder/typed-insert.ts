@@ -6,6 +6,7 @@ import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Insertable, SelectRow } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
+import { ExplainBuilder } from "./explain.ts"
 import { InsertBuilder } from "./insert.ts"
 
 /**
@@ -138,59 +139,75 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /**
-   * ON CONFLICT DO NOTHING.
+   * Unified ON CONFLICT handler.
+   *
+   * Exactly one of `columns` or `constraint` is required — they correspond
+   * to `ON CONFLICT (col, ...)` vs. `ON CONFLICT ON CONSTRAINT name`.
+   * The `do` field picks the action:
+   *
+   * - `"nothing"` → `DO NOTHING`.
+   * - `{ update: Partial<Insertable<DB[TB]>> }` → `DO UPDATE SET col = $N` (auto-parameterized values).
+   * - `{ update: [{ column, value: Expression }] }` → raw Expression values.
+   *
+   * ```ts
+   * // ON CONFLICT (email) DO NOTHING
+   * .onConflict({ columns: ["email"], do: "nothing" })
+   *
+   * // ON CONFLICT (email) DO UPDATE SET name = $1
+   * .onConflict({ columns: ["email"], do: { update: { name: "Alice Updated" } } })
+   *
+   * // ON CONFLICT ON CONSTRAINT users_email_key DO UPDATE SET name = expr
+   * .onConflict({
+   *   constraint: "users_email_key",
+   *   do: { update: [{ column: "name", value: val("X") }] },
+   * })
+   * ```
    */
-  onConflictDoNothing(...columns: (keyof DB[TB] & string)[]): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.onConflictDoNothing(...columns))
-  }
-
-  /**
-   * ON CONFLICT DO UPDATE — with Expression values.
-   */
-  onConflictDoUpdate(
-    columns: (keyof DB[TB] & string)[],
-    set: { column: keyof DB[TB] & string; value: Expression<any> }[],
-  ): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(
-      this._builder.onConflictDoUpdate(
-        columns,
-        set.map((s) => ({ column: s.column, value: unwrap(s.value) })),
-      ),
-    )
-  }
-
-  /**
-   * ON CONFLICT DO UPDATE — with plain object (auto-parameterized).
-   */
-  onConflictDoUpdateSet(
-    columns: (keyof DB[TB] & string)[],
-    values: Partial<Insertable<DB[TB]>>,
-  ): TypedInsertBuilder<DB, TB> {
-    const set: { column: string; value: ExpressionNode }[] = []
-    for (const [col, val] of Object.entries(values as Record<string, unknown>)) {
-      if (val !== undefined) {
-        set.push({ column: col, value: param(0, val) })
-      }
+  onConflict(options: {
+    columns?: (keyof DB[TB] & string)[]
+    constraint?: string
+    do:
+      | "nothing"
+      | {
+          update:
+            | Partial<Insertable<DB[TB]>>
+            | { column: keyof DB[TB] & string; value: Expression<any> }[]
+        }
+  }): TypedInsertBuilder<DB, TB> {
+    if ((options.columns == null) === (options.constraint == null)) {
+      throw new Error(".onConflict() requires exactly one of `columns` or `constraint`.")
     }
-    return this._withBuilder(this._builder.onConflictDoUpdate(columns, set))
-  }
 
-  /** ON CONFLICT ON CONSTRAINT name DO NOTHING */
-  onConflictConstraintDoNothing(constraint: string): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.onConflictConstraintDoNothing(constraint))
-  }
+    // DO NOTHING branch
+    if (options.do === "nothing") {
+      if (options.constraint) {
+        return this._withBuilder(this._builder.onConflictConstraintDoNothing(options.constraint))
+      }
+      return this._withBuilder(this._builder.onConflictDoNothing(...options.columns!))
+    }
 
-  /** ON CONFLICT ON CONSTRAINT name DO UPDATE SET ... */
-  onConflictConstraintDoUpdate(
-    constraint: string,
-    set: { column: keyof DB[TB] & string; value: Expression<any> }[],
-  ): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(
-      this._builder.onConflictConstraintDoUpdate(
-        constraint,
-        set.map((s) => ({ column: s.column, value: unwrap(s.value) })),
-      ),
-    )
+    // DO UPDATE branch — normalize `update` to the `{column, value: ExpressionNode}[]` shape.
+    const update = options.do.update
+    let set: { column: string; value: ExpressionNode }[]
+    if (Array.isArray(update)) {
+      set = update.map((s) => ({ column: s.column, value: unwrap(s.value) }))
+    } else {
+      set = Object.entries(update as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .map(([col, v]) => ({ column: col, value: param(0, v) }))
+    }
+
+    if (set.length === 0) {
+      throw new Error(
+        ".onConflict() DO UPDATE requires at least one column to update — " +
+          "empty update objects produce invalid SQL.",
+      )
+    }
+
+    if (options.constraint) {
+      return this._withBuilder(this._builder.onConflictConstraintDoUpdate(options.constraint, set))
+    }
+    return this._withBuilder(this._builder.onConflictDoUpdate(options.columns!, set))
   }
 
   /** INSERT OR IGNORE (SQLite) */
@@ -225,8 +242,12 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /** WITH (CTE) */
-  with(name: string, query: SelectNode, recursive = false): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.with(name, query, recursive))
+  with(
+    name: string,
+    query: SelectNode,
+    options?: { recursive?: boolean },
+  ): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(this._builder.with(name, query, options?.recursive === true))
   }
 
   /** Conditionally apply a transformation. */
@@ -259,22 +280,18 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     return this._printer.print(this.build())
   }
 
-  /** EXPLAIN this query. */
-  explain(options?: { analyze?: boolean; format?: "TEXT" | "JSON" | "YAML" | "XML" }): {
-    build(): import("../ast/nodes.ts").ExplainNode
-    compile(printer: Printer): CompiledQuery
-  } {
-    const node = this.build()
+  /** EXPLAIN — returns a chainable ExplainBuilder. */
+  explain(options?: {
+    analyze?: boolean
+    format?: "TEXT" | "JSON" | "YAML" | "XML"
+  }): ExplainBuilder {
     const explainNode: import("../ast/nodes.ts").ExplainNode = {
       type: "explain",
-      statement: node,
+      statement: this.build(),
       analyze: options?.analyze,
       format: options?.format,
     }
-    return {
-      build: () => explainNode,
-      compile: (p: Printer) => p.print(explainNode),
-    }
+    return new ExplainBuilder(explainNode, this._printer, this._compile)
   }
 }
 
