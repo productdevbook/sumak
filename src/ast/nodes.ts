@@ -330,7 +330,7 @@ export interface SelectNode {
   distinct: boolean
   distinctOn?: ExpressionNode[]
   columns: ExpressionNode[]
-  from?: TableRefNode | SubqueryNode
+  from?: TableRefNode | SubqueryNode | import("./graph-nodes.ts").GraphTableNode
   joins: JoinNode[]
   where?: ExpressionNode
   groupBy: ExpressionNode[]

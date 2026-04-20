@@ -46,6 +46,8 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("FROM")
       if (node.from.type === "subquery") {
         parts.push(this.printSubquery(node.from))
+      } else if (node.from.type === "graph_table") {
+        parts.push(this.printGraphTable(node.from))
       } else {
         parts.push(this.printTableRef(node.from))
       }
@@ -91,6 +93,15 @@ export class MssqlPrinter extends BasePrinter {
     }
 
     return parts.join(" ")
+  }
+
+  protected override printGraphTable(
+    _node: import("../ast/graph-nodes.ts").GraphTableNode,
+  ): string {
+    throw new UnsupportedDialectFeatureError(
+      "mssql",
+      "SQL:2023 GRAPH_TABLE (MSSQL has its own node/edge MATCH() graph syntax — not the SQL/PGQ standard)",
+    )
   }
 
   protected override printInsert(node: InsertNode): string {

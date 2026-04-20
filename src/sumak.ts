@@ -14,6 +14,7 @@ import {
 } from "./builder/ddl/drop.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
 import { Col } from "./builder/eb.ts"
+import { GraphTableBuilder, graphTable } from "./builder/graph-table.ts"
 import { SelectBuilder } from "./builder/select.ts"
 import { RestoreBuilder, SoftDeleteBuilder } from "./builder/soft-delete.ts"
 import type { SoftDeleteConfig } from "./builder/soft-delete.ts"
@@ -147,6 +148,56 @@ export class Sumak<DB> {
       table,
       this._dialect.createPrinter(),
       (node: ASTNode) => this.compile(node),
+    )
+  }
+
+  /**
+   * **Spike.** SQL:2023 Part 16 (SQL/PGQ) property-graph query entry
+   * point. Returns a `GraphTableBuilder` that emits
+   * `FROM GRAPH_TABLE(graph MATCH ... COLUMNS (...))` in standard SQL or
+   * `FROM cypher('graph', $$...$$)` on Apache AGE (PG extension — not
+   * yet wired up; coming in phase 2 of the PGQ work).
+   *
+   * ```ts
+   * const g = db.graphTable("social")
+   *   .match`(p:Person)-[:FOLLOWS]->(f:Person) WHERE p.name = ${"Alice"}`
+   *   .columns({ follower: "p.name", followee: "f.name" })
+   *   .as("g")
+   *
+   * db.selectFromGraph(g).select("follower", "followee").toSQL()
+   * ```
+   *
+   * @experimental — surface may change as the spike matures.
+   */
+  graphTable(name: string): GraphTableBuilder {
+    return graphTable(name)
+  }
+
+  /**
+   * SELECT from a `GraphTableBuilder`. Wraps the graph table in the
+   * normal SELECT pipeline so you get WHERE / ORDER BY / LIMIT / joins
+   * for free on top of the projected columns.
+   *
+   * @experimental — see `graphTable()`.
+   */
+  selectFromGraph(
+    g: GraphTableBuilder,
+  ): TypedSelectBuilder<DB, keyof DB & string, Record<string, unknown>> {
+    const node = g.build()
+    return new TypedSelectBuilder(
+      new SelectBuilder({
+        type: "select",
+        distinct: false,
+        columns: [],
+        from: node,
+        joins: [],
+        groupBy: [],
+        orderBy: [],
+        ctes: [],
+      }),
+      (node.alias ?? node.graph) as any,
+      this._dialect.createPrinter(),
+      (n: ASTNode) => this.compile(n),
     )
   }
 
