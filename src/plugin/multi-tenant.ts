@@ -116,12 +116,36 @@ export class MultiTenantPlugin implements SumakPlugin {
   private transformMerge(node: MergeNode): MergeNode {
     if (!this.isTargetTable(node.target.name)) return node
     const tenantId = this.getTenantId()
-    const qualified: ExpressionNode = {
+    let onExpr = node.on
+
+    // Target isolation: `target.tenant_id = ?`.
+    const targetQualified: ExpressionNode = {
       type: "column_ref",
       table: node.target.alias ?? node.target.name,
       column: this.column,
     }
-    const tenantMatch: ExpressionNode = eq(qualified, param(0, tenantId))
+    onExpr = and(onExpr, eq(targetQualified, param(0, tenantId)))
+
+    // Source isolation: if the source is also a tenant-aware table, match
+    // only same-tenant rows so a WHEN MATCHED UPDATE cannot copy payload
+    // from a cross-tenant source into our tenant's row.
+    if (node.source.type === "table_ref" && this.isTargetTable(node.source.name)) {
+      const sourceQualified: ExpressionNode = {
+        type: "column_ref",
+        table: node.sourceAlias,
+        column: this.column,
+      }
+      onExpr = and(onExpr, eq(sourceQualified, param(0, tenantId)))
+    } else if (node.source.type === "subquery") {
+      // Subquery source — we can't inspect its tenant handling statically.
+      // The subquery itself should have been transformed by this same
+      // plugin's `transformSelect`, which adds the tenant_id filter to
+      // its WHERE. That makes subquery sources safe *as long as the
+      // inner select is over a tenant-aware table*. We don't guard
+      // against other shapes (CTE, raw), so the author remains
+      // responsible for those.
+    }
+
     const whens = node.whens.map((w) => {
       if (w.type !== "not_matched") return w
       // INSERT branch — add tenant column + value if not already present.
@@ -135,7 +159,7 @@ export class MultiTenantPlugin implements SumakPlugin {
     })
     return {
       ...node,
-      on: and(node.on, tenantMatch),
+      on: onExpr,
       whens,
     }
   }

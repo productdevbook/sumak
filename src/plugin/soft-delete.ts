@@ -172,6 +172,9 @@ export class SoftDeletePlugin implements SumakPlugin {
    * the predicate binds to the MERGE target rather than the source.
    */
   private _transformMerge(node: MergeNode): MergeNode {
+    const flags = node.flags ?? 0
+    // Idempotent — if another pass already added the predicate, skip.
+    if (flags & QueryFlags.SoftDeleteApplied) return node
     if (!this._isTargetTable(node.target.name)) return node
     const qualified: ExpressionNode = {
       type: "column_ref",
@@ -185,6 +188,7 @@ export class SoftDeletePlugin implements SumakPlugin {
     return {
       ...node,
       on: and(node.on, aliveCond),
+      flags: flags | QueryFlags.SoftDeleteApplied,
     }
   }
 
