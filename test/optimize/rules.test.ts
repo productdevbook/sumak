@@ -83,7 +83,28 @@ describe("subqueryFlattening", () => {
     expect(result.from?.type).toBe("table_ref")
     if (result.from?.type === "table_ref") {
       expect(result.from.name).toBe("users")
+      // Outer alias must survive — callers may qualify columns as `u.col`.
+      expect(result.from.alias).toBe("u")
     }
+  })
+
+  it("does not flatten when inner FROM is itself a subquery (alias would be lost)", () => {
+    const innermost: SelectNode = {
+      ...createSelectNode(),
+      from: tableRef("users"),
+      columns: [{ type: "star" }],
+    }
+    const inner: SelectNode = {
+      ...createSelectNode(),
+      from: { type: "subquery", query: innermost, alias: "i" },
+      columns: [{ type: "star" }],
+    }
+    const outer: SelectNode = {
+      ...createSelectNode(),
+      from: { type: "subquery", query: inner, alias: "o" },
+      columns: [{ type: "star" }],
+    }
+    expect(subqueryFlattening.match(outer)).toBe(false)
   })
 
   it("does not flatten subquery with WHERE", () => {
