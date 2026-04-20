@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ─── Core ──────────────────────────────────────────────────────────────────
-export { sumak, Sumak, ScopedSumak } from "./sumak.ts"
+export { sumak, Sumak, ScopedSumak, SchemaBuilder } from "./sumak.ts"
 export type { SumakConfig } from "./sumak.ts"
 
 // ─── Dialects ──────────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ export type { GraphColumnNode, GraphPatternNode, GraphTableNode } from "./ast/gr
 // num — math functions (abs, round, greatest, …)
 // arr — PostgreSQL array operators (contains, containedBy, overlaps)
 // tx  — transaction control (begin/commit/rollback/savepoint/…)
-export { arr, ast, num, str, tx, win } from "./ns/index.ts"
+export { arr, ast, num, op, str, tx, win } from "./ns/index.ts"
 export type { BeginOptions, CommitOptions, SetTransactionOptions } from "./ns/index.ts"
 
 // ─── Expressions (core set, flat for ergonomics) ───────────────────────────
@@ -62,7 +62,26 @@ export { sql } from "./builder/sql.ts"
 export type { ColumnProxies, WhereCallback } from "./builder/eb.ts"
 
 // ─── Aggregates ────────────────────────────────────────────────────────────
-export { avg, count, max, min, sum, stringAgg, arrayAgg, jsonAgg } from "./builder/eb.ts"
+export {
+  arrayAgg,
+  avg,
+  avgDistinct,
+  count,
+  countDistinct,
+  max,
+  min,
+  stringAgg,
+  sum,
+  sumDistinct,
+  jsonAgg,
+  aggOrderBy,
+} from "./builder/eb.ts"
+
+// ─── Scalar helpers & subqueries ───────────────────────────────────────────
+export { subqueryExpr, toJson, tuple } from "./builder/eb.ts"
+
+// ─── Escape hatches — use only when no typed helper fits ───────────────────
+export { unsafeRawExpr, unsafeSqlFn } from "./builder/eb.ts"
 
 // ─── Date/time helpers ─────────────────────────────────────────────────────
 export { now, currentTimestamp } from "./builder/eb.ts"

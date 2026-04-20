@@ -192,13 +192,17 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     return this._with(this._builder.from(table))
   }
 
-  /** WITH (CTE) */
+  /**
+   * WITH (CTE). Accepts either a raw `SelectNode` or any builder with a
+   * `.build()` method (typically a `TypedSelectBuilder`).
+   */
   with(
     name: string,
-    query: SelectNode,
+    query: SelectNode | { build(): SelectNode },
     options?: { recursive?: boolean },
   ): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.with(name, query, options?.recursive === true))
+    const q = "build" in query ? query.build() : query
+    return this._with(this._builder.with(name, q, options?.recursive === true))
   }
 
   /** Conditionally apply a transformation. */

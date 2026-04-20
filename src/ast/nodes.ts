@@ -293,6 +293,13 @@ export interface LockClause {
   mode: LockMode
   skipLocked?: boolean
   noWait?: boolean
+  /**
+   * Tables to lock (PostgreSQL `FOR UPDATE OF t1, t2`). When unset, the
+   * lock applies to every row that would be returned — standard behavior.
+   * Used to avoid deadlocks in multi-table joins where only one side
+   * actually needs row-level locking.
+   */
+  of?: string[]
 }
 
 /**

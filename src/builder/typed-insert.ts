@@ -240,13 +240,17 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     return this._withBuilder(this._builder.defaultValues())
   }
 
-  /** WITH (CTE) */
+  /**
+   * WITH (CTE). Accepts either a raw `SelectNode` or any builder with a
+   * `.build()` method (typically a `TypedSelectBuilder`).
+   */
   with(
     name: string,
-    query: SelectNode,
+    query: SelectNode | { build(): SelectNode },
     options?: { recursive?: boolean },
   ): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.with(name, query, options?.recursive === true))
+    const q = "build" in query ? query.build() : query
+    return this._withBuilder(this._builder.with(name, q, options?.recursive === true))
   }
 
   /** Conditionally apply a transformation. */

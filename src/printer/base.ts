@@ -161,6 +161,9 @@ export class BasePrinter implements Printer {
 
     if (node.lock) {
       parts.push(`FOR ${node.lock.mode}`)
+      if (node.lock.of && node.lock.of.length > 0) {
+        parts.push("OF", node.lock.of.map((t) => quoteIdentifier(t, this.dialect)).join(", "))
+      }
       if (node.lock.noWait) {
         parts.push("NOWAIT")
       } else if (node.lock.skipLocked) {
