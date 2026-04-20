@@ -1,5 +1,6 @@
 import { and, binOp, col, eq, param } from "../ast/expression.ts"
 import type { ASTNode, UpdateNode } from "../ast/nodes.ts"
+import { QueryFlags } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
@@ -51,6 +52,11 @@ export class OptimisticLockPlugin implements SumakPlugin {
 
   private transformUpdate(node: UpdateNode): UpdateNode {
     if (!this.tables.has(node.table.name)) return node
+    const flags = node.flags ?? 0
+    // Idempotent — double registration or re-compile would otherwise
+    // emit `SET version = version + 1, version = version + 1` (duplicate
+    // column — PG rejects it, other dialects pick a value nondeterministic).
+    if (flags & QueryFlags.OptimisticLockApplied) return node
 
     const versionCondition = eq(col(this.column), param(0, this.getVersion()))
     const where = node.where ? and(node.where, versionCondition) : versionCondition
@@ -58,6 +64,6 @@ export class OptimisticLockPlugin implements SumakPlugin {
     const versionIncrement = binOp("+", col(this.column), { type: "literal", value: 1 })
     const set = [...node.set, { column: this.column, value: versionIncrement }]
 
-    return { ...node, set, where }
+    return { ...node, set, where, flags: flags | QueryFlags.OptimisticLockApplied }
   }
 }

@@ -426,8 +426,17 @@ export class BasePrinter implements Printer {
   }
 
   protected printRaw(node: RawNode): string {
+    // `sql` tagged templates embed interpolated values as `__PARAM_N__`
+    // sentinels in the raw SQL string. Substitute them with dialect-
+    // correct placeholders at print time, using the current `this.params`
+    // length as the base offset so raw params interleave correctly with
+    // surrounding param positions.
+    const baseIndex = this.params.length
     this.params.push(...node.params)
-    return node.sql
+    if (node.sql.indexOf("__PARAM_") === -1) return node.sql
+    return node.sql.replace(/__PARAM_(\d+)__/g, (_m, i) =>
+      formatParam(baseIndex + Number(i), this.dialect),
+    )
   }
 
   protected printSubquery(node: SubqueryNode): string {

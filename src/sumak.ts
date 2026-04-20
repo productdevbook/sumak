@@ -700,4 +700,21 @@ export class ScopedSumak<DB> {
   restore<T extends keyof DB & string>(table: T): RestoreBuilder<DB, T> {
     return this._db.restore(this._qualify(table) as T)
   }
+
+  mergeInto<T extends keyof DB & string, S extends keyof DB & string>(
+    target: T,
+    options: {
+      source: S
+      alias?: string
+      on: (proxies: {
+        target: { [K in keyof DB[T] & string]: Col<any> }
+        source: { [K in keyof DB[S] & string]: Col<any> }
+      }) => Expression<boolean>
+    },
+  ): TypedMergeBuilder<DB, T, S> {
+    return this._db.mergeInto(this._qualify(target) as T, {
+      ...options,
+      source: this._qualify(options.source) as S,
+    })
+  }
 }
