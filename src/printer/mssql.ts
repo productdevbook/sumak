@@ -174,12 +174,13 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("OUTPUT", cols.join(", "))
     }
 
-    for (const join of node.joins) {
-      parts.push(this.printJoin(join))
-    }
-
+    // MSSQL `UPDATE t SET ... FROM t INNER JOIN ... WHERE`: FROM precedes JOINs.
     if (node.from) {
       parts.push("FROM", this.printTableRef(node.from))
+    }
+
+    for (const join of node.joins) {
+      parts.push(this.printJoin(join))
     }
 
     if (node.where) {

@@ -244,7 +244,12 @@ export class Sumak<DB> {
       query: subquery.build(),
       alias,
     }
-    return new TypedSelectBuilder(new SelectBuilder().from(sub), alias as any)
+    return new TypedSelectBuilder(
+      new SelectBuilder().from(sub),
+      alias as any,
+      this._dialect.createPrinter(),
+      (n: ASTNode) => this.compile(n),
+    )
   }
 
   /**
