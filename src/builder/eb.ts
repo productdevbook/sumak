@@ -61,13 +61,26 @@ export class Col<T> {
     this._node = rawCol(column, table)
   }
 
-  /** = — accepts raw value, another Col, or Expression. */
+  /**
+   * `=` — accepts raw value, another Col, or Expression.
+   *
+   * Passing `null` auto-lowers to `IS NULL` because `col = NULL` always
+   * evaluates to `UNKNOWN` in SQL three-valued logic and never matches.
+   * This is a footgun every ORM eventually works around; we do it at
+   * the builder level so the emitted SQL matches user intent.
+   */
   eq(value: CmpArg<T>): Expression<boolean> {
+    if (value === null) {
+      return wrap({ type: "is_null", expr: this._node, negated: false })
+    }
     return wrap(binOp("=", this._node, rhsNode(value)))
   }
 
-  /** != */
+  /** `!=` — passing `null` auto-lowers to `IS NOT NULL` (same reason as `.eq(null)`). */
   neq(value: CmpArg<T>): Expression<boolean> {
+    if (value === null) {
+      return wrap({ type: "is_null", expr: this._node, negated: true })
+    }
     return wrap(binOp("!=", this._node, rhsNode(value)))
   }
 
