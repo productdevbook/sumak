@@ -774,10 +774,15 @@ export class BasePrinter implements Printer {
 function pgJsonPathSegments(path: string): string[] {
   const parts = path.split(".")
   for (const p of parts) {
-    if (p.length === 0 || /["',{}]/.test(p)) {
+    // Reject anything that could break the array-literal context:
+    //   quotes/comma/brace — direct syntax,
+    //   backslash — PG treats `\c` as an escape inside an array string,
+    //   newline/CR — upper-layer loggers and SQL sanitizers are often
+    //   line-oriented; don't let a path smuggle one through.
+    if (p.length === 0 || /["',{}\\\n\r]/.test(p)) {
       throw new Error(
-        `Invalid JSON path segment ${JSON.stringify(p)} — segments must be non-empty and ` +
-          "must not contain quote, comma, or brace characters.",
+        `Invalid JSON path segment ${JSON.stringify(p)} — segments must be non-empty ` +
+          "and must not contain quote, comma, brace, backslash, or newline characters.",
       )
     }
   }

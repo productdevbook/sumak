@@ -58,6 +58,21 @@ describe("Audit #3 regressions", () => {
       expect(r.sql).toContain("DEFAULT VALUES")
       expect(r.sql).not.toContain('"name"')
     })
+
+    it(".fromSelect(q).defaultValues() clears the INSERT...SELECT source too", async () => {
+      const db = sumak({
+        dialect: pgDialect(),
+        tables: { users: { id: serial().primaryKey(), name: text().nullable() } },
+      })
+      const { InsertBuilder } = await import("../src/builder/insert.ts")
+      const source = db.selectFrom("users").select("id", "name").build()
+      const node = new InsertBuilder().into("users").fromSelect(source).defaultValues().build()
+      expect(node.source).toBeUndefined()
+      expect(node.defaultValues).toBe(true)
+      const r = db.compile(node)
+      expect(r.sql).toContain("DEFAULT VALUES")
+      expect(r.sql).not.toContain("SELECT")
+    })
   })
 
   describe("JSON atPath / textPath emits PG {a,b,c} array literal", () => {
@@ -91,6 +106,15 @@ describe("Audit #3 regressions", () => {
       expect(() => db.selectFrom("t").select({ v: expr }).toSQL()).toThrow(
         /Invalid JSON path segment/,
       )
+    })
+
+    it("rejects backslash and newline in path segments", () => {
+      for (const bad of ["a\\b.c", "a.b\nc", "a.b\rc"]) {
+        const expr = jsonCol("data").atPath(bad).toExpression()
+        expect(() => db.selectFrom("t").select({ v: expr }).toSQL()).toThrow(
+          /Invalid JSON path segment/,
+        )
+      }
     })
   })
 
