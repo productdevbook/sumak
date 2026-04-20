@@ -392,17 +392,21 @@ db.selectFrom("users")
 
 ### Arithmetic
 
+Arithmetic combinators live under the `op` namespace:
+
 ```ts
-import { add, sub, mul, div, mod, neg } from "sumak"
+import { op, val } from "sumak"
 
 db.selectFrom("orders")
-  .select({ total: mul(col.price, col.qty) })
+  .select({ total: op.mul(col.price, col.qty) })
   .toSQL()
 // ("price" * "qty") AS "total"
 
 db.selectFrom("orders")
-  .select({ adjusted: add(col.price, val(10)) })
+  .select({ adjusted: op.add(col.price, val(10)) })
   .toSQL()
+
+// op.add, op.sub, op.mul, op.div, op.mod, op.neg
 ```
 
 ### CASE / WHEN
@@ -660,17 +664,24 @@ active.exceptAll(premium).toSQL() // EXCEPT ALL
 
 ## CTEs (WITH)
 
-```ts
-const activeCte = db
-  .selectFrom("users")
-  .where(({ active }) => active.eq(true))
-  .build()
+`.with()` accepts either a raw `SelectNode` or a builder directly — no manual
+`.build()` at the call site:
 
-db.selectFrom("users").with("active_users", activeCte).toSQL()
+```ts
+const activeUsers = db.selectFrom("users").where(({ active }) => active.eq(true))
+
+// Builder form (preferred)
+db.selectFrom("users").with("active_users", activeUsers).toSQL()
+
+// Raw SelectNode form also works
+db.selectFrom("users").with("active_users", activeUsers.build()).toSQL()
 
 // Recursive CTE
 db.selectFrom("categories").with("tree", recursiveQuery, { recursive: true }).toSQL()
 ```
+
+Available on every DML builder: `selectFrom`, `insertInto`, `update`,
+`deleteFrom`, `mergeInto`.
 
 ---
 
@@ -866,6 +877,14 @@ db.selectFrom("users").select("id").lock({ mode: "key_share" }).toSQL() // FOR K
 // Modifiers (mutually exclusive — both at once throws)
 db.selectFrom("users").select("id").lock({ mode: "update", skipLocked: true }).toSQL() // SKIP LOCKED
 db.selectFrom("users").select("id").lock({ mode: "update", noWait: true }).toSQL() // NOWAIT
+
+// Restrict the lock to specific tables in a join (PG `FOR UPDATE OF`)
+db.selectFrom("users")
+  .innerJoin("posts", ({ users, posts }) => users.id.eq(posts.userId))
+  .select("id")
+  .lock({ mode: "update", of: ["users"] })
+  .toSQL()
+// FOR UPDATE OF "users"
 ```
 
 ---
@@ -1101,10 +1120,43 @@ jsonCol<UserProfile>("profile")
 
 Pre-bake SQL at setup time. At runtime, only fill parameters — zero AST traversal.
 
-```ts
-import { placeholder, compileQuery } from "sumak"
+### `.toCompiled()` — chainable form (preferred)
 
-// Define query with named placeholders
+Every builder has a `.toCompiled<P>()` method that ends the chain and returns
+a reusable query function:
+
+```ts
+import { placeholder } from "sumak"
+
+const findUser = db
+  .selectFrom("users")
+  .select("id", "name")
+  .where(({ id }) => id.eq(placeholder("userId")))
+  .toCompiled<{ userId: number }>()
+
+findUser({ userId: 42 })
+// → { sql: 'SELECT "id", "name" FROM "users" WHERE "id" = $1', params: [42] }
+
+findUser({ userId: 99 })
+// → { sql: 'SELECT "id", "name" FROM "users" WHERE "id" = $1', params: [99] }
+
+findUser.sql // pre-baked SQL string
+
+// Also works on UPDATE / INSERT / DELETE:
+const renameUser = db
+  .update("users")
+  .set({ name: placeholder("newName") })
+  .where(({ id }) => id.eq(placeholder("id")))
+  .toCompiled<{ id: number; newName: string }>()
+```
+
+### `compileQuery()` — functional form
+
+For working with raw AST nodes:
+
+```ts
+import { compileQuery, placeholder } from "sumak"
+
 const findUser = compileQuery<{ userId: number }>(
   db
     .selectFrom("users")
@@ -1113,16 +1165,6 @@ const findUser = compileQuery<{ userId: number }>(
     .build(),
   db.printer(),
 )
-
-// Runtime — same SQL string, different params:
-findUser({ userId: 42 })
-// → { sql: 'SELECT "id", "name" FROM "users" WHERE "id" = $1', params: [42] }
-
-findUser({ userId: 99 })
-// → { sql: 'SELECT "id", "name" FROM "users" WHERE "id" = $1', params: [99] }
-
-// Inspect the pre-baked SQL
-findUser.sql // 'SELECT "id", "name" FROM "users" WHERE "id" = $1'
 ```
 
 ---
