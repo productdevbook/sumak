@@ -12,6 +12,8 @@ import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Nullable, SelectRow } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
+import type { CompiledQueryFn } from "./compiled.ts"
+import { compileQuery } from "./compiled.ts"
 import type { ColumnProxies, WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
@@ -803,6 +805,29 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       format: options?.format,
     }
     return new ExplainBuilder(explainNode, this._printer, this._compile)
+  }
+
+  /**
+   * Partial-evaluate this query: compile the SQL once and return a function
+   * that fills `placeholder()` slots at call time. Subsequent calls skip the
+   * AST walk — only parameters change.
+   *
+   * ```ts
+   * const findUser = db.selectFrom("users")
+   *   .where(({ id }) => id.eq(placeholder("userId")))
+   *   .toCompiled<{ userId: number }>()
+   *
+   * findUser({ userId: 1 })   // { sql: '...', params: [1] }
+   * findUser({ userId: 99 })  // same SQL, different params
+   * ```
+   */
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
+    if (!this._printer) {
+      throw new Error(
+        "toCompiled() requires a printer. Use db.selectFrom() to construct the builder.",
+      )
+    }
+    return compileQuery<P>(this.build(), this._printer, this._compile)
   }
 }
 

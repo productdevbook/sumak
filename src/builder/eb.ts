@@ -542,56 +542,55 @@ export function over<T>(
   const node: WindowFunctionNode = {
     type: "window_function",
     fn: fnNode,
-    partitionBy: builder._partitionBy,
-    orderBy: builder._orderBy,
-    frame: builder._frame,
+    ...builder._build(),
   }
   return wrap<T>(node)
 }
 
 export class WindowBuilder {
-  /** @internal */
-  _partitionBy: ExpressionNode[] = []
-  /** @internal */
-  _orderBy: OrderByNode[] = []
-  /** @internal */
-  _frame: FrameSpec | undefined
+  #partitionBy: ExpressionNode[] = []
+  #orderBy: OrderByNode[] = []
+  #frame: FrameSpec | undefined
 
   partitionBy(...columns: string[]): WindowBuilder {
     const b = new WindowBuilder()
-    b._partitionBy = columns.map((c) => rawCol(c))
-    b._orderBy = this._orderBy
-    b._frame = this._frame
+    b.#partitionBy = columns.map((c) => rawCol(c))
+    b.#orderBy = this.#orderBy
+    b.#frame = this.#frame
     return b
   }
 
   orderBy(column: string, direction: "ASC" | "DESC" = "ASC"): WindowBuilder {
     const b = new WindowBuilder()
-    b._partitionBy = this._partitionBy
-    b._orderBy = [...this._orderBy, { expr: rawCol(column), direction }]
-    b._frame = this._frame
+    b.#partitionBy = this.#partitionBy
+    b.#orderBy = [...this.#orderBy, { expr: rawCol(column), direction }]
+    b.#frame = this.#frame
     return b
   }
 
   rows(start: FrameBound, end?: FrameBound): WindowBuilder {
-    return this._withFrame("ROWS", start, end)
+    return this.#withFrame("ROWS", start, end)
   }
 
   range(start: FrameBound, end?: FrameBound): WindowBuilder {
-    return this._withFrame("RANGE", start, end)
+    return this.#withFrame("RANGE", start, end)
   }
 
   groups(start: FrameBound, end?: FrameBound): WindowBuilder {
-    return this._withFrame("GROUPS", start, end)
+    return this.#withFrame("GROUPS", start, end)
   }
 
-  /** @internal */
-  _withFrame(kind: FrameKind, start: FrameBound, end?: FrameBound): WindowBuilder {
+  #withFrame(kind: FrameKind, start: FrameBound, end?: FrameBound): WindowBuilder {
     const b = new WindowBuilder()
-    b._partitionBy = this._partitionBy
-    b._orderBy = this._orderBy
-    b._frame = { kind, start, end }
+    b.#partitionBy = this.#partitionBy
+    b.#orderBy = this.#orderBy
+    b.#frame = { kind, start, end }
     return b
+  }
+
+  /** @internal — consumed by `over()` to project the builder's state. */
+  _build(): { partitionBy: ExpressionNode[]; orderBy: OrderByNode[]; frame?: FrameSpec } {
+    return { partitionBy: this.#partitionBy, orderBy: this.#orderBy, frame: this.#frame }
   }
 }
 
