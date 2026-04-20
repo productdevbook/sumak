@@ -2,10 +2,12 @@ import type {
   AlterTableNode,
   ColumnDefinitionNode,
   CreateIndexNode,
+  CreateSchemaNode,
   CreateTableNode,
   CreateViewNode,
   DDLNode,
   DropIndexNode,
+  DropSchemaNode,
   DropTableNode,
   DropViewNode,
   ForeignKeyConstraintNode,
@@ -55,7 +57,7 @@ export class DDLPrinter {
     }
   }
 
-  private printCreateSchema(node: import("../ast/ddl-nodes.ts").CreateSchemaNode): string {
+  private printCreateSchema(node: CreateSchemaNode): string {
     const parts = ["CREATE SCHEMA"]
     if (node.ifNotExists) parts.push("IF NOT EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))
@@ -65,7 +67,7 @@ export class DDLPrinter {
     return parts.join(" ")
   }
 
-  private printDropSchema(node: import("../ast/ddl-nodes.ts").DropSchemaNode): string {
+  private printDropSchema(node: DropSchemaNode): string {
     const parts = ["DROP SCHEMA"]
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))

@@ -19,9 +19,18 @@ export function parseTableRef(identifier: string, alias?: string): TableRefNode 
   }
   const schema = identifier.slice(0, dotIndex)
   const name = identifier.slice(dotIndex + 1)
-  // Guard against malformed input: multiple dots or empty parts.
-  if (name.includes(".") || schema.length === 0 || name.length === 0) {
+  // Multi-dot identifiers (e.g. "a.b.c") are ambiguous at this level;
+  // treat the whole thing as a single flat name and let the user pass a
+  // pre-built TableRefNode if they really need three-level qualification.
+  if (name.includes(".")) {
     return { type: "table_ref", name: identifier, alias }
+  }
+  // Empty parts (leading or trailing dot, or ".") are programmer errors
+  // that would otherwise silently produce broken SQL like `"users."`.
+  if (schema.length === 0 || name.length === 0) {
+    throw new Error(
+      `Invalid table identifier: "${identifier}" — schema and name must both be non-empty.`,
+    )
   }
   return { type: "table_ref", name, schema, alias }
 }

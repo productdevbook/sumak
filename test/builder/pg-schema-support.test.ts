@@ -88,6 +88,34 @@ describe("db.withSchema() — scoped proxy", () => {
   })
 })
 
+describe("parseTableRef edge cases", () => {
+  it('trailing dot "users." throws (would otherwise emit broken SQL)', () => {
+    expect(() => (db.selectFrom as any)("users.")).toThrow(/Invalid table identifier/i)
+  })
+
+  it('leading dot ".users" throws', () => {
+    expect(() => (db.selectFrom as any)(".users")).toThrow(/Invalid table identifier/i)
+  })
+
+  it('just a dot "." throws', () => {
+    expect(() => (db.selectFrom as any)(".")).toThrow(/Invalid table identifier/i)
+  })
+})
+
+describe("db.compile() routes CREATE/DROP SCHEMA through DDLPrinter", () => {
+  it("compile() on a CreateSchemaNode emits the DDL SQL (not a crash)", () => {
+    const node = db.schema.createSchema("audit").ifNotExists().build()
+    const q = db.compile(node)
+    expect(q.sql).toBe('CREATE SCHEMA IF NOT EXISTS "audit"')
+  })
+
+  it("compile() on a DropSchemaNode emits the DDL SQL (not a crash)", () => {
+    const node = db.schema.dropSchema("audit").ifExists().cascade().build()
+    const q = db.compile(node)
+    expect(q.sql).toBe('DROP SCHEMA IF EXISTS "audit" CASCADE')
+  })
+})
+
 describe("CREATE SCHEMA / DROP SCHEMA DDL", () => {
   it("CREATE SCHEMA name", () => {
     const q = db.compileDDL(db.schema.createSchema("audit").build())

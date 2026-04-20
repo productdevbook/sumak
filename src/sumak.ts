@@ -553,6 +553,8 @@ const DDL_NODE_TYPES = new Set<string>([
   "create_view",
   "drop_view",
   "truncate_table",
+  "create_schema",
+  "drop_schema",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
