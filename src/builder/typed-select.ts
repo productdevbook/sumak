@@ -74,14 +74,24 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       args[0] !== null &&
       !Array.isArray(args[0])
     ) {
+      const aliased = args[0] as Record<string, Expression<any>>
+      const entries = Object.entries(aliased)
+      if (entries.length === 0) {
+        throw new Error(
+          ".select({}) requires at least one aliased expression — empty object is invalid.",
+        )
+      }
       let builder = this._builder
-      for (const [alias, expr] of Object.entries(args[0] as Record<string, Expression<any>>)) {
+      for (const [alias, expr] of entries) {
         const node = unwrap(expr as Expression<any>)
         builder = builder.columns(aliasExpr(node, alias))
       }
       return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
     }
     // Column-name form.
+    if (args.length === 0) {
+      throw new Error(".select() requires at least one column or expression.")
+    }
     return new TypedSelectBuilder(
       this._builder.columns(...(args as string[])),
       this._table,
@@ -131,7 +141,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     )
   }
 
-  /** @deprecated — use `.select(alias, expr)` via `.select({ [alias]: expr })`. */
+  /** @deprecated Use `.select({ [alias]: expr })` — same result, one canonical method. */
   selectExpr<Alias extends string, T>(
     expr: Expression<T>,
     alias: Alias,
@@ -139,7 +149,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return (this as any).select({ [alias]: expr })
   }
 
-  /** @deprecated — use `.select({ ...aliased })`. Same contract. */
+  /** @deprecated Use `.select(aliased)` — same object shape, one canonical method. */
   selectExprs<Aliases extends Record<string, Expression<any>>>(
     exprs: Aliases,
   ): TypedSelectBuilder<DB, TB, O & { [K in keyof Aliases]: any }> {

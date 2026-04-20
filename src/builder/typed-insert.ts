@@ -91,6 +91,18 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     SelectRow<DB, TB> & { [K in keyof A]: A[K] extends Expression<infer T> ? T : never }
   >
   returning(...args: unknown[]): any {
+    if (args.length === 0) {
+      throw new Error(".returning() requires at least one column or expression.")
+    }
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0]) &&
+      Object.keys(args[0] as object).length === 0
+    ) {
+      throw new Error(".returning({}) requires at least one aliased expression.")
+    }
     const existing = this._builder.build().returning
     let exprs: ExpressionNode[]
     if (

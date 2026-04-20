@@ -1046,14 +1046,16 @@ Composable, type-tracked JSON column navigation. Each `.at()` step tracks the ty
 ```ts
 import { jsonCol } from "sumak"
 
-// Navigate into JSON: -> (returns JSON)
+// Navigate into JSON: -> (returns JSON), ->> (returns text)
 db.selectFrom("users")
-  .selectExprs(jsonCol("data").at("address").at("city").asText().as("city"))
+  .select({ city: jsonCol("data").at("address").at("city").asText() })
   .toSQL()
 // SELECT "data"->'address'->>'city' AS "city" FROM "users"
 
 // Text extraction: ->> (returns text)
-db.selectFrom("users").selectExprs(jsonCol("meta").text("name").as("metaName")).toSQL()
+db.selectFrom("users")
+  .select({ metaName: jsonCol("meta").text("name") })
+  .toSQL()
 // SELECT "meta"->>'name' AS "metaName" FROM "users"
 
 // PG path operators: #> and #>>

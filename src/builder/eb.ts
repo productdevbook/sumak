@@ -26,6 +26,7 @@ import type {
   WindowFunctionNode,
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
+import { brandExpression } from "../ast/typed-expression.ts"
 import type { SelectType } from "../schema/types.ts"
 import { validateFunctionName } from "../utils/security.ts"
 
@@ -285,7 +286,7 @@ function binOp(op: string, left: ExpressionNode, right: ExpressionNode): Express
 }
 
 function wrap<T>(node: ExpressionNode): Expression<T> {
-  return { node } as Expression<T>
+  return brandExpression<T>(node)
 }
 
 /**

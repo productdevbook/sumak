@@ -1,7 +1,7 @@
 import { param, star } from "../ast/expression.ts"
 import type { ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
-import { unwrap } from "../ast/typed-expression.ts"
+import { isExpression, unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
 import type { SelectRow, Updateable } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
@@ -65,20 +65,21 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     [K in keyof Updateable<DB[TB]>]?: Updateable<DB[TB]>[K] | Expression<any>
   }): TypedUpdateBuilder<DB, TB> {
     let builder = this._builder
-    for (const [col, val] of Object.entries(values as Record<string, unknown>)) {
+    const entries = Object.entries(values as Record<string, unknown>)
+    for (const [col, val] of entries) {
       if (val === undefined) continue
-      // If the value has the Expression shape ({ node: ExpressionNode }),
-      // unwrap it; otherwise auto-parameterize.
-      if (
-        typeof val === "object" &&
-        val !== null &&
-        "node" in (val as any) &&
-        typeof (val as any).node === "object"
-      ) {
+      // `isExpression` uses a hidden symbol brand — cannot be confused
+      // with a JSON column value that happens to have a `node` key.
+      if (isExpression(val)) {
         builder = builder.set(col, unwrap(val as Expression<any>))
       } else {
         builder = builder.set(col, param(0, val))
       }
+    }
+    if (entries.filter(([, v]) => v !== undefined).length === 0) {
+      throw new Error(
+        ".set() requires at least one column — an empty object would produce invalid SQL.",
+      )
     }
     return this._with(builder)
   }
@@ -125,6 +126,18 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     SelectRow<DB, TB> & { [K in keyof A]: A[K] extends Expression<infer T> ? T : never }
   >
   returning(...args: unknown[]): any {
+    if (args.length === 0) {
+      throw new Error(".returning() requires at least one column or expression.")
+    }
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0]) &&
+      Object.keys(args[0] as object).length === 0
+    ) {
+      throw new Error(".returning({}) requires at least one aliased expression.")
+    }
     const existing = this._builder.build().returning
     let exprs: ExpressionNode[]
     if (

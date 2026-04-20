@@ -137,3 +137,52 @@ describe(".returning() unified API", () => {
     expect(q.sql).toMatch(/RETURNING count\(\*\) AS "total"/i)
   })
 })
+
+describe("empty-object guards", () => {
+  it(".select({}) throws instead of producing invalid SQL", () => {
+    expect(() => db.selectFrom("users").select({} as any)).toThrow(/at least one/i)
+  })
+
+  it(".select() with no args throws", () => {
+    expect(() => (db.selectFrom("users") as any).select()).toThrow(/at least one/i)
+  })
+
+  it(".set({}) throws", () => {
+    expect(() => db.update("users").set({})).toThrow(/at least one/i)
+  })
+
+  it(".returning({}) throws on insert", () => {
+    expect(() =>
+      db
+        .insertInto("users")
+        .values({ name: "a", age: 1 })
+        .returning({} as any),
+    ).toThrow(/at least one/i)
+  })
+})
+
+describe("Expression detection — JSON columns with `.node` key are not misidentified", () => {
+  it(".set() with a JSON column value shaped like { node: ... } is auto-parameterized, not unwrapped", () => {
+    // User stores a JSON object that happens to have a `node` key.
+    const jsonValue = { node: { type: "document", children: [] } }
+    const db2 = sumak({
+      dialect: pgDialect(),
+      tables: {
+        docs: {
+          id: serial().primaryKey(),
+          data: integer(), // any column; type doesn't matter for this runtime check
+        },
+      },
+    })
+    // Pass the JSON value as-is. Without the symbol brand, the old
+    // duck-type check `"node" in val` would have tried to unwrap it.
+    const q = db2
+      .update("docs")
+      .set({ data: jsonValue as any })
+      .where(({ id }) => id.eq(1))
+      .toSQL()
+    // Should be parameterized, not inlined. The JSON value appears in params.
+    expect(q.sql).toContain('SET "data" = $1')
+    expect(q.params[0]).toEqual(jsonValue)
+  })
+})
