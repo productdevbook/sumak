@@ -197,6 +197,13 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
         .map(([col, v]) => ({ column: col, value: param(0, v) }))
     }
 
+    if (set.length === 0) {
+      throw new Error(
+        ".onConflict() DO UPDATE requires at least one column to update — " +
+          "empty update objects produce invalid SQL.",
+      )
+    }
+
     if (options.constraint) {
       return this._withBuilder(this._builder.onConflictConstraintDoUpdate(options.constraint, set))
     }
@@ -235,8 +242,12 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
   }
 
   /** WITH (CTE) */
-  with(name: string, query: SelectNode, recursive = false): TypedInsertBuilder<DB, TB> {
-    return this._withBuilder(this._builder.with(name, query, recursive))
+  with(
+    name: string,
+    query: SelectNode,
+    options?: { recursive?: boolean },
+  ): TypedInsertBuilder<DB, TB> {
+    return this._withBuilder(this._builder.with(name, query, options?.recursive === true))
   }
 
   /** Conditionally apply a transformation. */
