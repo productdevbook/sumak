@@ -104,8 +104,11 @@ describe("Date/Time functions", () => {
   })
 
   it("CURRENT_TIMESTAMP", () => {
+    // Printed as a bare SQL:92 keyword (no parens) — portable across
+    // pg/mysql/sqlite/mssql. MSSQL specifically rejects CURRENT_TIMESTAMP().
     const q = db.selectFrom("users").selectExpr(currentTimestamp(), "ts").compile(p)
-    expect(q.sql).toContain("CURRENT_TIMESTAMP()")
+    expect(q.sql).toMatch(/\bCURRENT_TIMESTAMP\b/)
+    expect(q.sql).not.toContain("CURRENT_TIMESTAMP()")
   })
 })
 

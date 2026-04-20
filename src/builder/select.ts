@@ -6,6 +6,7 @@ import type {
   OrderByNode,
   QueryFlags as QueryFlagsType,
   SelectNode,
+  SoftDeleteMode,
   SubqueryNode,
   TableRefNode,
   TemporalClause,
@@ -23,6 +24,11 @@ export class SelectBuilder {
   /** Merge a QueryFlags bitmap into the underlying node. */
   withFlags(flags: QueryFlagsType): SelectBuilder {
     return new SelectBuilder({ ...this.node, flags: (this.node.flags ?? 0) | flags })
+  }
+
+  /** Set the soft-delete mode. Last-call wins (overwrites a prior mode). */
+  withSoftDeleteMode(mode: SoftDeleteMode): SelectBuilder {
+    return new SelectBuilder({ ...this.node, softDeleteMode: mode })
   }
 
   columns(...cols: (string | ExpressionNode)[]): SelectBuilder {

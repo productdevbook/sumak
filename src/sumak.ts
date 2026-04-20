@@ -211,7 +211,7 @@ export class Sumak<DB> {
   }
 
   /**
-   * Explicit soft-delete — `UPDATE table SET <col> = NOW() WHERE ... AND <col> IS NULL`.
+   * Explicit soft-delete — `UPDATE table SET <col> = CURRENT_TIMESTAMP WHERE ... AND <col> IS NULL`.
    * The trailing `IS NULL` predicate makes the write race-safe against a
    * concurrent restore. Requires a registered `softDelete` plugin whose
    * `tables` list contains this table.

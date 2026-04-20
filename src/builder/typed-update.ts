@@ -1,6 +1,5 @@
 import { param, star } from "../ast/expression.ts"
 import type { ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
-import { QueryFlags } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
@@ -37,16 +36,18 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   /**
    * Bypass the soft-delete filter for this UPDATE (include rows where
    * `deleted_at IS NOT NULL`). Useful for admin operations.
+   * Last-call wins: `.onlyDeleted()` after this replaces the mode.
    */
   includeDeleted(): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.withFlags(QueryFlags.IncludeDeleted))
+    return this._with(this._builder.withSoftDeleteMode("include"))
   }
 
   /**
    * Target ONLY soft-deleted rows (`deleted_at IS NOT NULL`).
+   * Last-call wins: `.includeDeleted()` after this replaces the mode.
    */
   onlyDeleted(): TypedUpdateBuilder<DB, TB> {
-    return this._with(this._builder.withFlags(QueryFlags.OnlyDeleted))
+    return this._with(this._builder.withSoftDeleteMode("only"))
   }
 
   /**

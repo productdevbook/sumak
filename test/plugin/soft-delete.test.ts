@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
+import { mssqlDialect } from "../../src/dialect/mssql.ts"
+import { mysqlDialect } from "../../src/dialect/mysql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
+import { sqliteDialect } from "../../src/dialect/sqlite.ts"
 import { softDelete } from "../../src/plugin/factories.ts"
 import { SoftDeletePlugin } from "../../src/plugin/soft-delete.ts"
 import { boolean, serial, text, timestamptz } from "../../src/schema/column.ts"
@@ -109,12 +112,12 @@ describe(".onlyDeleted() inversion", () => {
 describe("db.softDelete() — explicit write builder", () => {
   const db = makeDb({ tables: ["users"] })
 
-  it("generates UPDATE SET deleted_at = NOW() with race-safe predicate", () => {
+  it("generates UPDATE SET deleted_at = CURRENT_TIMESTAMP with race-safe predicate", () => {
     const q = db
       .softDelete("users")
       .where(({ id }) => id.eq(1))
       .toSQL()
-    expect(q.sql).toMatch(/UPDATE "users" SET "deleted_at" = NOW\(\)/)
+    expect(q.sql).toMatch(/UPDATE "users" SET "deleted_at" = CURRENT_TIMESTAMP/)
     expect(q.sql).toContain('"deleted_at" IS NULL')
     // user's predicate and race-safe predicate are ANDed.
     expect(q.sql).toMatch(/WHERE \(.*"id" = \$1.*\) AND .*"deleted_at" IS NULL/)
@@ -210,6 +213,106 @@ describe("plugin idempotency via QueryFlags", () => {
   })
 })
 
+describe("double-chain .where() — user predicates are AND-accumulated", () => {
+  const db = makeDb({ tables: ["users"] })
+
+  it("two .where() calls both land in the SQL, race-safe predicate still last", () => {
+    const q = db
+      .softDelete("users")
+      .where(({ id }) => id.eq(1))
+      .where(({ name }) => name.eq("alice"))
+      .toSQL()
+    // Both user predicates survive.
+    expect(q.sql).toContain('"id" = $1')
+    expect(q.sql).toContain('"name" = $2')
+    // Race-safe predicate is last — parens in the generated SQL vary.
+    expect(q.sql).toMatch(/"name" = \$2.*AND.*"deleted_at" IS NULL/)
+  })
+
+  it("three .where() calls on restore all survive", () => {
+    const q = db
+      .restore("users")
+      .where(({ id }) => id.eq(1))
+      .where(({ id }) => id.gt(0))
+      .where(({ name }) => name.eq("x"))
+      .toSQL()
+    expect(q.sql).toContain('"id" = $1')
+    expect(q.sql).toContain('"id" > $2')
+    expect(q.sql).toContain('"name" = $3')
+    expect(q.sql).toContain("IS NOT NULL")
+  })
+})
+
+describe("JOIN — soft-delete filter propagates to joined target tables", () => {
+  const db = sumak({
+    dialect: pgDialect(),
+    plugins: [softDelete({ tables: ["users"] })],
+    tables: {
+      users: usersTable,
+      orders: {
+        id: serial().primaryKey(),
+        user_id: serial(),
+        total: serial(),
+      },
+    },
+  })
+
+  it("INNER JOIN to a soft-delete table gets ON ... AND deleted_at IS NULL", () => {
+    const q = db
+      .selectFrom("orders")
+      .innerJoin("users", ({ orders, users }) => orders.user_id.eq(users.id))
+      .select("id")
+      .toSQL()
+    // The join ON should include the alive predicate for the joined `users` table.
+    expect(q.sql).toMatch(/JOIN "users" ON .*"deleted_at" IS NULL/)
+  })
+
+  it("FROM-less join case: when soft-delete table is only in FROM, WHERE filter still applies", () => {
+    const q = db.selectFrom("users").select("id").toSQL()
+    expect(q.sql).toMatch(/WHERE \(?"deleted_at" IS NULL\)?/)
+  })
+})
+
+describe("includeDeleted + onlyDeleted precedence — last call wins", () => {
+  const db = makeDb({ tables: ["users"] })
+
+  it("includeDeleted().onlyDeleted() → onlyDeleted wins (IS NOT NULL)", () => {
+    const q = db.selectFrom("users").select("id").includeDeleted().onlyDeleted().toSQL()
+    expect(q.sql).toContain("IS NOT NULL")
+  })
+
+  it("onlyDeleted().includeDeleted() → includeDeleted wins (no filter)", () => {
+    const q = db.selectFrom("users").select("id").onlyDeleted().includeDeleted().toSQL()
+    expect(q.sql).not.toContain("deleted_at")
+  })
+})
+
+describe("dialect portability — CURRENT_TIMESTAMP is printed without parens", () => {
+  for (const [name, dialect] of [
+    ["pg", pgDialect()],
+    ["mysql", mysqlDialect()],
+    ["sqlite", sqliteDialect()],
+    ["mssql", mssqlDialect()],
+  ] as const) {
+    it(`${name}: softDelete emits bare CURRENT_TIMESTAMP (SQL:92 keyword)`, () => {
+      const db = sumak({
+        dialect,
+        plugins: [softDelete({ tables: ["users"] })],
+        tables: { users: usersTable },
+      })
+      const q = db
+        .softDelete("users")
+        .where(({ id }) => id.eq(1))
+        .toSQL()
+      expect(q.sql).toMatch(/\bCURRENT_TIMESTAMP\b/)
+      // Critical for MSSQL: no parens after the keyword.
+      expect(q.sql).not.toMatch(/CURRENT_TIMESTAMP\s*\(/)
+      // NOW() should not appear (it's not portable).
+      expect(q.sql).not.toContain("NOW()")
+    })
+  }
+})
+
 describe("direct integration: writes via softDelete mutate state such that filter hides them", () => {
   const db = makeDb({ tables: ["users"] })
 
@@ -219,7 +322,7 @@ describe("direct integration: writes via softDelete mutate state such that filte
       .where(({ id }) => id.eq(1))
       .toSQL()
     // The UPDATE sets the column; a subsequent SELECT would filter it out.
-    expect(del.sql).toContain("NOW()")
+    expect(del.sql).toContain("CURRENT_TIMESTAMP")
     const sel = db.selectFrom("users").select("id").toSQL()
     expect(sel.sql).toContain('"deleted_at" IS NULL')
   })

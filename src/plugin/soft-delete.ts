@@ -47,7 +47,7 @@ export interface SoftDeletePluginConfig {
  * // SELECT * FROM "users"
  *
  * db.softDelete("users").where(({ id }) => id.eq(1)).toSQL()
- * // UPDATE "users" SET "deleted_at" = NOW() WHERE ("id" = $1) AND "deleted_at" IS NULL
+ * // UPDATE "users" SET "deleted_at" = CURRENT_TIMESTAMP WHERE ("id" = $1) AND "deleted_at" IS NULL
  *
  * db.restore("users").where(({ id }) => id.eq(1)).toSQL()
  * // UPDATE "users" SET "deleted_at" = NULL WHERE ("id" = $1) AND "deleted_at" IS NOT NULL
@@ -117,14 +117,24 @@ export class SoftDeletePlugin implements SumakPlugin {
     // Already filtered → idempotent skip.
     if (flags & QueryFlags.SoftDeleteApplied) return node
     // User opted out of the automatic filter.
-    if (flags & QueryFlags.IncludeDeleted) return node
-    if (!node.from || node.from.type !== "table_ref" || !this._isTargetTable(node.from.name)) {
-      return node
-    }
-    const cond = flags & QueryFlags.OnlyDeleted ? this._deletedCondition() : this._aliveCondition()
+    if (node.softDeleteMode === "include") return node
+
+    const fromIsTarget =
+      node.from && node.from.type === "table_ref" && this._isTargetTable(node.from.name)
+
+    // Rewrite any JOINed soft-delete tables too — a hidden `users` join
+    // would otherwise surface deleted rows through the join.
+    const joins = this._filterJoins(node.joins)
+    const changedJoins = joins !== node.joins
+
+    if (!fromIsTarget && !changedJoins) return node
+
+    const cond = node.softDeleteMode === "only" ? this._deletedCondition() : this._aliveCondition()
+
     return {
       ...node,
-      where: this._addCondition(node.where, cond),
+      where: fromIsTarget ? this._addCondition(node.where, cond) : node.where,
+      joins,
       flags: flags | QueryFlags.SoftDeleteApplied,
     }
   }
@@ -132,13 +142,33 @@ export class SoftDeletePlugin implements SumakPlugin {
   private _transformUpdate(node: UpdateNode): UpdateNode {
     const flags = node.flags ?? 0
     if (flags & QueryFlags.SoftDeleteApplied) return node
-    if (flags & QueryFlags.IncludeDeleted) return node
+    if (node.softDeleteMode === "include") return node
     if (!this._isTargetTable(node.table.name)) return node
-    const cond = flags & QueryFlags.OnlyDeleted ? this._deletedCondition() : this._aliveCondition()
+    const cond = node.softDeleteMode === "only" ? this._deletedCondition() : this._aliveCondition()
     return {
       ...node,
       where: this._addCondition(node.where, cond),
       flags: flags | QueryFlags.SoftDeleteApplied,
     }
+  }
+
+  /**
+   * For each JOIN targeting a soft-delete table, append the alive condition
+   * to the join's ON clause. Used by _transformSelect.
+   */
+  private _filterJoins(
+    joins: import("../ast/nodes.ts").JoinNode[],
+  ): import("../ast/nodes.ts").JoinNode[] {
+    let changed = false
+    const out = joins.map((j) => {
+      const t = j.table
+      const tableName = t.type === "table_ref" ? t.name : undefined
+      if (!tableName || !this._isTargetTable(tableName)) return j
+      changed = true
+      const cond = this._aliveCondition()
+      const on = j.on ? and(j.on, cond) : cond
+      return { ...j, on }
+    })
+    return changed ? out : joins
   }
 }

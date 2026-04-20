@@ -1195,7 +1195,7 @@ db.deleteFrom("users").where(({ id }) => id.eq(1)).toSQL()
 db.softDelete("users")
   .where(({ id }) => id.eq(1))
   .toSQL()
-// UPDATE "users" SET "deleted_at" = NOW()
+// UPDATE "users" SET "deleted_at" = CURRENT_TIMESTAMP
 // WHERE ("id" = $1) AND "deleted_at" IS NULL
 
 // Restore — only affects currently-deleted rows:

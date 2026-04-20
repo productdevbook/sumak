@@ -4,6 +4,7 @@ import type {
   JoinNode,
   QueryFlags as QueryFlagsType,
   SelectNode,
+  SoftDeleteMode,
   TableRefNode,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -20,6 +21,11 @@ export class UpdateBuilder {
   /** Merge a QueryFlags bitmap into the underlying node. */
   withFlags(flags: QueryFlagsType): UpdateBuilder {
     return new UpdateBuilder({ ...this.node, flags: (this.node.flags ?? 0) | flags })
+  }
+
+  /** Set the soft-delete mode. Last-call wins (overwrites a prior mode). */
+  withSoftDeleteMode(mode: SoftDeleteMode): UpdateBuilder {
+    return new UpdateBuilder({ ...this.node, softDeleteMode: mode })
   }
 
   table(table: string | TableRefNode): UpdateBuilder {
