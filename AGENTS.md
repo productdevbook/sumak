@@ -35,13 +35,14 @@ User Code
 
 ```
 src/
-  sumak.ts                   # sumak() factory + Sumak<DB> class
-  index.ts                  # Main API — all exports
+  sumak.ts                   # sumak() factory + Sumak<DB> class; routes compile() for AST / DDL / TCL
+  index.ts                  # Main API — v0.1 slim re-exports (~88 value / ~146 total named)
   pg.ts                     # Sub-path: sumak/pg
   mssql.ts                  # Sub-path: sumak/mssql
   mysql.ts                  # Sub-path: sumak/mysql
   sqlite.ts                 # Sub-path: sumak/sqlite
   schema.ts                 # Sub-path: sumak/schema
+  ns/                       # Namespace barrels (v0.1 API): ast, win, str, num, arr, tx
   errors.ts                 # Custom error classes
   types.ts                  # Shared types (CompiledQuery, SQLDialect, etc.)
   schema/
@@ -52,7 +53,9 @@ src/
     index.ts                # Re-exports
   ast/
     nodes.ts                # ~40 AST node types (discriminated unions, frozen)
-    expression.ts           # Untyped expression factories (col, lit, eq, etc.)
+    ddl-nodes.ts            # DDL AST (CREATE/ALTER/DROP TABLE, INDEX, VIEW, …)
+    tcl-nodes.ts            # TCL AST (BEGIN/COMMIT/ROLLBACK/SAVEPOINT)
+    expression.ts           # Untyped expression factories (col, lit, eq, etc.) — now surfaced only via `ast.*`
     typed-expression.ts     # Expression<T> phantom types (typedEq, typedCol, etc.)
     visitor.ts              # ASTVisitor interface + visitNode dispatcher
     transformer.ts          # ASTTransformer base class
@@ -75,8 +78,10 @@ src/
     mssql.ts                # MssqlPrinter (@p0 params, square-bracket identifiers)
     mysql.ts                # MysqlPrinter (? params, backtick identifiers)
     sqlite.ts               # SqlitePrinter (? params, double-quote identifiers)
+    ddl.ts                  # DDLPrinter — CREATE/ALTER/DROP → SQL
+    tcl.ts                  # TclPrinter — BEGIN/COMMIT/SAVEPOINT → SQL
     formatter.ts            # SQL pretty-printer (keyword-aware)
-    document.ts             # Wadler-style document algebra (text/line/nest/group/render)
+    document.ts             # Wadler-style document algebra (text/line/nest/group/render) — internal
     types.ts                # Printer, PrinterOptions, PrintMode
   dialect/
     pg.ts                   # pgDialect() factory
@@ -86,7 +91,8 @@ src/
     types.ts                # Dialect interface
   plugin/
     types.ts                # SumakPlugin interface
-    plugin-manager.ts       # PluginManager — sequential plugin pipeline
+    plugin-manager.ts       # PluginManager — sequential plugin pipeline (internal)
+    factories.ts            # Factory fns — softDelete(), audit(), multiTenant(), … (v0.1 public API)
     hooks.ts                # Hookable — lifecycle hooks (query:before/after, etc.)
     with-schema.ts          # WithSchemaPlugin — auto schema prefix
     soft-delete.ts          # SoftDeletePlugin — auto WHERE deleted_at IS NULL
@@ -117,7 +123,9 @@ test/
   utils/                    # 2 files: identifier, param
 ```
 
-## Public API
+## Public API (v0.1)
+
+~88 named value exports / ~146 total named exports (down from ~208 / ~313 in v0.0.x). Internals (low-level AST factories, visitor, document algebra, printer classes, DDL builder classes, normalize/optimize rule internals, legacy plugin classes, deprecated Col methods) are no longer re-exported.
 
 ### Setup (single step)
 
@@ -139,6 +147,35 @@ db.selectFrom("users").select("id", "name").where(...).compile(db.printer())
 db.insertInto("users").values({ name: "Alice" }).returningAll().compile(db.printer())
 db.update("users").set({ active: false }).where(...).compile(db.printer())
 db.deleteFrom("users").where(...).compile(db.printer())
+```
+
+### Transactions
+
+```typescript
+import { tx } from "sumak"
+
+db.compile(tx.begin({ isolation: "SERIALIZABLE", readOnly: true }))
+db.compile(tx.commit())
+db.compile(tx.savepoint("sp1"))
+```
+
+### Namespaces
+
+`ast` (low-level AST factories + traversal), `win` (window fns), `str` (string fns), `num` (math fns), `arr` (PG array ops), `tx` (transactions).
+
+### Plugins (factory fns)
+
+```typescript
+import { softDelete, audit, multiTenant } from "sumak"
+
+sumak({
+  plugins: [
+    softDelete({ tables: ["users"] }),
+    audit({ tables: ["users"] }),
+    multiTenant({ tables: ["users"], tenantId: () => ctx.id }),
+  ],
+  ...
+})
 ```
 
 ### Hooks

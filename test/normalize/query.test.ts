@@ -127,18 +127,19 @@ describe("normalizeQuery", () => {
   describe("INSERT normalization", () => {
     it("normalizes ON CONFLICT WHERE", () => {
       const node = {
-        ...{
-          type: "insert" as const,
-          table: tableRef("users"),
-          columns: ["name"],
-          values: [[lit("Alice")]],
-          returning: [],
-          ctes: [],
-        },
+        type: "insert" as const,
+        table: tableRef("users"),
+        columns: ["name"],
+        values: [[lit("Alice")]],
+        returning: [],
+        ctes: [],
         onConflict: {
           columns: ["email"],
           action: "nothing" as const,
-          where: and(eq(col("active"), lit(true)), { type: "literal", value: true } as any),
+          where: and(eq(col("active"), lit(true)), {
+            type: "literal",
+            value: true,
+          } as any),
         },
       }
       const result = normalizeQuery(node)
