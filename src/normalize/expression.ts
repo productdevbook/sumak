@@ -262,9 +262,17 @@ function foldNumeric(op: string, l: number, r: number): number | boolean | undef
     case "*":
       return l * r
     case "/":
-      return r !== 0 ? l / r : undefined
-    case "%":
-      return r !== 0 ? l % r : undefined
+    case "%": {
+      // SQL integer division truncates: `5 / 2 = 2` on pg / mysql /
+      // sqlite / mssql. JS's `/` is float division → `5 / 2 = 2.5`.
+      // Folding `5/2 → 2.5` silently changes the row set if the result
+      // is compared to an integer column. Refuse to fold `/` and `%`
+      // when both operands are integers; float/float is safe because
+      // SQL already does float division there.
+      if (r === 0) return undefined
+      if (Number.isInteger(l) && Number.isInteger(r)) return undefined
+      return op === "/" ? l / r : l % r
+    }
     default:
       return undefined
   }

@@ -13,6 +13,18 @@ import type { TableRefNode } from "../ast/nodes.ts"
  * instead of the dotted-string shortcut.
  */
 export function parseTableRef(identifier: string, alias?: string): TableRefNode {
+  // Quoted identifiers (`"foo"`, `` `foo` ``, `[foo]`) need dialect-aware
+  // parsing to decide whether a dot is a separator or a literal. We don't
+  // have dialect context at this layer, so reject rather than silently
+  // mis-split: `parseTableRef('"my.table"')` used to become
+  // `{ schema: '"my', name: 'table"' }`. Users who need literal dots or
+  // reserved keywords in identifiers should pass a pre-built TableRefNode.
+  if (identifier.includes('"') || identifier.includes("`") || identifier.includes("[")) {
+    throw new Error(
+      `parseTableRef(${JSON.stringify(identifier)}) — quoted identifiers are not supported here. ` +
+        "Pass a pre-built TableRefNode ({ type: 'table_ref', name, schema? }) directly.",
+    )
+  }
   const dotIndex = identifier.indexOf(".")
   if (dotIndex < 0) {
     return { type: "table_ref", name: identifier, alias }
