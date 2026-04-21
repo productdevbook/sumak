@@ -103,6 +103,16 @@ describe("Audit #19 regressions", () => {
       expect(() => new MysqlPrinter().print(node)).toThrow(UnsupportedDialectFeatureError)
     })
 
+    it("aliased target: DELETE o FROM orders AS o INNER JOIN …", () => {
+      const node = new DeleteBuilder()
+        .from({ type: "table_ref", name: "orders", alias: "o" })
+        .innerJoin("users", eq(col("id", "users"), col("user_id", "o")))
+        .build()
+      const r = new MysqlPrinter().print(node)
+      // Target identifier in DELETE must match the alias, not the bare name.
+      expect(r.sql).toMatch(/^DELETE `o` FROM `orders` AS `o` INNER JOIN/)
+    })
+
     it("SQLite multi-table DELETE (USING or JOIN) is rejected", () => {
       const node1 = new DeleteBuilder().from("orders").using("users").build()
       expect(() => new SqlitePrinter().print(node1)).toThrow(UnsupportedDialectFeatureError)

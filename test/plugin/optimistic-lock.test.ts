@@ -43,9 +43,15 @@ describe("OptimisticLockPlugin", () => {
     expect(q.params).not.toContain(3)
   })
 
-  it("INSERT is not affected", () => {
+  it("INSERT seeds the version column (does not add version+1 increment)", () => {
     const q = db.insertInto("users").values({ name: "Alice" }).toSQL()
+    // The UPDATE-only `version = version + 1` must never appear on INSERT.
     expect(q.sql).not.toContain("+ 1")
+    // Since audit #19 the plugin seeds the version column so the row
+    // isn't NULL (which would lock it out of every subsequent UPDATE's
+    // `WHERE version = :current` check). The column name should now
+    // appear in the INSERT.
+    expect(q.sql).toContain('"version"')
   })
 
   it("non-configured table not affected", () => {
