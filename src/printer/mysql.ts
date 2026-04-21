@@ -152,6 +152,21 @@ export class MysqlPrinter extends BasePrinter {
     )
   }
 
+  /**
+   * MySQL supports `->` / `->>` (single key) but has no path operators
+   * `#>` / `#>>`; those are PG-specific. Reject the path variants with
+   * a pointer at the JSON_EXTRACT equivalent.
+   */
+  protected override printJsonAccess(node: import("../ast/nodes.ts").JsonAccessNode): string {
+    if (node.operator === "#>" || node.operator === "#>>") {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        `${node.operator} JSON path operator — use JSON_EXTRACT(expr, '$.a.b') or chained '->' on MySQL`,
+      )
+    }
+    return super.printJsonAccess(node)
+  }
+
   /** MySQL does not support `DELETE … RETURNING` — PG / SQLite 3.35+ only. */
   protected override printDelete(node: DeleteNode): string {
     if (node.returning.length > 0) {

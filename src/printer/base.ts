@@ -40,6 +40,7 @@ import type {
   MergeWhenMatched,
   MergeWhenNotMatched,
 } from "../ast/nodes.ts"
+import { UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { formatParam } from "../utils/param.ts"
@@ -609,6 +610,16 @@ export class BasePrinter implements Printer {
   }
 
   protected printBetween(node: BetweenNode): string {
+    if (node.symmetric && this.dialect !== "pg") {
+      // `BETWEEN SYMMETRIC` is a PG extension — MySQL, SQLite, MSSQL
+      // all reject the keyword at parse. The operand-reorder rewrite
+      // depends on GREATEST/LEAST (itself not portable), so refuse
+      // rather than silently change semantics.
+      throw new UnsupportedDialectFeatureError(
+        this.dialect,
+        "BETWEEN SYMMETRIC (PG-only — rewrite to (expr BETWEEN LEAST(a,b) AND GREATEST(a,b)) or use OR)",
+      )
+    }
     const neg = node.negated ? "NOT " : ""
     const sym = node.symmetric ? " SYMMETRIC" : ""
     return `(${this.printExpression(node.expr)} ${neg}BETWEEN${sym} ${this.printExpression(node.low)} AND ${this.printExpression(node.high)})`

@@ -86,6 +86,40 @@ export class SqlitePrinter extends BasePrinter {
   }
 
   /**
+   * SQLite supports `->` / `->>` (3.38+) but has no path operators
+   * `#>` / `#>>`; those are PG-specific. Reject with a pointer at
+   * json_extract / chained `->`.
+   */
+  protected override printJsonAccess(node: import("../ast/nodes.ts").JsonAccessNode): string {
+    if (node.operator === "#>" || node.operator === "#>>") {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        `${node.operator} JSON path operator — use json_extract(expr, '$.a.b') or chained '->' on SQLite`,
+      )
+    }
+    return super.printJsonAccess(node)
+  }
+
+  /**
+   * SQLite has no scalar `GREATEST` / `LEAST`; `MAX(a, b, …)` /
+   * `MIN(a, b, …)` with multiple arguments act as the scalar form
+   * (the same names overload as aggregates when given one arg). Rewrite.
+   * Note: SQLite's `MAX(a, NULL)` returns NULL while PG `GREATEST` skips
+   * NULLs — callers relying on NULL-skipping semantics should use
+   * `COALESCE(a, b)` explicitly.
+   */
+  protected override printFunctionCall(node: import("../ast/nodes.ts").FunctionCallNode): string {
+    const upper = node.name.toUpperCase()
+    if (upper === "GREATEST") {
+      return super.printFunctionCall({ ...node, name: "MAX" })
+    }
+    if (upper === "LEAST") {
+      return super.printFunctionCall({ ...node, name: "MIN" })
+    }
+    return super.printFunctionCall(node)
+  }
+
+  /**
    * SQLite has `IS` / `IS NOT` for null-safe equality but not
    * `IS [NOT] DISTINCT FROM`, and has no `ILIKE`. Reject both so
    * callers explicitly pick the SQLite-idiomatic form.

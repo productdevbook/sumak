@@ -5,6 +5,7 @@ import type {
   FullTextSearchNode,
   FunctionCallNode,
   InsertNode,
+  JsonAccessNode,
   LiteralNode,
   OrderByNode,
   SelectNode,
@@ -157,6 +158,22 @@ export class MssqlPrinter extends BasePrinter {
   protected override printLiteral(node: LiteralNode): string {
     if (typeof node.value === "boolean") return node.value ? "1" : "0"
     return super.printLiteral(node)
+  }
+
+  /**
+   * SQL Server has no `->` / `->>` / `#>` / `#>>` operators — it uses
+   * `JSON_VALUE(expr, '$.path')` for scalar extraction and
+   * `JSON_QUERY(expr, '$.path')` for JSON-typed extraction. The base
+   * printer would otherwise emit PG operators verbatim; the driver
+   * rejects the statement at parse. Rather than silently translate
+   * (the two forms differ on array-vs-scalar semantics), reject with
+   * a message pointing at the right MSSQL function.
+   */
+  protected override printJsonAccess(_node: JsonAccessNode): string {
+    throw new UnsupportedDialectFeatureError(
+      "mssql",
+      "JSON path operators (->, ->>, #>, #>>) — use JSON_VALUE(expr, '$.path') for scalars or JSON_QUERY(expr, '$.path') for objects/arrays via sql`…`",
+    )
   }
 
   protected override printGraphTable(
