@@ -1,4 +1,4 @@
-import type { ASTNode, CTENode, SelectNode, SubqueryNode } from "../ast/nodes.ts"
+import type { ASTNode, CTENode, ExpressionNode, SelectNode, SubqueryNode } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
@@ -61,7 +61,11 @@ export class PluginManager {
         const joins = upd.joins.map((j) =>
           j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
         )
-        return { ...upd, ctes, joins }
+        // Same WHERE-subquery traversal as SELECT: without this,
+        // `UPDATE products SET … WHERE EXISTS (SELECT … FROM tenants)`
+        // leaves the EXISTS subquery unfiltered.
+        const where = upd.where ? this.walkExpression(upd.where) : upd.where
+        return { ...upd, ctes, joins, where }
       }
       case "delete": {
         const del = node
@@ -69,7 +73,8 @@ export class PluginManager {
         const joins = del.joins.map((j) =>
           j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
         )
-        return { ...del, ctes, joins }
+        const where = del.where ? this.walkExpression(del.where) : del.where
+        return { ...del, ctes, joins, where }
       }
       case "merge": {
         // MERGE sources are a security-critical traversal point: a
@@ -101,7 +106,85 @@ export class PluginManager {
     const joins = node.joins.map((j) =>
       j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
     )
-    return { ...node, ctes, from, joins }
+    // Descend into WHERE / HAVING expression trees. Without this,
+    // `WHERE EXISTS (SELECT ... FROM users)` over a tenant-aware table
+    // bypasses MultiTenant / SoftDelete — the inner SELECT is invisible
+    // to the manager's subquery traversal because it lives in an
+    // expression, not in FROM/JOIN.
+    const where = node.where ? this.walkExpression(node.where) : node.where
+    const having = node.having ? this.walkExpression(node.having) : node.having
+    return { ...node, ctes, from, joins, where, having }
+  }
+
+  /**
+   * Walk an expression tree, replacing every nested `SelectNode` it
+   * carries (via `subquery`, `exists`, or `in`-with-subquery) with the
+   * plugin-transformed version. Keeps the outer ExpressionNode shape
+   * intact.
+   */
+  private walkExpression(expr: ExpressionNode): ExpressionNode {
+    switch (expr.type) {
+      case "subquery":
+        return this.transformSubquery(expr)
+      case "exists":
+        return { ...expr, query: this.transformSelectThroughPlugins(expr.query) }
+      case "in": {
+        // `InNode.values` is either `ExpressionNode[]` or a bare
+        // `SelectNode` (subquery IN). Walk into the SELECT through the
+        // plugin chain so a tenant-aware table there still gets filtered.
+        const values = Array.isArray(expr.values)
+          ? expr.values.map((v) => this.walkExpression(v))
+          : this.transformSelectThroughPlugins(expr.values)
+        return {
+          ...expr,
+          expr: this.walkExpression(expr.expr),
+          values,
+        }
+      }
+      case "binary_op":
+        return {
+          ...expr,
+          left: this.walkExpression(expr.left),
+          right: this.walkExpression(expr.right),
+        }
+      case "unary_op":
+        return { ...expr, operand: this.walkExpression(expr.operand) }
+      case "is_null":
+        return { ...expr, expr: this.walkExpression(expr.expr) }
+      case "between":
+        return {
+          ...expr,
+          expr: this.walkExpression(expr.expr),
+          low: this.walkExpression(expr.low),
+          high: this.walkExpression(expr.high),
+        }
+      case "cast":
+        return { ...expr, expr: this.walkExpression(expr.expr) }
+      case "case":
+        return {
+          ...expr,
+          operand: expr.operand ? this.walkExpression(expr.operand) : expr.operand,
+          whens: expr.whens.map((w) => ({
+            condition: this.walkExpression(w.condition),
+            result: this.walkExpression(w.result),
+          })),
+          else_: expr.else_ ? this.walkExpression(expr.else_) : expr.else_,
+        }
+      case "function_call":
+        return {
+          ...expr,
+          args: expr.args.map((a) => this.walkExpression(a)),
+          filter: expr.filter ? this.walkExpression(expr.filter) : expr.filter,
+        }
+      case "aliased_expr":
+        return { ...expr, expr: this.walkExpression(expr.expr) }
+      default:
+        // literal, column_ref, star, param, raw, json_access,
+        // full_text_search, window_function, tuple, array_expr:
+        // none can carry a SelectNode without going through one of the
+        // handled wrappers above. Leave as-is.
+        return expr
+    }
   }
 
   private transformCTE(cte: CTENode): CTENode {

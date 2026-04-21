@@ -77,6 +77,14 @@ export class SqlitePrinter extends BasePrinter {
     )
   }
 
+  /** SQLite does not implement ANSI `MERGE`; use INSERT ... ON CONFLICT DO UPDATE. */
+  protected override printMerge(_node: import("../ast/nodes.ts").MergeNode): string {
+    throw new UnsupportedDialectFeatureError(
+      "sqlite",
+      "MERGE INTO (use INSERT ... ON CONFLICT DO UPDATE on SQLite)",
+    )
+  }
+
   /**
    * SQLite has `IS` / `IS NOT` for null-safe equality but not
    * `IS [NOT] DISTINCT FROM`, and has no `ILIKE`. Reject both so
