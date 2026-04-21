@@ -1,4 +1,4 @@
-import type { FullTextSearchNode, InsertNode, SelectNode } from "../ast/nodes.ts"
+import type { FullTextSearchNode, InsertNode, JoinNode, SelectNode } from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { BasePrinter } from "./base.ts"
@@ -16,6 +16,18 @@ export class SqlitePrinter extends BasePrinter {
       throw new UnsupportedDialectFeatureError("sqlite", "FOR UPDATE/SHARE")
     }
     return super.printSelect(node)
+  }
+
+  /**
+   * SQLite does not support `LATERAL`. Reject instead of silently emitting
+   * `INNER JOIN LATERAL (...)` which the driver would then reject at
+   * execution time with a confusing generic error.
+   */
+  protected override printJoin(node: JoinNode): string {
+    if (node.lateral) {
+      throw new UnsupportedDialectFeatureError("sqlite", "LATERAL JOIN")
+    }
+    return super.printJoin(node)
   }
 
   protected override printInsert(node: InsertNode): string {

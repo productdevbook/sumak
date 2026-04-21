@@ -515,8 +515,24 @@ export class BasePrinter implements Printer {
   }
 
   protected printParam(node: ParamNode): string {
-    this.params.push(node.value)
+    this.params.push(this.coerceParamValue(node.value))
     return formatParam(this.params.length - 1, this.dialect)
+  }
+
+  /**
+   * Convert special JS values into shapes the underlying drivers accept.
+   *
+   * - `bigint` → string. `node-postgres` / `postgres.js` / mysql2 all
+   *   reject a bare `BigInt` because their serializer can't handle it;
+   *   passing the decimal string form lets the driver treat it as a
+   *   bigint parameter. This is the path drivers themselves recommend.
+   *
+   * Other types pass through unchanged. Extend here if new edge-case
+   * conversions are needed (e.g. `Temporal.*`, `Buffer`, etc.).
+   */
+  protected coerceParamValue(value: unknown): unknown {
+    if (typeof value === "bigint") return value.toString()
+    return value
   }
 
   protected printRaw(node: RawNode): string {

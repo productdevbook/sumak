@@ -31,8 +31,13 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("DISTINCT")
     }
 
-    // MSSQL: TOP N instead of LIMIT (only when no OFFSET)
-    if (node.limit && !node.offset) {
+    // MSSQL: TOP N instead of LIMIT (only when no OFFSET and no set-op).
+    // `SELECT TOP 10 ... UNION SELECT ...` applies TOP only to the left
+    // arm on SQL Server — silently returns fewer rows than the user
+    // expected. For UNION with a limit, the outer query uses
+    // `OFFSET 0 ROWS FETCH NEXT N ROWS ONLY` instead; when there's no
+    // set-op we still prefer the shorter `TOP N` form.
+    if (node.limit && !node.offset && !node.setOp) {
       parts.push(`TOP ${this.printExpression(node.limit)}`)
     }
 
@@ -69,20 +74,28 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("HAVING", this.printExpression(node.having))
     }
 
+    // MSSQL: UNION / INTERSECT / EXCEPT come between HAVING and ORDER BY —
+    // the outer query's ORDER BY + OFFSET/FETCH apply to the combined
+    // result, not to the left arm. Emitting OFFSET/FETCH before the
+    // set-op was invalid SQL (SQL Server rejects the statement).
+    if (node.setOp) {
+      parts.push(node.setOp.op, this.printSelect(node.setOp.query))
+    }
+
     if (node.orderBy.length > 0) {
       parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
     }
 
-    // MSSQL: OFFSET/FETCH instead of LIMIT/OFFSET (requires ORDER BY)
-    if (node.offset) {
-      parts.push(`OFFSET ${this.printExpression(node.offset)} ROWS`)
+    // MSSQL: OFFSET/FETCH instead of LIMIT/OFFSET (requires ORDER BY).
+    // When a set-op is present we couldn't emit TOP (it would bind to the
+    // left arm only), so any `.limit()` must land here as a FETCH clause
+    // even without an explicit OFFSET.
+    if (node.offset || (node.limit && node.setOp)) {
+      const off = node.offset ?? { type: "literal" as const, value: 0 }
+      parts.push(`OFFSET ${this.printExpression(off)} ROWS`)
       if (node.limit) {
         parts.push(`FETCH NEXT ${this.printExpression(node.limit)} ROWS ONLY`)
       }
-    }
-
-    if (node.setOp) {
-      parts.push(node.setOp.op, this.printSelect(node.setOp.query))
     }
 
     if (node.lock) {
@@ -102,6 +115,22 @@ export class MssqlPrinter extends BasePrinter {
       "mssql",
       "SQL:2023 GRAPH_TABLE (MSSQL has its own node/edge MATCH() graph syntax — not the SQL/PGQ standard)",
     )
+  }
+
+  /**
+   * MSSQL does not support `LATERAL` — it has `CROSS APPLY` / `OUTER
+   * APPLY` which are semantically similar but syntactically different.
+   * Throw rather than silently emit invalid SQL; users who need the
+   * correlated-subquery pattern on MSSQL should use raw SQL for now.
+   */
+  protected override printJoin(node: import("../ast/nodes.ts").JoinNode): string {
+    if (node.lateral) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "LATERAL JOIN (use CROSS APPLY / OUTER APPLY via raw SQL)",
+      )
+    }
+    return super.printJoin(node)
   }
 
   protected override printInsert(node: InsertNode): string {
