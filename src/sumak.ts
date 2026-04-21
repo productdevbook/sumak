@@ -412,11 +412,16 @@ export class Sumak<DB> {
     if (typeof node.type === "string" && node.type.startsWith("tcl_")) {
       return new TclPrinter(this._dialect.name).print(node as TclNode)
     }
-    // Route DDL nodes directly — same reasoning. Wire in the dialect's printer
-    // so CREATE TABLE ... AS SELECT / CREATE VIEW AS can render the SELECT body.
+    // Route DDL nodes directly — DDL itself is not subject to plugins
+    // (you cannot "soft-delete" a CREATE TABLE). However, when the DDL
+    // carries an embedded SELECT (CREATE TABLE … AS SELECT, CREATE
+    // VIEW AS SELECT), the inner SELECT MUST still pass through the
+    // full pipeline — plugin transforms, hooks, normalize, optimize —
+    // otherwise a `CREATE VIEW tenant_orders AS SELECT * FROM orders`
+    // on a multi-tenant table silently captures every tenant's rows
+    // into the view. Route `asSelect` recursively through compile().
     if (isDDLNode(node)) {
-      const base = this._dialect.createPrinter()
-      return new DDLPrinter(this._dialect.name, (sel) => base.print(sel)).print(node as DDLNode)
+      return new DDLPrinter(this._dialect.name, (sel) => this.compile(sel)).print(node as DDLNode)
     }
 
     // 1. Plugin AST transform
@@ -512,11 +517,15 @@ export class Sumak<DB> {
    * ```
    */
   generateDDL(options?: { ifNotExists?: boolean }): CompiledQuery[] {
-    const base = this._dialect.createPrinter()
-    const printer = new DDLPrinter(this._dialect.name, (sel) => base.print(sel))
     const results: CompiledQuery[] = []
 
     for (const [tableName, columns] of Object.entries(this._tables)) {
+      // One printer per statement — matches the contract used by
+      // compileDDL() and avoids any cross-iteration param carryover
+      // if a column default or future asSelect pushes into the
+      // printer's params between the inner `renderSelect` and the
+      // outer `print()`'s snapshot.
+      const printer = new DDLPrinter(this._dialect.name, (sel) => this.compile(sel))
       const builder = new CreateTableBuilder(tableName)
       let tb = options?.ifNotExists ? builder.ifNotExists() : builder
 
@@ -557,8 +566,9 @@ export class Sumak<DB> {
 
   /** Compile a DDL node to SQL. */
   compileDDL(node: DDLNode): CompiledQuery {
-    const base = this._dialect.createPrinter()
-    const printer = new DDLPrinter(this._dialect.name, (sel) => base.print(sel))
+    // Same as compile(): embedded SELECTs in AS SELECT / asSelect must
+    // route through the full pipeline so plugins apply.
+    const printer = new DDLPrinter(this._dialect.name, (sel) => this.compile(sel))
     return printer.print(node)
   }
 
