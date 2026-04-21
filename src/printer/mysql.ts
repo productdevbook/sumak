@@ -1,4 +1,5 @@
 import type {
+  ArrayExprNode,
   BinaryOpNode,
   DeleteNode,
   FrameSpec,
@@ -22,6 +23,12 @@ export class MysqlPrinter extends BasePrinter {
   protected override printInsert(node: InsertNode): string {
     if (node.returning.length > 0) {
       throw new UnsupportedDialectFeatureError("mysql", "RETURNING")
+    }
+    if (node.ctes.some((c) => c.recursive)) {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "WITH RECURSIVE in INSERT (MySQL allows recursive CTEs only in SELECT)",
+      )
     }
     if (node.onConflict) {
       throw new UnsupportedDialectFeatureError(
@@ -68,6 +75,12 @@ export class MysqlPrinter extends BasePrinter {
   protected override printUpdate(node: UpdateNode): string {
     if (node.returning.length > 0) {
       throw new UnsupportedDialectFeatureError("mysql", "RETURNING on UPDATE")
+    }
+    if (node.ctes.some((c) => c.recursive)) {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "WITH RECURSIVE in UPDATE (MySQL allows recursive CTEs only in SELECT)",
+      )
     }
     if (node.from) {
       throw new UnsupportedDialectFeatureError(
@@ -123,10 +136,24 @@ export class MysqlPrinter extends BasePrinter {
     return super.printFrameSpec(frame)
   }
 
+  /** MySQL has no `ARRAY[...]` literal syntax. Use `JSON_ARRAY()` or raw SQL. */
+  protected override printArrayExpr(_node: ArrayExprNode): string {
+    throw new UnsupportedDialectFeatureError(
+      "mysql",
+      "ARRAY[...] literal (use JSON_ARRAY(...) or raw SQL for MySQL)",
+    )
+  }
+
   /** MySQL does not support `DELETE … RETURNING` — PG / SQLite 3.35+ only. */
   protected override printDelete(node: DeleteNode): string {
     if (node.returning.length > 0) {
       throw new UnsupportedDialectFeatureError("mysql", "RETURNING on DELETE")
+    }
+    if (node.ctes.some((c) => c.recursive)) {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "WITH RECURSIVE in DELETE (MySQL allows recursive CTEs only in SELECT)",
+      )
     }
     return super.printDelete(node)
   }

@@ -1,9 +1,12 @@
 import type {
+  ArrayExprNode,
   BinaryOpNode,
+  DeleteNode,
   FullTextSearchNode,
   InsertNode,
   JoinNode,
   SelectNode,
+  UpdateNode,
 } from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
@@ -37,7 +40,41 @@ export class SqlitePrinter extends BasePrinter {
   }
 
   protected override printInsert(node: InsertNode): string {
+    if (node.ctes.some((c) => c.recursive)) {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        "WITH RECURSIVE in INSERT (SQLite allows recursive CTEs only in SELECT)",
+      )
+    }
     return super.printInsert(node)
+  }
+
+  protected override printUpdate(node: UpdateNode): string {
+    if (node.ctes.some((c) => c.recursive)) {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        "WITH RECURSIVE in UPDATE (SQLite allows recursive CTEs only in SELECT)",
+      )
+    }
+    return super.printUpdate(node)
+  }
+
+  protected override printDelete(node: DeleteNode): string {
+    if (node.ctes.some((c) => c.recursive)) {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        "WITH RECURSIVE in DELETE (SQLite allows recursive CTEs only in SELECT)",
+      )
+    }
+    return super.printDelete(node)
+  }
+
+  /** SQLite has no `ARRAY[...]` literal syntax. */
+  protected override printArrayExpr(_node: ArrayExprNode): string {
+    throw new UnsupportedDialectFeatureError(
+      "sqlite",
+      "ARRAY[...] literal (SQLite has no array literal — use JSON arrays or raw SQL)",
+    )
   }
 
   /**
