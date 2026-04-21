@@ -23,22 +23,22 @@ describe("AuditTimestampPlugin", () => {
     const q = db.insertInto("users").values({ name: "Alice" }).toSQL()
     expect(q.sql).toContain('"created_at"')
     expect(q.sql).toContain('"updated_at"')
-    expect(q.sql).toContain("NOW()")
+    expect(q.sql).toContain("CURRENT_TIMESTAMP")
   })
 
-  it("UPDATE adds updated_at = NOW()", () => {
+  it("UPDATE adds updated_at = CURRENT_TIMESTAMP", () => {
     const q = db
       .update("users")
       .set({ name: "Bob" })
       .where(({ id }) => id.eq(1))
       .toSQL()
     expect(q.sql).toContain('"updated_at"')
-    expect(q.sql).toContain("NOW()")
+    expect(q.sql).toContain("CURRENT_TIMESTAMP")
   })
 
   it("SELECT is not affected", () => {
     const q = db.selectFrom("users").select("id").toSQL()
-    expect(q.sql).not.toContain("NOW()")
+    expect(q.sql).not.toContain("CURRENT_TIMESTAMP")
   })
 
   it("non-configured table is not affected", () => {
@@ -87,7 +87,7 @@ describe("AuditTimestampPlugin", () => {
       },
     })
 
-    it("WHEN MATCHED UPDATE appends updated_at = NOW()", () => {
+    it("WHEN MATCHED UPDATE appends updated_at = CURRENT_TIMESTAMP", () => {
       const q = mdb
         .mergeInto("users", {
           source: "staging",
@@ -96,7 +96,7 @@ describe("AuditTimestampPlugin", () => {
         })
         .whenMatchedThenUpdate({ name: "x" })
         .toSQL()
-      expect(q.sql).toContain('"updated_at" = NOW()')
+      expect(q.sql).toContain('"updated_at" = CURRENT_TIMESTAMP')
     })
 
     it("WHEN NOT MATCHED INSERT appends created_at + updated_at", () => {
@@ -111,7 +111,7 @@ describe("AuditTimestampPlugin", () => {
       expect(q.sql).toContain('"created_at"')
       expect(q.sql).toContain('"updated_at"')
       // Both values appear in the INSERT tuple.
-      expect((q.sql.match(/NOW\(\)/g) ?? []).length).toBeGreaterThanOrEqual(2)
+      expect((q.sql.match(/CURRENT_TIMESTAMP/g) ?? []).length).toBeGreaterThanOrEqual(2)
     })
 
     it("WHEN MATCHED DELETE is untouched (no set to stamp)", () => {

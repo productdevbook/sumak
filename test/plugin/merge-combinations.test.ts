@@ -46,7 +46,7 @@ describe("MERGE × plugin combinations", () => {
     // Multi-tenant guard on ON.
     expect(q.sql).toContain('"users"."tenant_id" = $')
     // Audit-timestamp on UPDATE set.
-    expect(q.sql).toContain('"updated_at" = NOW()')
+    expect(q.sql).toContain('"updated_at" = CURRENT_TIMESTAMP')
     // Audit + tenant on INSERT columns.
     expect(q.sql).toContain('"created_at"')
     expect(q.sql).toContain('"tenant_id"')

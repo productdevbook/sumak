@@ -18,13 +18,18 @@ interface AuditTimestampConfig {
 /**
  * Plugin that auto-injects created_at/updated_at timestamps.
  *
- * - INSERT: adds created_at and updated_at columns with NOW()
- * - UPDATE: adds updated_at = NOW() to the SET clause
+ * - INSERT: adds created_at and updated_at columns with CURRENT_TIMESTAMP
+ * - UPDATE: adds updated_at = CURRENT_TIMESTAMP to the SET clause
+ *
+ * We emit `CURRENT_TIMESTAMP` rather than `NOW()` because the former is
+ * a niladic SQL:92 keyword the printer emits bare (not as a function
+ * call). It's portable across pg/mysql/sqlite/mssql; `NOW()` is
+ * MySQL/PG-only and fails on MSSQL and SQLite.
  *
  * ```ts
  * const plugin = new AuditTimestampPlugin({ tables: ["users", "posts"] })
  * // INSERT INTO "users" ("name") VALUES ('Ada')
- * // → INSERT INTO "users" ("name", "created_at", "updated_at") VALUES ('Ada', NOW(), NOW())
+ * // → INSERT INTO "users" ("name", "created_at", "updated_at") VALUES ('Ada', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
  * ```
  */
 export class AuditTimestampPlugin implements SumakPlugin {
@@ -59,7 +64,7 @@ export class AuditTimestampPlugin implements SumakPlugin {
   private transformInsert(node: InsertNode): InsertNode {
     if (!this.isTargetTable(node.table.name)) return node
 
-    const now = fn("NOW", [])
+    const now = fn("CURRENT_TIMESTAMP", [])
     const columns = [...node.columns, this.createdAt, this.updatedAt]
     const values = node.values.map((row) => [...row, now, now])
 
@@ -69,7 +74,7 @@ export class AuditTimestampPlugin implements SumakPlugin {
   private transformUpdate(node: UpdateNode): UpdateNode {
     if (!this.isTargetTable(node.table.name)) return node
 
-    const now = fn("NOW", [])
+    const now = fn("CURRENT_TIMESTAMP", [])
     const set = [...node.set, { column: this.updatedAt, value: now }]
 
     return { ...node, set }
@@ -85,7 +90,7 @@ export class AuditTimestampPlugin implements SumakPlugin {
    */
   private transformMerge(node: MergeNode): MergeNode {
     if (!this.isTargetTable(node.target.name)) return node
-    const now = fn("NOW", [])
+    const now = fn("CURRENT_TIMESTAMP", [])
     const whens = node.whens.map((w) => {
       if (w.type === "matched" && w.action === "update") {
         // Don't double-stamp if the caller already set updated_at.

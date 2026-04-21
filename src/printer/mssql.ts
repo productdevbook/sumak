@@ -5,6 +5,7 @@ import type {
   FullTextSearchNode,
   FunctionCallNode,
   InsertNode,
+  LiteralNode,
   OrderByNode,
   SelectNode,
   UpdateNode,
@@ -135,6 +136,19 @@ export class MssqlPrinter extends BasePrinter {
       (c) => `${quoteIdentifier(c.name, this.dialect)} AS (${this.printSelect(c.query)})`,
     )
     return `WITH ${cteParts.join(", ")}`
+  }
+
+  /**
+   * SQL Server has no boolean type — `TRUE` / `FALSE` are not literals,
+   * they are identifiers (and unbound ones). Boolean literals must be
+   * emitted as `1` / `0` (the BIT domain). Every path that routes
+   * through `printLiteral` (bare `lit(true)`, `IS NOT DISTINCT FROM
+   * true`, `CASE WHEN … THEN true`, etc.) otherwise produces
+   * unexecutable SQL.
+   */
+  protected override printLiteral(node: LiteralNode): string {
+    if (typeof node.value === "boolean") return node.value ? "1" : "0"
+    return super.printLiteral(node)
   }
 
   protected override printGraphTable(
