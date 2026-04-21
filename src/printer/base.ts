@@ -938,7 +938,10 @@ export class BasePrinter implements Printer {
   protected printFullTextSearch(node: FullTextSearchNode): string {
     // Default: PostgreSQL style — to_tsvector(cols) @@ to_tsquery(query)
     const cols = node.columns.map((c) => this.printExpression(c)).join(" || ' ' || ")
-    const lang = node.language ? `'${node.language}', ` : ""
+    // `language` is emitted as a SQL string literal. Escape to prevent
+    // breakout: without `escapeStringLiteral` any `'` in the config
+    // name (or deliberately crafted input) terminates the literal.
+    const lang = node.language ? `'${escapeStringLiteral(node.language)}', ` : ""
     let result = `(to_tsvector(${lang}${cols}) @@ to_tsquery(${lang}${this.printExpression(node.query)}))`
     if (node.alias) {
       result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`

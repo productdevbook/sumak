@@ -34,6 +34,15 @@ export const predicatePushdown: RewriteRule = {
       // Try to push into a join whose table matches all refs in the predicate
       for (let i = 0; i < joins.length; i++) {
         const join = joins[i]
+        // Only push into INNER / CROSS joins. On OUTER joins (LEFT /
+        // RIGHT / FULL) WHERE and ON are not interchangeable: WHERE
+        // filters the combined rowset (discarding NULL-extended
+        // unmatched rows whose predicate is UNKNOWN), ON filters the
+        // join input (unmatched rows keep their NULL extensions).
+        // Silently moving a predicate from WHERE to ON changes results.
+        if (join.joinType !== "INNER" && join.joinType !== "CROSS") {
+          continue
+        }
         const joinTable =
           join.table.type === "table_ref" ? (join.table.alias ?? join.table.name) : join.table.alias
 
