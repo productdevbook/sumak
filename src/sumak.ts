@@ -517,13 +517,15 @@ export class Sumak<DB> {
    * ```
    */
   generateDDL(options?: { ifNotExists?: boolean }): CompiledQuery[] {
-    // Route any embedded SELECT through compile() so plugins, hooks,
-    // normalize, and optimize apply — a CREATE TABLE ... AS SELECT on
-    // a multi-tenant table would otherwise leak across tenants.
-    const printer = new DDLPrinter(this._dialect.name, (sel) => this.compile(sel))
     const results: CompiledQuery[] = []
 
     for (const [tableName, columns] of Object.entries(this._tables)) {
+      // One printer per statement — matches the contract used by
+      // compileDDL() and avoids any cross-iteration param carryover
+      // if a column default or future asSelect pushes into the
+      // printer's params between the inner `renderSelect` and the
+      // outer `print()`'s snapshot.
+      const printer = new DDLPrinter(this._dialect.name, (sel) => this.compile(sel))
       const builder = new CreateTableBuilder(tableName)
       let tb = options?.ifNotExists ? builder.ifNotExists() : builder
 
