@@ -2,6 +2,7 @@ import type {
   DeleteNode,
   FrameSpec,
   FullTextSearchNode,
+  FunctionCallNode,
   InsertNode,
   JoinNode,
   OrderByNode,
@@ -139,5 +140,22 @@ export class MysqlPrinter extends BasePrinter {
       )
     }
     return super.printOrderBy(node)
+  }
+
+  /**
+   * MySQL does not support `<aggregate> FILTER (WHERE ...)` — it arrived
+   * in SQL:2003 but only PG / SQLite 3.30+ / Firebird implement it.
+   * Rewrite is possible with `CASE WHEN ... THEN value END` but it
+   * changes semantics subtly for `COUNT` vs `COUNT(expr)`; refuse
+   * instead and point the caller at the manual rewrite.
+   */
+  protected override printFunctionCall(node: FunctionCallNode): string {
+    if (node.filter) {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "FILTER (WHERE ...) aggregate clause (rewrite as COUNT(CASE WHEN ... THEN 1 END) or SUM(CASE ...))",
+      )
+    }
+    return super.printFunctionCall(node)
   }
 }

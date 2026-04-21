@@ -177,4 +177,51 @@ describe("Audit #7 regressions", () => {
       expect(() => printer.print(node)).toThrow(UnsupportedDialectFeatureError)
     })
   })
+
+  describe("FILTER (WHERE …) aggregate guard on MySQL & MSSQL", () => {
+    it("MySQL FILTER throws UnsupportedDialectFeatureError", async () => {
+      const { count, filter, Col } = await import("../src/builder/eb.ts")
+      const db = sumak({
+        dialect: mysqlDialect(),
+        tables: {
+          users: { id: serial().primaryKey(), age: serial() },
+        },
+      })
+      expect(() =>
+        db
+          .selectFrom("users")
+          .select({ adults: filter(count(), new Col("age").gt(18)) })
+          .toSQL(),
+      ).toThrow(UnsupportedDialectFeatureError)
+    })
+
+    it("MSSQL FILTER throws UnsupportedDialectFeatureError", async () => {
+      const { count, filter, Col } = await import("../src/builder/eb.ts")
+      const db = sumak({
+        dialect: mssqlDialect(),
+        tables: {
+          users: { id: serial().primaryKey(), age: serial() },
+        },
+      })
+      expect(() =>
+        db
+          .selectFrom("users")
+          .select({ adults: filter(count(), new Col("age").gt(18)) })
+          .toSQL(),
+      ).toThrow(UnsupportedDialectFeatureError)
+    })
+
+    it("PG FILTER still works (PG supports it natively)", async () => {
+      const { count, filter, Col } = await import("../src/builder/eb.ts")
+      const db = sumak({
+        dialect: pgDialect(),
+        tables: { users: { id: serial().primaryKey(), age: serial() } },
+      })
+      const r = db
+        .selectFrom("users")
+        .select({ adults: filter(count(), new Col("age").gt(18)) })
+        .toSQL()
+      expect(r.sql).toContain("FILTER (WHERE")
+    })
+  })
 })
