@@ -161,6 +161,19 @@ export class MssqlPrinter extends BasePrinter {
   }
 
   /**
+   * SQL Server has no `EXPLAIN` keyword; query plans are obtained via
+   * session-scoped `SET SHOWPLAN_ALL ON` (text plan) / `SET STATISTICS
+   * PROFILE ON` (runtime stats). Neither is a prefix on the statement,
+   * so there's no clean translation — refuse with a pointer.
+   */
+  protected override printExplain(_node: import("../ast/nodes.ts").ExplainNode): string {
+    throw new UnsupportedDialectFeatureError(
+      "mssql",
+      "EXPLAIN (SQL Server uses session-scoped SET SHOWPLAN_ALL ON or SET STATISTICS PROFILE ON — emit those separately)",
+    )
+  }
+
+  /**
    * SQL Server has no `->` / `->>` / `#>` / `#>>` operators — it uses
    * `JSON_VALUE(expr, '$.path')` for scalar extraction and
    * `JSON_QUERY(expr, '$.path')` for JSON-typed extraction. The base
@@ -300,10 +313,35 @@ export class MssqlPrinter extends BasePrinter {
         "DELETE with LIMIT/ORDER BY — use a CTE: WITH cte AS (SELECT TOP N ... ORDER BY ...) DELETE FROM cte",
       )
     }
+    if (node.using) {
+      // MSSQL has no `DELETE FROM t USING other`; multi-table form is
+      // `DELETE t FROM t JOIN other …`. Point the caller at innerJoin
+      // rather than silently emitting PG-flavoured invalid SQL.
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "DELETE ... USING (use .innerJoin(other, on) — SQL Server multi-table form is `DELETE t FROM t JOIN other`)",
+      )
+    }
     const parts: string[] = []
 
     if (node.ctes.length > 0) {
       parts.push(this.printCTEs(node.ctes))
+    }
+
+    // MSSQL multi-table DELETE: `DELETE <target> FROM <target> <joins>`.
+    // The target alias (or bare name) precedes FROM; the base printer's
+    // `DELETE FROM t INNER JOIN …` form is a MSSQL parse error.
+    if (node.joins.length > 0) {
+      const tableName = node.table.alias ?? node.table.name
+      parts.push("DELETE", quoteIdentifier(tableName, this.dialect))
+      // MSSQL: OUTPUT sits between target and FROM on delete-with-join.
+      if (node.returning.length > 0) {
+        parts.push("OUTPUT", this._outputCols(node.returning, "DELETED"))
+      }
+      parts.push("FROM", this.printTableRef(node.table))
+      for (const join of node.joins) parts.push(this.printJoin(join))
+      if (node.where) parts.push("WHERE", this.printExpression(node.where))
+      return parts.join(" ")
     }
 
     parts.push("DELETE FROM", this.printTableRef(node.table))
@@ -311,10 +349,6 @@ export class MssqlPrinter extends BasePrinter {
     // MSSQL: OUTPUT instead of RETURNING
     if (node.returning.length > 0) {
       parts.push("OUTPUT", this._outputCols(node.returning, "DELETED"))
-    }
-
-    for (const join of node.joins) {
-      parts.push(this.printJoin(join))
     }
 
     if (node.where) {

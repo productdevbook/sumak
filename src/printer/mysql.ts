@@ -63,6 +63,17 @@ export class MysqlPrinter extends BasePrinter {
     if (node.distinctOn) {
       throw new UnsupportedDialectFeatureError("mysql", "DISTINCT ON")
     }
+    // MySQL 8.0 supports `FOR UPDATE` and `FOR SHARE` only. PG's finer-
+    // grained lock modes (`NO KEY UPDATE`, `KEY SHARE`) are unknown to
+    // MySQL — the base printer would emit `FOR NO KEY UPDATE` verbatim
+    // and the server would reject it at parse. Point the caller at
+    // the supported forms.
+    if (node.lock && node.lock.mode !== "UPDATE" && node.lock.mode !== "SHARE") {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        `FOR ${node.lock.mode} — MySQL supports only FOR UPDATE and FOR SHARE; use .forUpdate() or .forShare()`,
+      )
+    }
     return super.printSelect(node)
   }
 
@@ -150,6 +161,39 @@ export class MysqlPrinter extends BasePrinter {
       "mysql",
       "MERGE INTO (use INSERT ... ON DUPLICATE KEY UPDATE on MySQL)",
     )
+  }
+
+  /**
+   * MySQL uses `EXPLAIN [ANALYZE] [FORMAT=X] <stmt>` — no parens around
+   * FORMAT, equals sign. Supported formats: TRADITIONAL, JSON, TREE.
+   * PG's YAML/XML don't exist on MySQL; reject them. ANALYZE is 8.0.18+.
+   */
+  protected override printExplain(node: import("../ast/nodes.ts").ExplainNode): string {
+    const parts: string[] = ["EXPLAIN"]
+    if (node.analyze) parts.push("ANALYZE")
+    if (node.format) {
+      if (node.format === "YAML" || node.format === "XML") {
+        throw new UnsupportedDialectFeatureError(
+          "mysql",
+          `EXPLAIN (FORMAT ${node.format}) — MySQL supports TRADITIONAL, JSON, TREE only`,
+        )
+      }
+      // MySQL 8.0.18–8.0.31 disallow FORMAT with ANALYZE entirely;
+      // 8.0.32+ allows FORMAT=TREE with ANALYZE but still not JSON /
+      // TRADITIONAL. Refuse the non-TREE combos rather than silently
+      // emit SQL the server rejects.
+      if (node.analyze && node.format !== "TREE") {
+        throw new UnsupportedDialectFeatureError(
+          "mysql",
+          `EXPLAIN ANALYZE FORMAT=${node.format} — MySQL only supports FORMAT=TREE with ANALYZE`,
+        )
+      }
+      parts.push(`FORMAT=${node.format}`)
+    }
+    // Route through printNode on `this` so dialect-specific statement
+    // printers (printSelect, printUpdate, etc.) apply to the nested SQL.
+    parts.push(this.printNode(node.statement))
+    return parts.join(" ")
   }
 
   /**
