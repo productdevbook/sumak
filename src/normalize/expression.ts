@@ -78,25 +78,41 @@ export function fromCNF(cnf: CNF): ExpressionNode | undefined {
 
 // ── Flatten AND/OR ──
 
+/**
+ * Walk a left-skewed AND tree iteratively so deeply nested WHERE
+ * clauses (think bulk-generated predicates, 5k+ conditions) don't
+ * blow the call stack. Recursive spread would overflow around
+ * 10k–15k frames depending on runtime.
+ */
 function flattenAnd(expr: ExpressionNode): ExpressionNode[] {
-  if (expr.type === "binary_op" && expr.op === "AND") {
-    return [...flattenAnd(expr.left), ...flattenAnd(expr.right)]
-  }
-  return [expr]
+  return flattenByOp(expr, "AND")
 }
 
 function flattenOr(expr: ExpressionNode): ExpressionNode[] {
-  if (expr.type === "binary_op" && expr.op === "OR") {
-    return [...flattenOr(expr.left), ...flattenOr(expr.right)]
+  return flattenByOp(expr, "OR")
+}
+
+function flattenByOp(expr: ExpressionNode, op: "AND" | "OR"): ExpressionNode[] {
+  const out: ExpressionNode[] = []
+  const stack: ExpressionNode[] = [expr]
+  while (stack.length > 0) {
+    const node = stack.pop() as ExpressionNode
+    if (node.type === "binary_op" && node.op === op) {
+      // Push right first so left is popped first → preserves chain order.
+      stack.push(node.right)
+      stack.push(node.left)
+    } else {
+      out.push(node)
+    }
   }
-  return [expr]
+  return out
 }
 
 /**
  * Flatten nested AND/OR into a flat structure.
  * `(a AND (b AND c))` → `(a AND b AND c)` (left-associative chain)
  */
-function flattenLogical(expr: ExpressionNode): ExpressionNode {
+export function flattenLogical(expr: ExpressionNode): ExpressionNode {
   if (expr.type !== "binary_op") return recurse(expr, flattenLogical)
 
   const e = expr as BinaryOpNode

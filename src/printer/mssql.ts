@@ -69,6 +69,14 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("HAVING", this.printExpression(node.having))
     }
 
+    // MSSQL: UNION / INTERSECT / EXCEPT come between HAVING and ORDER BY —
+    // the outer query's ORDER BY + OFFSET/FETCH apply to the combined
+    // result, not to the left arm. Emitting OFFSET/FETCH before the
+    // set-op was invalid SQL (SQL Server rejects the statement).
+    if (node.setOp) {
+      parts.push(node.setOp.op, this.printSelect(node.setOp.query))
+    }
+
     if (node.orderBy.length > 0) {
       parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
     }
@@ -79,10 +87,6 @@ export class MssqlPrinter extends BasePrinter {
       if (node.limit) {
         parts.push(`FETCH NEXT ${this.printExpression(node.limit)} ROWS ONLY`)
       }
-    }
-
-    if (node.setOp) {
-      parts.push(node.setOp.op, this.printSelect(node.setOp.query))
     }
 
     if (node.lock) {
@@ -102,6 +106,22 @@ export class MssqlPrinter extends BasePrinter {
       "mssql",
       "SQL:2023 GRAPH_TABLE (MSSQL has its own node/edge MATCH() graph syntax — not the SQL/PGQ standard)",
     )
+  }
+
+  /**
+   * MSSQL does not support `LATERAL` — it has `CROSS APPLY` / `OUTER
+   * APPLY` which are semantically similar but syntactically different.
+   * Throw rather than silently emit invalid SQL; users who need the
+   * correlated-subquery pattern on MSSQL should use raw SQL for now.
+   */
+  protected override printJoin(node: import("../ast/nodes.ts").JoinNode): string {
+    if (node.lateral) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "LATERAL JOIN (use CROSS APPLY / OUTER APPLY via raw SQL)",
+      )
+    }
+    return super.printJoin(node)
   }
 
   protected override printInsert(node: InsertNode): string {
