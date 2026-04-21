@@ -110,6 +110,17 @@ export class SqlitePrinter extends BasePrinter {
    */
   protected override printFunctionCall(node: import("../ast/nodes.ts").FunctionCallNode): string {
     const upper = node.name.toUpperCase()
+    // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
+    // on SQLite is the AGGREGATE form, not the scalar — rewriting
+    // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently
+    // collapse rows into an aggregate result. Refuse the 0/1-arg
+    // variant with a clear error instead.
+    if ((upper === "GREATEST" || upper === "LEAST") && node.args.length < 2) {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        `${upper} requires 2+ args on SQLite (single-arg MAX/MIN is the aggregate form, not scalar)`,
+      )
+    }
     if (upper === "GREATEST") {
       return super.printFunctionCall({ ...node, name: "MAX" })
     }

@@ -139,5 +139,16 @@ describe("Audit #18 regressions", () => {
       const r = new PgPrinter().print(selectOf(greatest))
       expect(r.sql).toContain("GREATEST(")
     })
+
+    it("SQLite GREATEST with 1 arg throws (would collapse to aggregate)", () => {
+      const oneArg: FunctionCallNode = {
+        type: "function_call",
+        name: "GREATEST",
+        args: [{ type: "column_ref", column: "a" }],
+      }
+      expect(() => new SqlitePrinter().print(selectOf(oneArg))).toThrow(
+        UnsupportedDialectFeatureError,
+      )
+    })
   })
 })
