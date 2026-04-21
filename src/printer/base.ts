@@ -731,6 +731,15 @@ export class BasePrinter implements Printer {
   }
 
   protected printJoin(node: JoinNode): string {
+    if (!node.on && node.joinType !== "CROSS") {
+      // Without ON the join silently degrades to a cross product —
+      // usually not what the user wanted. `CROSS JOIN` must be
+      // requested explicitly.
+      throw new Error(
+        `${node.joinType} JOIN requires an ON condition. ` +
+          "Use .innerJoin(t, on) / .leftJoin(t, on) / …, or .crossJoin(t) for an unconditional cross product.",
+      )
+    }
     const parts: string[] = []
     const lateral = node.lateral ? " LATERAL" : ""
     parts.push(`${node.joinType} JOIN${lateral}`)

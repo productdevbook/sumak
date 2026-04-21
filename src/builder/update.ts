@@ -83,6 +83,12 @@ export class UpdateBuilder {
   }
 
   orderBy(expr: string | ExpressionNode, direction: "ASC" | "DESC" = "ASC"): UpdateBuilder {
+    if (typeof expr === "string" && /\s/.test(expr)) {
+      throw new Error(
+        `orderBy(${JSON.stringify(expr)}) — column names may not contain spaces. ` +
+          "Pass the direction as the second argument.",
+      )
+    }
     const node: import("../ast/nodes.ts").OrderByNode = {
       expr: typeof expr === "string" ? { type: "column_ref", column: expr } : expr,
       direction,

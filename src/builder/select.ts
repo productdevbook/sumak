@@ -134,6 +134,17 @@ export class SelectBuilder {
     direction: OrderDirection = "ASC",
     nulls?: "FIRST" | "LAST",
   ): SelectBuilder {
+    if (typeof expr === "string" && /\s/.test(expr)) {
+      // `orderBy("price DESC")` used to be quoted as `"price DESC" ASC` —
+      // silent wrong SQL. Column names with whitespace are rare enough
+      // that the footgun isn't worth supporting; point the caller at
+      // the second argument.
+      throw new Error(
+        `orderBy(${JSON.stringify(expr)}) — column names may not contain spaces. ` +
+          "Pass the direction as the second argument: " +
+          `orderBy(${JSON.stringify(expr.split(/\s+/)[0])}, "${expr.split(/\s+/).slice(-1)[0]?.toUpperCase() || "ASC"}")`,
+      )
+    }
     const node: OrderByNode = {
       expr: typeof expr === "string" ? col(expr) : expr,
       direction,
