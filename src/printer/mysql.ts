@@ -178,6 +178,33 @@ export class MysqlPrinter extends BasePrinter {
         "WITH RECURSIVE in DELETE (MySQL allows recursive CTEs only in SELECT)",
       )
     }
+    if (node.using) {
+      // MySQL has no `DELETE FROM t USING other`; the multi-table
+      // form is `DELETE t FROM t JOIN other ON …`. Point the caller
+      // at `.innerJoin(...)` instead of silently emitting invalid SQL.
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "DELETE ... USING (use .innerJoin(other, on) — MySQL multi-table form is `DELETE t FROM t JOIN other`)",
+      )
+    }
+    // MySQL multi-table DELETE: target alias/name precedes FROM.
+    //   DELETE t FROM t INNER JOIN u ON ... WHERE ...
+    // The base printer emits `DELETE FROM t INNER JOIN u ...` which
+    // MySQL rejects at parse.
+    if (node.joins.length > 0) {
+      const parts: string[] = []
+      if (node.ctes.length > 0) parts.push(this.printCTEs(node.ctes))
+      const tableName = node.table.alias ?? node.table.name
+      parts.push("DELETE", quoteIdentifier(tableName, this.dialect))
+      parts.push("FROM", this.printTableRef(node.table))
+      for (const join of node.joins) parts.push(this.printJoin(join))
+      if (node.where) parts.push("WHERE", this.printExpression(node.where))
+      if (node.orderBy && node.orderBy.length > 0) {
+        parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
+      }
+      if (node.limit) parts.push("LIMIT", this.printExpression(node.limit))
+      return parts.join(" ")
+    }
     return super.printDelete(node)
   }
 

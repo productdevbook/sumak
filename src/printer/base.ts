@@ -319,6 +319,22 @@ export class BasePrinter implements Printer {
     } else if (node.source) {
       parts.push(this.printSelect(node.source))
     } else {
+      // Validate column/value dimensions upfront. A mismatch produces
+      // cryptic driver errors ("INSERT has more target columns than
+      // expressions") that point at the DB rather than the caller;
+      // catching it at print time with both the column list and the
+      // offending row index is much friendlier.
+      if (node.columns.length > 0) {
+        node.values.forEach((row, i) => {
+          if (row.length !== node.columns.length) {
+            throw new Error(
+              `INSERT column / value count mismatch: ${node.columns.length} columns ` +
+                `(${node.columns.join(", ")}) but row ${i} has ${row.length} value(s). ` +
+                "Every row must provide exactly one value per column.",
+            )
+          }
+        })
+      }
       parts.push("VALUES")
       const rows = node.values.map(
         (row) => `(${row.map((v) => this.printExpression(v)).join(", ")})`,

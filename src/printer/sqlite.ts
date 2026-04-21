@@ -66,6 +66,14 @@ export class SqlitePrinter extends BasePrinter {
         "WITH RECURSIVE in DELETE (SQLite allows recursive CTEs only in SELECT)",
       )
     }
+    // SQLite has no multi-table DELETE (no USING, no JOIN). Reject
+    // rather than silently emit SQL the parser rejects.
+    if (node.using || node.joins.length > 0) {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        "multi-table DELETE (SQLite has no USING / JOIN on DELETE — rewrite as DELETE FROM t WHERE id IN (SELECT ...))",
+      )
+    }
     return super.printDelete(node)
   }
 
