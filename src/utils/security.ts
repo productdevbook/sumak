@@ -43,10 +43,22 @@ export function validateFunctionName(name: string): void {
 const SAFE_DATA_TYPE_RE =
   /^[A-Za-z][A-Za-z0-9_ ]*(?:\([0-9, ]*\))?(?:\s+[A-Za-z][A-Za-z0-9_ ]*)?(?:\[\])?$/
 
+/**
+ * Matches an `enum(...)` type where each value is a single-quoted
+ * literal whose contents can only contain characters safe in a SQL
+ * string literal after `escapeStringLiteral` doubling: any ASCII
+ * printable EXCEPT a bare `'` (the enclosing quotes) or `\\`. Allows
+ * doubled `''` and escaped `\\\\` as the encoding of the originals.
+ * Enum values created via `enumType()` (`src/schema/column.ts`)
+ * already flow through escapeStringLiteral; this regex re-verifies
+ * that no raw `'` or `\\` sneaked in via direct AST construction.
+ */
+const SAFE_ENUM_TYPE_RE = /^enum\((?:'(?:''|\\\\|[^'\\])*'(?:,(?:'(?:''|\\\\|[^'\\])*'))*)?\)$/
+
 export function validateDataType(dataType: string): void {
-  if (!SAFE_DATA_TYPE_RE.test(dataType)) {
-    throw new SecurityError(
-      `Unsafe CAST data type: "${dataType}". Data types must be standard SQL type identifiers.`,
-    )
-  }
+  if (SAFE_DATA_TYPE_RE.test(dataType)) return
+  if (SAFE_ENUM_TYPE_RE.test(dataType)) return
+  throw new SecurityError(
+    `Unsafe CAST data type: "${dataType}". Data types must be standard SQL type identifiers.`,
+  )
 }
