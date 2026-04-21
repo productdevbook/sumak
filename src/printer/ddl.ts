@@ -243,6 +243,13 @@ export class DDLPrinter {
           // '<to>', 'COLUMN'`. All three args are SQL string literals;
           // escape via the same routine every other literal goes
           // through.
+          //
+          // INVARIANT: `node.table.schema` / `node.table.name` are
+          // the RAW (unquoted) identifiers as they exist in the
+          // database catalog. Do not pass bracket-quoted forms — the
+          // surrounding `N'…'` literal would contain the brackets
+          // verbatim and sp_rename would reject the nonexistent
+          // `[dbo].[users]` object.
           if (this.dialect === "mssql") {
             const target = node.table.schema
               ? `${node.table.schema}.${node.table.name}.${action.from}`
