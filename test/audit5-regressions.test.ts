@@ -36,18 +36,22 @@ describe("Audit #5 regressions", () => {
         returning: [{ type: "star", table: "users" }],
       }
       const r = printer.print(node)
-      // Previously emitted `INSERTED."users".*` (wrong quote style + bug)
-      expect(r.sql).toContain("OUTPUT INSERTED.[users].*")
+      // Audit #24: MSSQL pseudo-tables (INSERTED/DELETED) cannot be
+      // qualified by a base table name — three-part `INSERTED.<tbl>.*`
+      // is a SQL Server parse error. Drop the caller's qualifier.
+      expect(r.sql).toContain("OUTPUT INSERTED.*")
+      expect(r.sql).not.toContain("INSERTED.[users].*")
     })
 
-    it("DELETE … OUTPUT DELETED.[t].* for table-qualified star", () => {
+    it("DELETE … OUTPUT DELETED.* for table-qualified star", () => {
       const node: DeleteNode = {
         ...createDeleteNode({ type: "table_ref", name: "users" }),
         returning: [{ type: "star", table: "users" }],
         where: eq(col("id"), param(0, 1)),
       }
       const r = printer.print(node)
-      expect(r.sql).toContain("OUTPUT DELETED.[users].*")
+      expect(r.sql).toContain("OUTPUT DELETED.*")
+      expect(r.sql).not.toContain("DELETED.[users].*")
     })
 
     it("INSERT OUTPUT with non-star column nodes still prefixes correctly", () => {

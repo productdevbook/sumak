@@ -13,6 +13,7 @@ import type {
 } from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
+import { escapeStringLiteral } from "../utils/security.ts"
 import { BasePrinter } from "./base.ts"
 
 export class MysqlPrinter extends BasePrinter {
@@ -197,9 +198,21 @@ export class MysqlPrinter extends BasePrinter {
   }
 
   /**
-   * MySQL supports `->` / `->>` (single key) but has no path operators
-   * `#>` / `#>>`; those are PG-specific. Reject the path variants with
-   * a pointer at the JSON_EXTRACT equivalent.
+   * MySQL `->` / `->>` require the RHS to be a JSONPath starting with
+   * `$` (e.g. `data->'$.name'`, `data->'$[0]'`). The base printer emits
+   * PG's bare-key form (`data->'name'`), which MySQL rejects with
+   * `ER_INVALID_JSON_PATH`. Rewrite the path literal here.
+   *
+   * Note on cross-dialect semantics: if a caller passes `at("a.b")` the
+   * MySQL form becomes `$.a.b` — a two-level JSONPath. On PG the same
+   * node emits `data->'a.b'` — a literal single key. Sumak treats
+   * `.at(path)` as "the user-supplied JSON selector string"; dotted
+   * keys are rare and chaining (`.at("a").at("b")`) is the
+   * recommended portable form. Use `#>` with a segment array for
+   * path traversal (PG only).
+   *
+   * `#>` / `#>>` path operators are PG-specific — reject with a pointer
+   * at JSON_EXTRACT.
    */
   protected override printJsonAccess(node: import("../ast/nodes.ts").JsonAccessNode): string {
     if (node.operator === "#>" || node.operator === "#>>") {
@@ -208,7 +221,13 @@ export class MysqlPrinter extends BasePrinter {
         `${node.operator} JSON path operator — use JSON_EXTRACT(expr, '$.a.b') or chained '->' on MySQL`,
       )
     }
-    return super.printJsonAccess(node)
+    // Rewrite single-segment path to JSONPath. `at("0")` → `$[0]`,
+    // `at("name")` → `$.name`. Escape embedded quotes with the usual
+    // single-quote doubling.
+    const seg = /^\d+$/.test(node.path) ? `[${node.path}]` : `.${node.path}`
+    const pathLiteral = `'$${escapeStringLiteral(seg)}'`
+    const result = `${this.printExpression(node.expr)}${node.operator}${pathLiteral}`
+    return node.alias ? `${result} AS ${quoteIdentifier(node.alias, this.dialect)}` : result
   }
 
   /** MySQL does not support `DELETE … RETURNING` — PG / SQLite 3.35+ only. */

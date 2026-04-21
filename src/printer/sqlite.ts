@@ -10,6 +10,7 @@ import type {
 } from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
+import { escapeStringLiteral } from "../utils/security.ts"
 import { BasePrinter } from "./base.ts"
 
 export class SqlitePrinter extends BasePrinter {
@@ -94,9 +95,10 @@ export class SqlitePrinter extends BasePrinter {
   }
 
   /**
-   * SQLite supports `->` / `->>` (3.38+) but has no path operators
-   * `#>` / `#>>`; those are PG-specific. Reject with a pointer at
-   * json_extract / chained `->`.
+   * SQLite `->` / `->>` (3.38+) require the RHS to be a JSONPath
+   * starting with `$` (`data->'$.name'`, `data->'$[0]'`). The base
+   * printer emits PG's bare-key form, which SQLite rejects. Rewrite
+   * the path literal here. `#>` / `#>>` are PG-specific — reject.
    */
   protected override printJsonAccess(node: import("../ast/nodes.ts").JsonAccessNode): string {
     if (node.operator === "#>" || node.operator === "#>>") {
@@ -105,7 +107,10 @@ export class SqlitePrinter extends BasePrinter {
         `${node.operator} JSON path operator — use json_extract(expr, '$.a.b') or chained '->' on SQLite`,
       )
     }
-    return super.printJsonAccess(node)
+    const seg = /^\d+$/.test(node.path) ? `[${node.path}]` : `.${node.path}`
+    const pathLiteral = `'$${escapeStringLiteral(seg)}'`
+    const result = `${this.printExpression(node.expr)}${node.operator}${pathLiteral}`
+    return node.alias ? `${result} AS ${quoteIdentifier(node.alias, this.dialect)}` : result
   }
 
   /**
