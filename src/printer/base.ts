@@ -536,15 +536,20 @@ export class BasePrinter implements Printer {
   }
 
   protected printRaw(node: RawNode): string {
-    // `sql` tagged templates embed interpolated values as `__PARAM_N__`
-    // sentinels in the raw SQL string. Substitute them with dialect-
-    // correct placeholders at print time, using the current `this.params`
-    // length as the base offset so raw params interleave correctly with
-    // surrounding param positions.
+    // `sql` tagged templates embed interpolated values using a null-byte
+    // sentinel `\x00SUMAK_PARAM_N\x00` that users can't type in a string
+    // literal. Printer substitutes them with dialect-correct placeholders,
+    // using the current `this.params` length as the base offset so raw
+    // params interleave correctly with surrounding param positions.
     const baseIndex = this.params.length
     this.params.push(...node.params)
-    if (node.sql.indexOf("__PARAM_") === -1) return node.sql
-    return node.sql.replace(/__PARAM_(\d+)__/g, (_m, i) =>
+    // NUL (U+0000) delimited sentinel — oxlint flags the \x00 escape in
+    // regex as a control-char warning; the unicode escape form is
+    // semantically identical and lint-clean.
+    const SENTINEL_START = "\u0000SUMAK_PARAM_"
+    if (node.sql.indexOf(SENTINEL_START) === -1) return node.sql
+    // oxlint-disable-next-line no-control-regex — intentional sentinel
+    return node.sql.replace(/\u0000SUMAK_PARAM_(\d+)\u0000/g, (_m, i) =>
       formatParam(baseIndex + Number(i), this.dialect),
     )
   }

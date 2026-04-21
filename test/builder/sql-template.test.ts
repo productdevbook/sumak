@@ -31,7 +31,8 @@ describe("sql tagged template literal", () => {
     const expr = sql`SELECT * FROM users WHERE name = ${"Alice"}`
     const node = (expr as any).node
     expect(node.params).toEqual(["Alice"])
-    expect(node.sql).toContain("__PARAM_0__")
+    // Sentinel uses a null-byte delimiter that users can't type in a string.
+    expect(node.sql).toContain("\x00SUMAK_PARAM_0\x00")
   })
 
   it("parameterizes numbers", () => {
@@ -44,8 +45,8 @@ describe("sql tagged template literal", () => {
     const expr = sql`SELECT * FROM users WHERE name = ${"Alice"} AND id = ${1}`
     const node = (expr as any).node
     expect(node.params).toEqual(["Alice", 1])
-    expect(node.sql).toContain("__PARAM_0__")
-    expect(node.sql).toContain("__PARAM_1__")
+    expect(node.sql).toContain("\x00SUMAK_PARAM_0\x00")
+    expect(node.sql).toContain("\x00SUMAK_PARAM_1\x00")
   })
 
   it("inlines literal expressions", () => {

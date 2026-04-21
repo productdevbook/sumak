@@ -1,7 +1,10 @@
 import type {
+  DeleteNode,
   FrameSpec,
   FullTextSearchNode,
   InsertNode,
+  JoinNode,
+  OrderByNode,
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -103,5 +106,38 @@ export class MysqlPrinter extends BasePrinter {
       throw new UnsupportedDialectFeatureError("mysql", "GROUPS window frame (use ROWS or RANGE)")
     }
     return super.printFrameSpec(frame)
+  }
+
+  /** MySQL does not support `DELETE … RETURNING` — PG / SQLite 3.35+ only. */
+  protected override printDelete(node: DeleteNode): string {
+    if (node.returning.length > 0) {
+      throw new UnsupportedDialectFeatureError("mysql", "RETURNING on DELETE")
+    }
+    return super.printDelete(node)
+  }
+
+  /**
+   * MySQL has no `FULL OUTER JOIN` — it requires `UNION` of LEFT + RIGHT
+   * joins. Refuse rather than emit invalid SQL.
+   */
+  protected override printJoin(node: JoinNode): string {
+    if (node.joinType === "FULL") {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "FULL JOIN (union a LEFT JOIN with a RIGHT JOIN instead)",
+      )
+    }
+    return super.printJoin(node)
+  }
+
+  /** MySQL does not support `NULLS FIRST / LAST` in ORDER BY. */
+  protected override printOrderBy(node: OrderByNode): string {
+    if (node.nulls) {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        "NULLS FIRST/LAST in ORDER BY (use ISNULL(col) as a secondary sort key)",
+      )
+    }
+    return super.printOrderBy(node)
   }
 }

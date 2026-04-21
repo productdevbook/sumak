@@ -45,7 +45,7 @@ export function sql<T = unknown>(
           else sqlParts.push(`'${escapeStringLiteral(String(exprNode.value))}'`)
         } else if (exprNode.type === "param") {
           params.push(exprNode.value)
-          sqlParts.push(`__PARAM_${params.length - 1}__`)
+          sqlParts.push(`\x00SUMAK_PARAM_${params.length - 1}\x00`)
         } else if (exprNode.type === "column_ref") {
           const col = exprNode.table
             ? `"${exprNode.table.replaceAll('"', '""')}"."${exprNode.column.replaceAll('"', '""')}"`
@@ -70,7 +70,7 @@ export function sql<T = unknown>(
       } else {
         // Primitive value → parameterize
         params.push(value)
-        sqlParts.push(`__PARAM_${params.length - 1}__`)
+        sqlParts.push(`\x00SUMAK_PARAM_${params.length - 1}\x00`)
       }
     }
   }

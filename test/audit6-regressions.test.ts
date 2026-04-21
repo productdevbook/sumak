@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest"
 
-import { col, eq, lit, param } from "../src/ast/expression.ts"
+import { col, eq, param } from "../src/ast/expression.ts"
 import type { ExpressionNode, SelectNode } from "../src/ast/nodes.ts"
 import { createSelectNode, tableRef } from "../src/ast/nodes.ts"
-import { SelectBuilder } from "../src/builder/select.ts"
 import { mssqlDialect } from "../src/dialect/mssql.ts"
 import { pgDialect } from "../src/dialect/pg.ts"
 import { sqliteDialect } from "../src/dialect/sqlite.ts"

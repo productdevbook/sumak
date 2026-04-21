@@ -22,21 +22,62 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   readonly _printer?: Printer
   /** @internal */
   readonly _compile?: (node: ASTNode) => CompiledQuery
+  /** @internal */
+  readonly _allowAllRows: boolean
 
   constructor(
     table: TB & string,
     printer?: Printer,
     compile?: (node: ASTNode) => CompiledQuery,
     builder?: DeleteBuilder,
+    allowAllRows = false,
   ) {
     this._builder = builder ?? new DeleteBuilder().from(table)
     this._printer = printer
     this._compile = compile
+    this._allowAllRows = allowAllRows
   }
 
   /** @internal */
   private _with(builder: DeleteBuilder): TypedDeleteBuilder<DB, TB> {
-    return new TypedDeleteBuilder<DB, TB>("" as TB & string, this._printer, this._compile, builder)
+    return new TypedDeleteBuilder<DB, TB>(
+      "" as TB & string,
+      this._printer,
+      this._compile,
+      builder,
+      this._allowAllRows,
+    )
+  }
+
+  /**
+   * Explicit opt-in to delete every row in the table. Without this
+   * token, building a `.deleteFrom(t)` without a `.where(...)` throws —
+   * accidentally deleting every row is a footgun every ORM's users
+   * have hit at least once.
+   *
+   * ```ts
+   * db.deleteFrom("logs").allRows().toSQL()
+   * // DELETE FROM "logs"
+   * ```
+   */
+  allRows(): TypedDeleteBuilder<DB, TB> {
+    return new TypedDeleteBuilder<DB, TB>(
+      "" as TB & string,
+      this._printer,
+      this._compile,
+      this._builder,
+      true,
+    )
+  }
+
+  private _assertHasFilter(): void {
+    if (this._allowAllRows) return
+    if (this._builder.build().where) return
+    throw new Error(
+      "DELETE without a WHERE clause would remove every row in the table. " +
+        "Add `.where(...)` or, if that's intentional, call `.allRows()` to " +
+        "explicitly opt in.",
+    )
   }
 
   /**
@@ -165,6 +206,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   }
 
   build(): DeleteNode {
+    this._assertHasFilter()
     return this._builder.build()
   }
 
@@ -174,13 +216,14 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
 
   /** Compile to SQL using the dialect's printer. */
   toSQL(): CompiledQuery {
-    if (this._compile) return this._compile(this.build())
+    this._assertHasFilter()
+    if (this._compile) return this._compile(this._builder.build())
     if (!this._printer) {
       throw new Error(
         "toSQL() requires a printer. Use db.deleteFrom() or pass a printer to compile().",
       )
     }
-    return this._printer.print(this.build())
+    return this._printer.print(this._builder.build())
   }
 
   /** EXPLAIN — returns a chainable ExplainBuilder. */

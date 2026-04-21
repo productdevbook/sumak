@@ -141,16 +141,45 @@ export class Col<T> {
     return wrap(binOp(op, this._node, autoParam(pattern)))
   }
 
-  /** IN (...values) / NOT IN via `{ negate: true }`. Also accepts a SELECT subquery. */
+  /**
+   * `IN (...values)` / `NOT IN` via `{ negate: true }`. Also accepts a
+   * SELECT subquery.
+   *
+   * **Null semantics.** SQL `col IN (1, NULL, 2)` never matches when
+   * `col` itself is NULL (three-valued logic). If the caller passes a
+   * literal `null` in the array, we transparently split the predicate
+   * into `(col IN (1, 2) OR col IS NULL)` so the intent — "match any
+   * of these values, including rows where col is NULL" — actually
+   * holds. `NOT IN` with a null becomes `col NOT IN (1, 2) AND col IS
+   * NOT NULL`.
+   */
   in(values: T[] | SelectNode, opts?: { negate?: boolean }): Expression<boolean> {
     const negated = opts?.negate === true
     if (Array.isArray(values)) {
-      return wrap({
+      const hasNull = values.some((v) => v === null)
+      const nonNull = hasNull ? values.filter((v) => v !== null) : values
+      const inNode: ExpressionNode = {
         type: "in",
         expr: this._node,
-        values: values.map((v) => autoParam(v)),
+        values: nonNull.map((v) => autoParam(v)),
         negated,
-      })
+      }
+      if (!hasNull) return wrap(inNode)
+      const nullCheck: ExpressionNode = {
+        type: "is_null",
+        expr: this._node,
+        negated,
+      }
+      // NOT IN with null → IN-empty-is-TRUE + AND IS NOT NULL
+      // IN    with null → IN-values + OR IS NULL
+      const combined: ExpressionNode = {
+        type: "binary_op",
+        op: negated ? "AND" : "OR",
+        // IF nonNull empty, inNode renders as TRUE (negated) / FALSE — still valid.
+        left: inNode,
+        right: nullCheck,
+      }
+      return wrap(combined)
     }
     return wrap({ type: "in", expr: this._node, values, negated })
   }
