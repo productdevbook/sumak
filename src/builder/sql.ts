@@ -59,9 +59,10 @@ export function sql<T = unknown>(
           // points at outer param 0, and the appended inner params are
           // unreferenced. Renumber by the current param offset.
           const offset = params.length
-          // oxlint-disable-next-line no-control-regex — intentional sentinel
+          // oxlint-disable-next-line no-control-regex -- intentional sentinel
+          const sentinelRe = /\u0000SUMAK_PARAM_(\d+)\u0000/g
           const remapped = exprNode.sql.replaceAll(
-            /\u0000SUMAK_PARAM_(\d+)\u0000/g,
+            sentinelRe,
             (_, n) => `\u0000SUMAK_PARAM_${Number(n) + offset}\u0000`,
           )
           params.push(...exprNode.params)

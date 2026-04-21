@@ -618,6 +618,15 @@ export class CaseBuilder<T> {
   }
 
   end(): Expression<T> {
+    if (this._whens.length === 0) {
+      // Every SQL dialect requires at least one WHEN in a CASE
+      // expression — `CASE END` and `CASE ELSE … END` are both syntax
+      // errors. Surface the bug at the builder call rather than at
+      // `toSQL()` time where the stack trace points at the printer.
+      throw new Error(
+        "case_().end() — CASE requires at least one .when(cond, result) before .end().",
+      )
+    }
     const node: CaseNode = {
       type: "case",
       operand: this._operand,
