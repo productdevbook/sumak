@@ -218,59 +218,115 @@ export class DDLPrinter {
 
   private printAlterTable(node: AlterTableNode): string {
     const tableName = quoteTableRef(node.table.name, this.dialect, node.table.schema)
-    const results: string[] = []
+
+    // Some actions need a complete standalone statement on certain
+    // dialects (MSSQL rename → `EXEC sp_rename …`; PG rename lives
+    // under `ALTER TABLE` but has restrictions). Split the action list
+    // into "ALTER TABLE … <clause>" chunks and "bare statement" chunks.
+    // Clauses for the same ALTER TABLE target get comma-joined on the
+    // dialects that support it (PG/MySQL); MSSQL and SQLite still
+    // require separate statements.
+    const clauses: string[] = []
+    const standalone: string[] = []
 
     for (const action of node.actions) {
-      const parts: string[] = ["ALTER TABLE", tableName]
       switch (action.kind) {
         case "add_column":
-          parts.push("ADD COLUMN", this.printColumnDef(action.column))
+          clauses.push(`ADD COLUMN ${this.printColumnDef(action.column)}`)
           break
         case "drop_column":
-          parts.push("DROP COLUMN", quoteIdentifier(action.column, this.dialect))
+          clauses.push(`DROP COLUMN ${quoteIdentifier(action.column, this.dialect)}`)
           break
-        case "rename_column":
-          parts.push(
-            "RENAME COLUMN",
-            quoteIdentifier(action.from, this.dialect),
-            "TO",
-            quoteIdentifier(action.to, this.dialect),
-          )
+        case "rename_column": {
+          // SQL Server has no `ALTER TABLE … RENAME COLUMN` at all;
+          // the idiomatic form is `EXEC sp_rename '<t>.<from>',
+          // '<to>', 'COLUMN'`. All three args are SQL string literals;
+          // escape via the same routine every other literal goes
+          // through.
+          //
+          // INVARIANT: `node.table.schema` / `node.table.name` are
+          // the RAW (unquoted) identifiers as they exist in the
+          // database catalog. Do not pass bracket-quoted forms — the
+          // surrounding `N'…'` literal would contain the brackets
+          // verbatim and sp_rename would reject the nonexistent
+          // `[dbo].[users]` object.
+          if (this.dialect === "mssql") {
+            const target = node.table.schema
+              ? `${node.table.schema}.${node.table.name}.${action.from}`
+              : `${node.table.name}.${action.from}`
+            standalone.push(
+              `EXEC sp_rename N'${escapeStringLiteral(target)}', N'${escapeStringLiteral(action.to)}', N'COLUMN'`,
+            )
+          } else {
+            clauses.push(
+              `RENAME COLUMN ${quoteIdentifier(action.from, this.dialect)} TO ${quoteIdentifier(action.to, this.dialect)}`,
+            )
+          }
           break
-        case "rename_table":
-          parts.push("RENAME TO", quoteIdentifier(action.to, this.dialect))
+        }
+        case "rename_table": {
+          if (this.dialect === "mssql") {
+            const target = node.table.schema
+              ? `${node.table.schema}.${node.table.name}`
+              : node.table.name
+            standalone.push(
+              `EXEC sp_rename N'${escapeStringLiteral(target)}', N'${escapeStringLiteral(action.to)}'`,
+            )
+          } else {
+            clauses.push(`RENAME TO ${quoteIdentifier(action.to, this.dialect)}`)
+          }
           break
-        case "alter_column":
-          parts.push("ALTER COLUMN", quoteIdentifier(action.column, this.dialect))
+        }
+        case "alter_column": {
+          // NOTE: PG-only syntax. MySQL/MSSQL need MODIFY/ALTER COLUMN
+          // with full type; SQLite doesn't support any of these. Those
+          // dialect rewrites are tracked separately (see audit #22).
+          const sub: string[] = ["ALTER COLUMN", quoteIdentifier(action.column, this.dialect)]
           switch (action.set.type) {
             case "set_not_null":
-              parts.push("SET NOT NULL")
+              sub.push("SET NOT NULL")
               break
             case "drop_not_null":
-              parts.push("DROP NOT NULL")
+              sub.push("DROP NOT NULL")
               break
             case "set_default":
-              parts.push("SET DEFAULT", this.printExpr(action.set.value))
+              sub.push("SET DEFAULT", this.printExpr(action.set.value))
               break
             case "drop_default":
-              parts.push("DROP DEFAULT")
+              sub.push("DROP DEFAULT")
               break
             case "set_data_type":
               validateDataType(action.set.dataType)
-              parts.push("SET DATA TYPE", action.set.dataType)
+              sub.push("SET DATA TYPE", action.set.dataType)
               break
           }
+          clauses.push(sub.join(" "))
           break
+        }
         case "add_constraint":
-          parts.push("ADD", this.printConstraint(action.constraint))
+          clauses.push(`ADD ${this.printConstraint(action.constraint)}`)
           break
         case "drop_constraint":
-          parts.push("DROP CONSTRAINT", quoteIdentifier(action.name, this.dialect))
+          clauses.push(`DROP CONSTRAINT ${quoteIdentifier(action.name, this.dialect)}`)
           break
       }
-      results.push(parts.join(" "))
     }
-    return results.join("; ")
+
+    const statements: string[] = []
+    if (clauses.length > 0) {
+      // pg and MySQL both accept comma-separated multi-action ALTER TABLE
+      // (atomic; the ANSI form). SQLite permits only one action per
+      // ALTER TABLE; MSSQL permits multiples only within a subset
+      // (ADD COLUMN, DROP COLUMN) — safer to emit one-per-statement.
+      const canBatch = this.dialect === "pg" || this.dialect === "mysql"
+      if (canBatch) {
+        statements.push(`ALTER TABLE ${tableName} ${clauses.join(", ")}`)
+      } else {
+        for (const c of clauses) statements.push(`ALTER TABLE ${tableName} ${c}`)
+      }
+    }
+    for (const s of standalone) statements.push(s)
+    return statements.join("; ")
   }
 
   private printDropTable(node: DropTableNode): string {
