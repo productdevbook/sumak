@@ -23,7 +23,15 @@ export class TclPrinter {
       case "tcl_begin":
         return this.printBegin(node)
       case "tcl_commit":
-        return node.andChain ? "COMMIT AND CHAIN" : this.commitKeyword()
+        if (node.andChain) {
+          // `AND CHAIN` is SQL:1999 — supported by PG and MySQL only.
+          // SQLite / MSSQL reject it at parse time.
+          if (this.dialect === "sqlite" || this.dialect === "mssql") {
+            throw new UnsupportedDialectFeatureError(this.dialect, "COMMIT AND CHAIN")
+          }
+          return "COMMIT AND CHAIN"
+        }
+        return this.commitKeyword()
       case "tcl_rollback":
         if (node.toSavepoint !== undefined) {
           const name = quoteIdentifier(node.toSavepoint, this.dialect)
@@ -31,7 +39,13 @@ export class TclPrinter {
             ? `ROLLBACK TRANSACTION ${name}`
             : `ROLLBACK TO SAVEPOINT ${name}`
         }
-        return node.andChain ? "ROLLBACK AND CHAIN" : this.rollbackKeyword()
+        if (node.andChain) {
+          if (this.dialect === "sqlite" || this.dialect === "mssql") {
+            throw new UnsupportedDialectFeatureError(this.dialect, "ROLLBACK AND CHAIN")
+          }
+          return "ROLLBACK AND CHAIN"
+        }
+        return this.rollbackKeyword()
       case "tcl_savepoint": {
         const name = quoteIdentifier(node.name, this.dialect)
         return this.dialect === "mssql" ? `SAVE TRANSACTION ${name}` : `SAVEPOINT ${name}`
@@ -62,16 +76,45 @@ export class TclPrinter {
     }
 
     if (this.dialect === "mysql") {
+      if (node.isolation) {
+        throw new UnsupportedDialectFeatureError(
+          "mysql",
+          "START TRANSACTION ISOLATION LEVEL (use tx.setTransaction({ isolation }) before tx.begin())",
+        )
+      }
       const options: string[] = []
       if (node.consistentSnapshot) options.push("WITH CONSISTENT SNAPSHOT")
       if (node.access) options.push(node.access)
       return options.length > 0 ? `${parts.join(" ")} ${options.join(", ")}` : parts.join(" ")
     }
 
+    // sqlite / mssql — no inline ISOLATION on BEGIN. Refuse rather than
+    // silently drop it; callers who meant a specific isolation level
+    // would otherwise ship a broken transaction unaware.
+    if (node.isolation) {
+      if (this.dialect === "sqlite") {
+        throw new UnsupportedDialectFeatureError(
+          "sqlite",
+          "BEGIN ISOLATION LEVEL (SQLite has no per-transaction isolation control — use WAL mode)",
+        )
+      }
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "BEGIN TRANSACTION ISOLATION LEVEL (use tx.setTransaction({ isolation }) before tx.begin())",
+      )
+    }
+
     return parts.join(" ")
   }
 
   private printSetTransaction(node: SetTransactionNode): string {
+    // SNAPSHOT is SQL Server only. PG / MySQL / SQLite reject it.
+    if (node.isolation === "SNAPSHOT" && this.dialect !== "mssql") {
+      throw new UnsupportedDialectFeatureError(
+        this.dialect,
+        "SNAPSHOT isolation (MSSQL only — use READ COMMITTED / REPEATABLE READ / SERIALIZABLE)",
+      )
+    }
     const parts = ["SET TRANSACTION"]
     if (node.isolation) parts.push(`ISOLATION LEVEL ${node.isolation}`)
     if (node.access) parts.push(node.access)

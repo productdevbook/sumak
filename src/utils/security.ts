@@ -28,9 +28,20 @@ export function validateFunctionName(name: string): void {
 
 /**
  * Validates that a CAST data type is safe.
- * Allows standard SQL types including those with parameters like VARCHAR(255).
+ *
+ * Allowed shapes:
+ *   - `INTEGER`, `TEXT` (bare identifier)
+ *   - `VARCHAR(255)`, `NUMERIC(10, 2)` (base + precision)
+ *   - `TIMESTAMP WITH TIME ZONE`, `DOUBLE PRECISION` (multi-word base)
+ *   - `TIMESTAMP(6) WITH TIME ZONE` (precision + trailing suffix)
+ *   - `INTEGER[]`, `TEXT[]`, `VARCHAR(255)[]` (array suffix)
+ *
+ * The optional suffix phrase (`WITH TIME ZONE`, etc.) has to allow
+ * spaces-and-identifiers without allowing punctuation that could open
+ * an injection path (no semicolons, no quotes, no parens after).
  */
-const SAFE_DATA_TYPE_RE = /^[A-Za-z][A-Za-z0-9_ ]*(?:\([0-9, ]*\))?(?:\[\])?$/
+const SAFE_DATA_TYPE_RE =
+  /^[A-Za-z][A-Za-z0-9_ ]*(?:\([0-9, ]*\))?(?:\s+[A-Za-z][A-Za-z0-9_ ]*)?(?:\[\])?$/
 
 export function validateDataType(dataType: string): void {
   if (!SAFE_DATA_TYPE_RE.test(dataType)) {
