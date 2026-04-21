@@ -768,11 +768,16 @@ export class BasePrinter implements Printer {
   protected printJsonAccess(node: JsonAccessNode): string {
     // PG path operators `#>` / `#>>` expect the path as a text-array literal
     // (`'{a,b,c}'`), not a dotted string. `->` / `->>` accept a single key
-    // or index verbatim. `jsonCol("data").atPath("a.b")` stores "a.b" as
-    // the path; translate to the array literal form here.
-    const pathLiteral =
-      node.operator === "#>" || node.operator === "#>>"
-        ? `'{${pgJsonPathSegments(node.path).join(",")}}'`
+    // (string literal) OR an integer index (bare number — no quotes).
+    // `jsonCol("data").at("0")` stores "0" as the path — decimal-only
+    // strings render as bare integers so array navigation works. Users
+    // who really want an object key named "0" can use `at('"0"')` …
+    // rare edge, documented.
+    const isPath = node.operator === "#>" || node.operator === "#>>"
+    const pathLiteral = isPath
+      ? `'{${pgJsonPathSegments(node.path).join(",")}}'`
+      : /^\d+$/.test(node.path)
+        ? node.path // bare integer → array index
         : this.printLiteral({ type: "literal", value: node.path })
     let result = `${this.printExpression(node.expr)}${node.operator}${pathLiteral}`
     if (node.alias) {

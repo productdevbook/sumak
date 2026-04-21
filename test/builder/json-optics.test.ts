@@ -127,6 +127,44 @@ describe("JsonOptic", () => {
       expect(result.sql).toContain("->")
     })
 
+    it("emits integer index without quotes for array navigation (data->0)", () => {
+      // PG's `->` treats `'0'` as an object key lookup vs `0` as an
+      // array index. A numeric-only path string is rendered bare so
+      // `.at("0")` navigates to the array element, not an object key.
+      const optic = jsonCol("data").at("0")
+      const printer = new PgPrinter()
+      const selectNode = {
+        type: "select" as const,
+        distinct: false,
+        columns: [optic._node],
+        from: { type: "table_ref" as const, name: "users" },
+        joins: [],
+        groupBy: [],
+        orderBy: [],
+        ctes: [],
+      }
+      const result = printer.print(selectNode)
+      expect(result.sql).toContain('"data"->0')
+      expect(result.sql).not.toContain("->'0'")
+    })
+
+    it("emits string path in quotes for object key lookup (data->'name')", () => {
+      const optic = jsonCol("data").at("name")
+      const printer = new PgPrinter()
+      const selectNode = {
+        type: "select" as const,
+        distinct: false,
+        columns: [optic._node],
+        from: { type: "table_ref" as const, name: "users" },
+        joins: [],
+        groupBy: [],
+        orderBy: [],
+        ctes: [],
+      }
+      const result = printer.print(selectNode)
+      expect(result.sql).toContain("->'name'")
+    })
+
     it("generates ->> for text extraction", () => {
       const expr = jsonCol("data").text("name")
       const printer = new PgPrinter()
