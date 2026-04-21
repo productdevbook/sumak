@@ -1,4 +1,5 @@
 import type {
+  BinaryOpNode,
   DeleteNode,
   FullTextSearchNode,
   FunctionCallNode,
@@ -292,6 +293,27 @@ export class MssqlPrinter extends BasePrinter {
       )
     }
     return super.printOrderBy(node)
+  }
+
+  /**
+   * MSSQL has no `IS [NOT] DISTINCT FROM` pre-2022 and no `ILIKE`.
+   * Refuse; callers can rewrite via `CASE WHEN ... IS NULL THEN ...`
+   * or `COLLATE` clauses respectively.
+   */
+  protected override printBinaryOp(node: BinaryOpNode): string {
+    if (node.op === "IS DISTINCT FROM" || node.op === "IS NOT DISTINCT FROM") {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        `${node.op} (MSSQL pre-2022 has no equivalent — use CASE WHEN with IS NULL guards)`,
+      )
+    }
+    if (node.op === "ILIKE" || node.op === "NOT ILIKE") {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        `${node.op} (use LIKE with a case-insensitive COLLATE clause)`,
+      )
+    }
+    return super.printBinaryOp(node)
   }
 
   /**

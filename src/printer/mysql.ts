@@ -1,4 +1,5 @@
 import type {
+  BinaryOpNode,
   DeleteNode,
   FrameSpec,
   FullTextSearchNode,
@@ -65,6 +66,9 @@ export class MysqlPrinter extends BasePrinter {
    * instead of silently emitting invalid SQL.
    */
   protected override printUpdate(node: UpdateNode): string {
+    if (node.returning.length > 0) {
+      throw new UnsupportedDialectFeatureError("mysql", "RETURNING on UPDATE")
+    }
     if (node.from) {
       throw new UnsupportedDialectFeatureError(
         "mysql",
@@ -139,6 +143,28 @@ export class MysqlPrinter extends BasePrinter {
       )
     }
     return super.printJoin(node)
+  }
+
+  /**
+   * MySQL has no `IS DISTINCT FROM` / `ILIKE` operators. Rewrite the
+   * null-safe comparisons to `<=>` (or `NOT (a <=> b)`); reject `ILIKE`
+   * — MySQL's default collations are typically case-insensitive so
+   * plain `LIKE` is usually what the caller wanted.
+   */
+  protected override printBinaryOp(node: BinaryOpNode): string {
+    if (node.op === "IS NOT DISTINCT FROM") {
+      return `(${this.printExpression(node.left)} <=> ${this.printExpression(node.right)})`
+    }
+    if (node.op === "IS DISTINCT FROM") {
+      return `(NOT (${this.printExpression(node.left)} <=> ${this.printExpression(node.right)}))`
+    }
+    if (node.op === "ILIKE" || node.op === "NOT ILIKE") {
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        `${node.op} (MySQL's default collations are case-insensitive — use LIKE; for case-sensitive, use LIKE BINARY)`,
+      )
+    }
+    return super.printBinaryOp(node)
   }
 
   /** MySQL does not support `NULLS FIRST / LAST` in ORDER BY. */
