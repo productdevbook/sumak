@@ -15,6 +15,7 @@ import type {
   TruncateTableNode,
 } from "../ast/ddl-nodes.ts"
 import type { SelectNode } from "../ast/nodes.ts"
+import { UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { escapeStringLiteral, validateFunctionName } from "../utils/security.ts"
@@ -219,7 +220,15 @@ export class DDLPrinter {
     const parts: string[] = ["DROP TABLE"]
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(quoteTableRef(node.table.name, this.dialect, node.table.schema))
-    if (node.cascade) parts.push("CASCADE")
+    if (node.cascade) {
+      if (this.dialect === "sqlite" || this.dialect === "mssql") {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "DROP TABLE ... CASCADE (drop dependent objects manually)",
+        )
+      }
+      parts.push("CASCADE")
+    }
     return parts.join(" ")
   }
 
@@ -249,6 +258,15 @@ export class DDLPrinter {
     }
 
     if (node.where) {
+      // Partial indexes: PG native, SQLite 3.8+, MSSQL (filtered indexes,
+      // similar semantics). MySQL has no partial/filtered index at all
+      // — refuse instead of emitting `WHERE ...` which MySQL rejects.
+      if (this.dialect === "mysql") {
+        throw new UnsupportedDialectFeatureError(
+          "mysql",
+          "Partial / filtered indexes (MySQL has no WHERE clause for CREATE INDEX)",
+        )
+      }
       parts.push("WHERE", this.printExpr(node.where))
     }
     return parts.join(" ")
@@ -319,10 +337,35 @@ export class DDLPrinter {
   }
 
   private printTruncateTable(node: TruncateTableNode): string {
+    if (this.dialect === "sqlite") {
+      // SQLite has no TRUNCATE TABLE — use DELETE FROM. Some tooling
+      // auto-rewrites, but semantics differ (TRUNCATE is DDL, ignores
+      // triggers, etc.), so refuse rather than silently change behavior.
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        "TRUNCATE TABLE (SQLite has no TRUNCATE — use `db.deleteFrom(t).allRows()`)",
+      )
+    }
     const parts: string[] = ["TRUNCATE TABLE"]
     parts.push(quoteTableRef(node.table.name, this.dialect, node.table.schema))
-    if (node.restartIdentity) parts.push("RESTART IDENTITY")
-    if (node.cascade) parts.push("CASCADE")
+    if (node.restartIdentity) {
+      if (this.dialect === "mssql" || this.dialect === "mysql") {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "TRUNCATE ... RESTART IDENTITY (use DBCC CHECKIDENT on MSSQL, ALTER TABLE AUTO_INCREMENT on MySQL)",
+        )
+      }
+      parts.push("RESTART IDENTITY")
+    }
+    if (node.cascade) {
+      if (this.dialect === "mssql" || this.dialect === "mysql") {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "TRUNCATE ... CASCADE (truncate dependent tables manually)",
+        )
+      }
+      parts.push("CASCADE")
+    }
     return parts.join(" ")
   }
 
