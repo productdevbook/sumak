@@ -58,12 +58,18 @@ export class PluginManager {
       case "update": {
         const upd = node
         const ctes = upd.ctes.map((c) => this.transformCTE(c))
-        return { ...upd, ctes }
+        const joins = upd.joins.map((j) =>
+          j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
+        )
+        return { ...upd, ctes, joins }
       }
       case "delete": {
         const del = node
         const ctes = del.ctes.map((c) => this.transformCTE(c))
-        return { ...del, ctes }
+        const joins = del.joins.map((j) =>
+          j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
+        )
+        return { ...del, ctes, joins }
       }
       default:
         return node

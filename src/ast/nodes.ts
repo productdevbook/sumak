@@ -378,6 +378,8 @@ export interface InsertNode {
   ctes: CTENode[]
   source?: SelectNode
   defaultValues?: boolean
+  /** @see QueryFlags */
+  flags?: QueryFlags
 }
 
 export interface OnConflictNode {

@@ -58,6 +58,16 @@ describe("Audit #13 regressions", () => {
       )
       expect(r.params).toContain(42)
     })
+
+    it("filter is applied exactly once — not re-injected on re-walk", () => {
+      const cte = new SelectBuilder().columns("id").from("users").build()
+      const r = db.selectFrom("posts").with("u", cte).select("id").toSQL()
+      // Exactly one `tenant_id = $N` predicate inside the CTE. Without
+      // the MultiTenantApplied idempotency flag the walker re-applied
+      // the plugin on recursion and emitted `tenant_id=$1 AND tenant_id=$2`.
+      const matches = r.sql.match(/"tenant_id" = \$\d+/g) ?? []
+      expect(matches).toHaveLength(1)
+    })
   })
 
   describe("predicate pushdown is safe for OUTER joins", () => {
