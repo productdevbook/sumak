@@ -54,7 +54,10 @@ describe("JOIN in DELETE (MySQL pattern)", () => {
       .where(eq(col("name", "users"), { type: "literal", value: "Alice" }))
       .build()
     const q = db.printer().print(node)
-    expect(q.sql).toContain("DELETE FROM")
+    // MySQL multi-table DELETE form: `DELETE t FROM t INNER JOIN u …`.
+    // Target-table name precedes FROM — the bare `DELETE FROM t JOIN u` form
+    // is a MySQL parse error.
+    expect(q.sql).toMatch(/DELETE `orders` FROM `orders`/)
     expect(q.sql).toContain("INNER JOIN")
     expect(q.sql).toContain("WHERE")
   })

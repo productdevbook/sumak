@@ -1,5 +1,5 @@
 import { and, binOp, col, eq, param } from "../ast/expression.ts"
-import type { ASTNode, UpdateNode } from "../ast/nodes.ts"
+import type { ASTNode, InsertNode, UpdateNode } from "../ast/nodes.ts"
 import { QueryFlags } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
@@ -31,23 +31,50 @@ export class OptimisticLockPlugin implements SumakPlugin {
   private tables: ReadonlySet<string>
   private column: string
   private getVersion: () => number
+  private initialVersion: number
 
   constructor(config: {
     tables: string[]
     column?: string
-    currentVersion: number | (() => number)
+    currentVersion?: number | (() => number)
+    /** Version seeded on every INSERT. Defaults to 1. */
+    initialVersion?: number
   }) {
     this.tables = new Set(config.tables)
     this.column = config.column ?? "version"
-    this.getVersion =
-      typeof config.currentVersion === "function"
-        ? config.currentVersion
-        : () => config.currentVersion as number
+    const curr = config.currentVersion ?? 1
+    this.getVersion = typeof curr === "function" ? curr : () => curr as number
+    this.initialVersion = config.initialVersion ?? 1
   }
 
   transformNode(node: ASTNode): ASTNode {
-    if (node.type !== "update") return node
-    return this.transformUpdate(node)
+    if (node.type === "update") return this.transformUpdate(node)
+    if (node.type === "insert") return this.transformInsert(node)
+    return node
+  }
+
+  /**
+   * Append `version = :initial` to every inserted row so the column is
+   * never NULL. Without this, `WHERE version = :current` on the next
+   * UPDATE never matches (NULL ≠ anything), locking the row out of all
+   * updates. Idempotent via `OptimisticLockApplied` on the InsertNode
+   * flags.
+   */
+  private transformInsert(node: InsertNode): InsertNode {
+    if (!this.tables.has(node.table.name)) return node
+    const flags = node.flags ?? 0
+    if (flags & QueryFlags.OptimisticLockApplied) return node
+    // If the caller already provides the version column, don't
+    // duplicate it.
+    if (node.columns.includes(this.column)) return node
+    // INSERT ... DEFAULT VALUES can't be extended — the shape has no
+    // slot for an explicit column/value. Leave it; caller gets whatever
+    // DDL DEFAULT the schema defines.
+    if (node.defaultValues) return node
+    const initial = this.initialVersion
+    const columns = [...node.columns, this.column]
+    const values = node.values.map((row) => [...row, { type: "literal" as const, value: initial }])
+    return { ...node, columns, values, flags: flags | QueryFlags.OptimisticLockApplied }
   }
 
   private transformUpdate(node: UpdateNode): UpdateNode {
