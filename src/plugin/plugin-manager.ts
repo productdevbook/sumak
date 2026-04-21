@@ -1,4 +1,4 @@
-import type { ASTNode } from "../ast/nodes.ts"
+import type { ASTNode, CTENode, SelectNode, SubqueryNode } from "../ast/nodes.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
@@ -15,15 +15,92 @@ export class PluginManager {
     this.plugins = Object.freeze([...plugins])
   }
 
-  /** Apply all transformNode phases in order. */
+  /**
+   * Apply all transformNode phases in order. The transform walks the AST:
+   * after transforming the top-level node, every nested `SelectNode`
+   * (CTEs, FROM subqueries, JOIN subqueries, INSERT sources, UPDATE
+   * from-subqueries, EXISTS/subquery expressions) is transformed too.
+   *
+   * Without this walk, tenant-isolation plugins (MultiTenantPlugin) and
+   * soft-delete plugins silently fail on CTEs over target tables — the
+   * top-level INSERT/SELECT is filtered, but the CTE's SELECT reads raw
+   * data. Idempotency flags on each plugin (e.g. MultiTenantApplied)
+   * prevent double-application when a plugin already walked part of the
+   * tree itself.
+   */
   transformNode(node: ASTNode): ASTNode {
+    // Short-circuit when no plugin implements `transformNode` — avoids
+    // allocating a new AST on the hot no-plugins path and preserves
+    // object identity for callers that compare with `toBe`.
+    if (!this.plugins.some((p) => p.transformNode)) return node
+
     let result = node
     for (const plugin of this.plugins) {
       if (plugin.transformNode) {
         result = plugin.transformNode(result)
       }
     }
-    return result
+    return this.walkChildSelects(result)
+  }
+
+  private walkChildSelects(node: ASTNode): ASTNode {
+    switch (node.type) {
+      case "select":
+        return this.walkSelect(node)
+      case "insert": {
+        const insert = node
+        const ctes = insert.ctes.map((c) => this.transformCTE(c))
+        const source = insert.source
+          ? (this.walkSelect(insert.source) as SelectNode)
+          : insert.source
+        return { ...insert, ctes, source }
+      }
+      case "update": {
+        const upd = node
+        const ctes = upd.ctes.map((c) => this.transformCTE(c))
+        const joins = upd.joins.map((j) =>
+          j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
+        )
+        return { ...upd, ctes, joins }
+      }
+      case "delete": {
+        const del = node
+        const ctes = del.ctes.map((c) => this.transformCTE(c))
+        const joins = del.joins.map((j) =>
+          j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
+        )
+        return { ...del, ctes, joins }
+      }
+      default:
+        return node
+    }
+  }
+
+  private walkSelect(node: SelectNode): SelectNode {
+    const ctes = node.ctes.map((c) => this.transformCTE(c))
+    const from =
+      node.from && node.from.type === "subquery" ? this.transformSubquery(node.from) : node.from
+    const joins = node.joins.map((j) =>
+      j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
+    )
+    return { ...node, ctes, from, joins }
+  }
+
+  private transformCTE(cte: CTENode): CTENode {
+    return { ...cte, query: this.transformSelectThroughPlugins(cte.query) }
+  }
+
+  private transformSubquery(sub: SubqueryNode): SubqueryNode {
+    return { ...sub, query: this.transformSelectThroughPlugins(sub.query) }
+  }
+
+  private transformSelectThroughPlugins(node: SelectNode): SelectNode {
+    let result: ASTNode = node
+    for (const plugin of this.plugins) {
+      if (plugin.transformNode) result = plugin.transformNode(result)
+    }
+    // Recurse — the nested SELECT may itself contain CTEs / subqueries.
+    return this.walkChildSelects(result) as SelectNode
   }
 
   /** Apply all transformResult phases in order. */

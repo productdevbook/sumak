@@ -74,28 +74,52 @@ export class MultiTenantPlugin implements SumakPlugin {
   }
 
   private transformSelect(node: SelectNode): SelectNode {
+    // Idempotent: PluginManager walks child SELECTs (CTEs, subqueries)
+    // and re-dispatches through every plugin. Without this flag a
+    // SelectNode that was already filtered would get `AND tenant_id=?`
+    // appended a second time on every recursion level.
+    const flags = node.flags ?? 0
+    if (flags & QueryFlags.MultiTenantApplied) return node
     if (!node.from || node.from.type !== "table_ref" || !this.isTargetTable(node.from.name)) {
       return node
     }
-    return { ...node, where: this.addCondition(node.where) }
+    return {
+      ...node,
+      where: this.addCondition(node.where),
+      flags: flags | QueryFlags.MultiTenantApplied,
+    }
   }
 
   private transformUpdate(node: UpdateNode): UpdateNode {
+    const flags = node.flags ?? 0
+    if (flags & QueryFlags.MultiTenantApplied) return node
     if (!this.isTargetTable(node.table.name)) return node
-    return { ...node, where: this.addCondition(node.where) }
+    return {
+      ...node,
+      where: this.addCondition(node.where),
+      flags: flags | QueryFlags.MultiTenantApplied,
+    }
   }
 
   private transformDelete(node: DeleteNode): DeleteNode {
+    const flags = node.flags ?? 0
+    if (flags & QueryFlags.MultiTenantApplied) return node
     if (!this.isTargetTable(node.table.name)) return node
-    return { ...node, where: this.addCondition(node.where) }
+    return {
+      ...node,
+      where: this.addCondition(node.where),
+      flags: flags | QueryFlags.MultiTenantApplied,
+    }
   }
 
   private transformInsert(node: InsertNode): InsertNode {
+    const flags = node.flags ?? 0
+    if (flags & QueryFlags.MultiTenantApplied) return node
     if (!this.isTargetTable(node.table.name)) return node
     const tenantId = this.getTenantId()
     const columns = [...node.columns, this.column]
     const values = node.values.map((row) => [...row, param(0, tenantId)])
-    return { ...node, columns, values }
+    return { ...node, columns, values, flags: flags | QueryFlags.MultiTenantApplied }
   }
 
   /**

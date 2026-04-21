@@ -52,8 +52,20 @@ export function sql<T = unknown>(
             : `"${exprNode.column.replaceAll('"', '""')}"`
           sqlParts.push(col)
         } else if (exprNode.type === "raw") {
+          // Nested sql`` template: the inner RawNode has its own
+          // sentinels `\x00SUMAK_PARAM_N\x00` whose N indices are local
+          // (0..inner.params.length-1). If we splice them verbatim they
+          // collide with the outer's sentinels — every inner `_0` now
+          // points at outer param 0, and the appended inner params are
+          // unreferenced. Renumber by the current param offset.
+          const offset = params.length
+          // oxlint-disable-next-line no-control-regex — intentional sentinel
+          const remapped = exprNode.sql.replaceAll(
+            /\u0000SUMAK_PARAM_(\d+)\u0000/g,
+            (_, n) => `\u0000SUMAK_PARAM_${Number(n) + offset}\u0000`,
+          )
           params.push(...exprNode.params)
-          sqlParts.push(exprNode.sql)
+          sqlParts.push(remapped)
         } else {
           // The sql`` template only knows how to inline the primitive
           // expression node types above. Anything else (window_function,

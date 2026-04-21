@@ -1,4 +1,5 @@
 import type { ForeignKeyAction } from "../ast/ddl-nodes.ts"
+import { escapeStringLiteral } from "../utils/security.ts"
 
 export interface ColumnDef {
   readonly dataType: string
@@ -185,7 +186,8 @@ export function bytea(): ColumnBuilder<Uint8Array, Uint8Array, Uint8Array> {
 }
 
 export function enumType<T extends string>(...values: [T, ...T[]]): ColumnBuilder<T, T, T> {
-  return new ColumnBuilder(`enum(${values.map((v) => `'${v}'`).join(",")})`)
+  const escaped = values.map((v) => `'${escapeStringLiteral(v)}'`).join(",")
+  return new ColumnBuilder(`enum(${escaped})`)
 }
 
 export function interval(): ColumnBuilder<string, string, string> {
