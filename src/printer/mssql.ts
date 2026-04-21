@@ -2,6 +2,7 @@ import type {
   DeleteNode,
   FullTextSearchNode,
   InsertNode,
+  OrderByNode,
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -91,6 +92,12 @@ export class MssqlPrinter extends BasePrinter {
     // left arm only), so any `.limit()` must land here as a FETCH clause
     // even without an explicit OFFSET.
     if (node.offset || (node.limit && node.setOp)) {
+      if (node.orderBy.length === 0) {
+        throw new UnsupportedDialectFeatureError(
+          "mssql",
+          "OFFSET/FETCH requires ORDER BY on SQL Server — add .orderBy(...) before .offset()/.limit()",
+        )
+      }
       const off = node.offset ?? { type: "literal" as const, value: 0 }
       parts.push(`OFFSET ${this.printExpression(off)} ROWS`)
       if (node.limit) {
@@ -263,5 +270,21 @@ export class MssqlPrinter extends BasePrinter {
       result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
     }
     return result
+  }
+
+  /**
+   * MSSQL has no standard `NULLS FIRST / LAST` — SQL Server 2022 added
+   * a variant but widely-deployed versions don't support it. Refuse
+   * rather than emit invalid SQL; callers can use a CASE expression
+   * or `ISNULL(col, ...)` as a secondary sort key instead.
+   */
+  protected override printOrderBy(node: OrderByNode): string {
+    if (node.nulls) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "NULLS FIRST/LAST in ORDER BY (use a CASE expression as a secondary sort key)",
+      )
+    }
+    return super.printOrderBy(node)
   }
 }
