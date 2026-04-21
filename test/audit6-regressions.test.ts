@@ -122,6 +122,29 @@ describe("Audit #6 regressions", () => {
       const unions = (r.sql.match(/UNION/g) ?? []).length
       expect(unions).toBe(2)
     })
+
+    it("MSSQL limit + UNION — emits FETCH NEXT (not TOP), TOP would bind only to left arm", () => {
+      const db = sumak({
+        dialect: mssqlDialect(),
+        tables: { users: { id: serial().primaryKey() } },
+      })
+      const q1 = db.selectFrom("users").select("id")
+      const q2 = db.selectFrom("users").select("id")
+      // limit-only (no offset) + UNION — must NOT emit `TOP N`.
+      const r = q1.orderBy("id").limit(10).union(q2).toSQL()
+      expect(r.sql).not.toContain("TOP ")
+      expect(r.sql).toContain("FETCH NEXT")
+      expect(r.sql).toContain("OFFSET")
+    })
+
+    it("MSSQL limit without UNION still uses TOP", () => {
+      const db = sumak({
+        dialect: mssqlDialect(),
+        tables: { users: { id: serial().primaryKey() } },
+      })
+      const r = db.selectFrom("users").select("id").limit(10).toSQL()
+      expect(r.sql).toContain("TOP ")
+    })
   })
 
   describe("flattenAnd / flattenOr preserve order", () => {

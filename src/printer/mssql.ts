@@ -31,8 +31,13 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("DISTINCT")
     }
 
-    // MSSQL: TOP N instead of LIMIT (only when no OFFSET)
-    if (node.limit && !node.offset) {
+    // MSSQL: TOP N instead of LIMIT (only when no OFFSET and no set-op).
+    // `SELECT TOP 10 ... UNION SELECT ...` applies TOP only to the left
+    // arm on SQL Server — silently returns fewer rows than the user
+    // expected. For UNION with a limit, the outer query uses
+    // `OFFSET 0 ROWS FETCH NEXT N ROWS ONLY` instead; when there's no
+    // set-op we still prefer the shorter `TOP N` form.
+    if (node.limit && !node.offset && !node.setOp) {
       parts.push(`TOP ${this.printExpression(node.limit)}`)
     }
 
@@ -81,9 +86,13 @@ export class MssqlPrinter extends BasePrinter {
       parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
     }
 
-    // MSSQL: OFFSET/FETCH instead of LIMIT/OFFSET (requires ORDER BY)
-    if (node.offset) {
-      parts.push(`OFFSET ${this.printExpression(node.offset)} ROWS`)
+    // MSSQL: OFFSET/FETCH instead of LIMIT/OFFSET (requires ORDER BY).
+    // When a set-op is present we couldn't emit TOP (it would bind to the
+    // left arm only), so any `.limit()` must land here as a FETCH clause
+    // even without an explicit OFFSET.
+    if (node.offset || (node.limit && node.setOp)) {
+      const off = node.offset ?? { type: "literal" as const, value: 0 }
+      parts.push(`OFFSET ${this.printExpression(off)} ROWS`)
       if (node.limit) {
         parts.push(`FETCH NEXT ${this.printExpression(node.limit)} ROWS ONLY`)
       }

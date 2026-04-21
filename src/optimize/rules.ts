@@ -165,11 +165,23 @@ export const BUILTIN_RULES: RewriteRule[] = [predicatePushdown, subqueryFlatteni
 // ── Helpers ──
 
 function flattenAnd(expr: ExpressionNode): ExpressionNode[] {
-  if (expr.type === "binary_op" && (expr as BinaryOpNode).op === "AND") {
-    const b = expr as BinaryOpNode
-    return [...flattenAnd(b.left), ...flattenAnd(b.right)]
+  // Iterative walk — programmatic query builders can produce AND chains
+  // thousands of nodes deep (bulk filter generators, migrations). The
+  // naive recursive spread overflowed the call stack around 10k levels.
+  // Mirrors the same fix in `normalize/expression.ts`.
+  const out: ExpressionNode[] = []
+  const stack: ExpressionNode[] = [expr]
+  while (stack.length > 0) {
+    const node = stack.pop() as ExpressionNode
+    if (node.type === "binary_op" && (node as BinaryOpNode).op === "AND") {
+      const b = node as BinaryOpNode
+      stack.push(b.right)
+      stack.push(b.left)
+    } else {
+      out.push(node)
+    }
   }
-  return [expr]
+  return out
 }
 
 function extractTableRefs(expr: ExpressionNode): Set<string> {
