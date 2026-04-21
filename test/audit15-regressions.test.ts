@@ -59,6 +59,28 @@ describe("Audit #15 regressions", () => {
       const r = new PgPrinter().print(q)
       expect(r.sql).toContain("TRUE")
     })
+
+    it("DDL DEFAULT true emits `1` on MSSQL (and `TRUE` on PG)", async () => {
+      const { DDLPrinter } = await import("../src/printer/ddl.ts")
+      const mssqlDdl = new DDLPrinter("mssql")
+      const pgDdl = new DDLPrinter("pg")
+      const node = {
+        type: "create_table" as const,
+        table: { type: "table_ref" as const, name: "t" },
+        columns: [
+          {
+            type: "column_definition" as const,
+            name: "active",
+            dataType: "boolean",
+            defaultTo: { type: "literal" as const, value: true },
+          },
+        ],
+        constraints: [],
+      }
+      expect(mssqlDdl.print(node).sql).toContain("DEFAULT 1")
+      expect(mssqlDdl.print(node).sql).not.toContain("TRUE")
+      expect(pgDdl.print(node).sql).toContain("DEFAULT TRUE")
+    })
   })
 
   describe("AuditTimestampPlugin emits CURRENT_TIMESTAMP (portable)", () => {

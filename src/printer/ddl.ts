@@ -425,7 +425,11 @@ export class DDLPrinter {
     switch (node.type) {
       case "literal":
         if (node.value === null) return "NULL"
-        if (typeof node.value === "boolean") return node.value ? "TRUE" : "FALSE"
+        if (typeof node.value === "boolean") {
+          // SQL Server has no boolean type — emit 1/0 (BIT domain).
+          if (this.dialect === "mssql") return node.value ? "1" : "0"
+          return node.value ? "TRUE" : "FALSE"
+        }
         if (typeof node.value === "number") return String(node.value)
         return `'${escapeStringLiteral(String(node.value))}'`
       case "raw":

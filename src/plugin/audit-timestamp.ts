@@ -83,7 +83,7 @@ export class AuditTimestampPlugin implements SumakPlugin {
   /**
    * MERGE audit-stamping.
    *
-   * - WHEN MATCHED UPDATE → append `updated_at = NOW()` to the set list.
+   * - WHEN MATCHED UPDATE → append `updated_at = CURRENT_TIMESTAMP` to the set list.
    * - WHEN NOT MATCHED INSERT → append both `created_at`/`updated_at`
    *   columns and values to the insert tuple.
    * - WHEN MATCHED DELETE → unchanged (no rows written).
