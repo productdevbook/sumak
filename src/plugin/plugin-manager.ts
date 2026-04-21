@@ -75,6 +75,14 @@ export class PluginManager {
         // MERGE sources are a security-critical traversal point: a
         // subquery source on a multi-tenant table would otherwise read
         // every tenant's rows and merge them into the target.
+        //
+        // Known gap: expression-level subqueries inside
+        // `whens[].condition` or `whens[].values` (e.g. a correlated
+        // EXISTS(SELECT ... FROM tenant_table) in a WHEN AND clause)
+        // are not walked here — they'd need a full expression-tree
+        // walker. These patterns are rare in practice; plugin authors
+        // must either avoid cross-scope subqueries in MERGE whens or
+        // wrap them in a CTE (which IS walked).
         const mrg = node
         const ctes = mrg.ctes.map((c) => this.transformCTE(c))
         const source =
