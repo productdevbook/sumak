@@ -13,6 +13,13 @@ import { escapeStringLiteral } from "../utils/security.ts"
  * sql`SELECT * FROM users WHERE id = ${val(1)}`
  * sql`SELECT * FROM users WHERE name = ${"Alice"}`
  * ```
+ *
+ * **Dialect caveat.** The template has no dialect context, so any
+ * interpolated `sql.ref(...)` / `sql.table(...)` uses ANSI double-quote
+ * identifier quoting. This matches PG/SQLite but is **incorrect for
+ * MySQL (backticks) and MSSQL (brackets)**. On those dialects use the
+ * builder API (`selectFrom("users").where(({id}) => ...)`) instead of
+ * raw templates for column/table references.
  */
 export function sql<T = unknown>(
   strings: TemplateStringsArray,

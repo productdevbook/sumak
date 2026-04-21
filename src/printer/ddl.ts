@@ -17,7 +17,7 @@ import type {
 import type { SelectNode } from "../ast/nodes.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
-import { escapeStringLiteral } from "../utils/security.ts"
+import { escapeStringLiteral, validateFunctionName } from "../utils/security.ts"
 
 /**
  * Optional callback used by CREATE TABLE ... AS SELECT and CREATE VIEW ... AS
@@ -231,7 +231,13 @@ export class DDLPrinter {
     parts.push(quoteIdentifier(node.name, this.dialect))
     parts.push("ON", quoteIdentifier(node.table, this.dialect))
 
-    if (node.using) parts.push("USING", node.using)
+    if (node.using) {
+      // `USING <method>` is emitted verbatim; reject anything that
+      // isn't a bare identifier to stop attacker-controlled input from
+      // slipping in extra statements.
+      validateFunctionName(node.using)
+      parts.push("USING", node.using)
+    }
 
     if (node.columns.length > 0) {
       const cols = node.columns.map((c) => {

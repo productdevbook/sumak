@@ -143,20 +143,33 @@ export class BasePrinter implements Printer {
       parts.push("HAVING", this.printExpression(node.having))
     }
 
-    if (node.orderBy.length > 0) {
-      parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
-    }
-
-    if (node.limit) {
-      parts.push("LIMIT", this.printExpression(node.limit))
-    }
-
-    if (node.offset) {
-      parts.push("OFFSET", this.printExpression(node.offset))
-    }
-
-    if (node.setOp) {
+    // SET OP ordering is tricky: in standard SQL, `ORDER BY / LIMIT / OFFSET`
+    // on a `SELECT ... UNION SELECT` applies to the *combined* result and
+    // must appear after the last SELECT, not between them. Emitting them
+    // before the setOp produces a syntax error in PG/MySQL/SQLite.
+    // Strategy: if a setOp is present, emit the right-hand SELECT first,
+    // then the outer-query's ORDER BY/LIMIT/OFFSET.
+    if (!node.setOp) {
+      if (node.orderBy.length > 0) {
+        parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
+      }
+      if (node.limit) {
+        parts.push("LIMIT", this.printExpression(node.limit))
+      }
+      if (node.offset) {
+        parts.push("OFFSET", this.printExpression(node.offset))
+      }
+    } else {
       parts.push(node.setOp.op, this.printSelect(node.setOp.query))
+      if (node.orderBy.length > 0) {
+        parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
+      }
+      if (node.limit) {
+        parts.push("LIMIT", this.printExpression(node.limit))
+      }
+      if (node.offset) {
+        parts.push("OFFSET", this.printExpression(node.offset))
+      }
     }
 
     if (node.lock) {
@@ -410,7 +423,11 @@ export class BasePrinter implements Printer {
     if (node.orderBy && node.orderBy.length > 0) {
       inner += ` ORDER BY ${node.orderBy.map((o) => this.printOrderBy(o)).join(", ")}`
     }
-    let result = `${node.name}(${inner})`
+    // Uppercase the function name for consistency with the niladic path
+    // and portability (MSSQL / case-sensitive MySQL collations). Users
+    // writing lowercase `row_number` via raw AST still get canonical
+    // `ROW_NUMBER(…)` output.
+    let result = `${node.name.toUpperCase()}(${inner})`
     if (node.filter) {
       result += ` FILTER (WHERE ${this.printExpression(node.filter)})`
     }

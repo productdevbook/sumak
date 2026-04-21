@@ -1,4 +1,10 @@
-import type { FullTextSearchNode, InsertNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
+import type {
+  FrameSpec,
+  FullTextSearchNode,
+  InsertNode,
+  SelectNode,
+  UpdateNode,
+} from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { BasePrinter } from "./base.ts"
@@ -86,5 +92,16 @@ export class MysqlPrinter extends BasePrinter {
       result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
     }
     return result
+  }
+
+  /**
+   * MySQL does not support the `GROUPS` window frame mode (it's a PG 11+
+   * / SQLite 3.28+ feature). Refuse instead of emitting invalid SQL.
+   */
+  protected override printFrameSpec(frame: FrameSpec): string {
+    if (frame.kind === "GROUPS") {
+      throw new UnsupportedDialectFeatureError("mysql", "GROUPS window frame (use ROWS or RANGE)")
+    }
+    return super.printFrameSpec(frame)
   }
 }
