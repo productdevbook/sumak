@@ -262,7 +262,17 @@ export class BasePrinter implements Printer {
         parts.push("OFFSET", this.printExpression(node.offset))
       }
     } else {
-      parts.push(node.setOp.op, this.printSelect(node.setOp.query))
+      // When the right-hand operand of a set-op carries its own
+      // ORDER BY / LIMIT / OFFSET, the ANSI form requires the inner
+      // SELECT to be wrapped in parens so the clauses bind to it and
+      // not to the combined result. Without parens every engine
+      // (pg / mysql / sqlite / mssql) either errors at parse time or
+      // silently reassigns the clause to the outer query.
+      const inner = node.setOp.query
+      const innerHasPagination =
+        inner.orderBy.length > 0 || inner.limit !== undefined || inner.offset !== undefined
+      const printedInner = this.printSelect(inner)
+      parts.push(node.setOp.op, innerHasPagination ? `(${printedInner})` : printedInner)
       if (node.orderBy.length > 0) {
         parts.push("ORDER BY", node.orderBy.map((o) => this.printOrderBy(o)).join(", "))
       }

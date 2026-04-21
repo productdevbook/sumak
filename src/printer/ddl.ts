@@ -69,7 +69,23 @@ export class DDLPrinter {
     }
   }
 
+  /**
+   * SQL Server rejects `IF NOT EXISTS` on every CREATE flavor released
+   * as of SQL Server 2022 (preview 2025 adds it for CREATE TABLE only).
+   * Refuse at print time with a pointer at the `IF NOT EXISTS(SELECT …)`
+   * wrapper pattern, rather than emitting unexecutable DDL.
+   */
+  private guardIfNotExistsOnMssql(kind: string, ifNotExists: boolean | undefined): void {
+    if (ifNotExists && this.dialect === "mssql") {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        `${kind} IF NOT EXISTS — wrap in IF NOT EXISTS(SELECT * FROM sys.<catalog> WHERE name = '…') BEGIN … END`,
+      )
+    }
+  }
+
   private printCreateSchema(node: CreateSchemaNode): string {
+    this.guardIfNotExistsOnMssql("CREATE SCHEMA", node.ifNotExists)
     const parts = ["CREATE SCHEMA"]
     if (node.ifNotExists) parts.push("IF NOT EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))
@@ -88,6 +104,7 @@ export class DDLPrinter {
   }
 
   private printCreateTable(node: CreateTableNode): string {
+    this.guardIfNotExistsOnMssql("CREATE TABLE", node.ifNotExists)
     const parts: string[] = ["CREATE"]
     if (node.temporary) parts.push("TEMPORARY")
     parts.push("TABLE")
@@ -233,6 +250,7 @@ export class DDLPrinter {
   }
 
   private printCreateIndex(node: CreateIndexNode): string {
+    this.guardIfNotExistsOnMssql("CREATE INDEX", node.ifNotExists)
     const parts: string[] = ["CREATE"]
     if (node.unique) parts.push("UNIQUE")
     parts.push("INDEX")
@@ -328,6 +346,7 @@ export class DDLPrinter {
     if (node.temporary) parts.push("TEMPORARY")
     if (node.materialized) parts.push("MATERIALIZED")
     parts.push("VIEW")
+    this.guardIfNotExistsOnMssql("CREATE VIEW", node.ifNotExists)
     if (node.ifNotExists) parts.push("IF NOT EXISTS")
 
     const viewName = node.schema
@@ -421,7 +440,9 @@ export class DDLPrinter {
   }
 
   private printExpr(node: import("../ast/nodes.ts").ExpressionNode): string {
-    // Simplified expression printing for DDL contexts
+    // DDL expression contexts: CHECK, DEFAULT, GENERATED ALWAYS AS,
+    // partial-index WHERE. None of these go through param binding —
+    // whatever this returns is spliced into emitted DDL verbatim.
     switch (node.type) {
       case "literal":
         if (node.value === null) return "NULL"
@@ -439,10 +460,48 @@ export class DDLPrinter {
         return node.table
           ? `${quoteIdentifier(node.table, this.dialect)}.${quoteIdentifier(node.column, this.dialect)}`
           : quoteIdentifier(node.column, this.dialect)
-      case "function_call":
+      case "function_call": {
+        // `BasePrinter.printFunctionCall` validates the name; DDL used
+        // to skip that, letting arbitrary strings through a DEFAULT /
+        // CHECK clause. Mirror the validation so a hand-crafted AST
+        // with `fn("foo(); DROP …", [])` cannot corrupt DDL output.
+        validateFunctionName(node.name)
         return `${node.name}(${node.args.map((a) => this.printExpr(a)).join(", ")})`
+      }
+      case "binary_op":
+        return `(${this.printExpr(node.left)} ${node.op} ${this.printExpr(node.right)})`
+      case "unary_op":
+        return node.position === "postfix"
+          ? `(${this.printExpr(node.operand)} ${node.op})`
+          : `(${node.op} ${this.printExpr(node.operand)})`
+      case "is_null":
+        return `(${this.printExpr(node.expr)} IS${node.negated ? " NOT" : ""} NULL)`
+      case "between": {
+        const neg = node.negated ? "NOT " : ""
+        return `(${this.printExpr(node.expr)} ${neg}BETWEEN ${this.printExpr(node.low)} AND ${this.printExpr(node.high)})`
+      }
+      case "in": {
+        if (!Array.isArray(node.values)) {
+          // Subquery IN is not supportable in a DDL expression context
+          // without bringing the full BasePrinter.printSelect pipeline
+          // along — refuse and point at raw SQL.
+          throw new Error(
+            "DDLPrinter: IN (subquery) is not supported in DDL contexts — use raw SQL.",
+          )
+        }
+        const neg = node.negated ? "NOT " : ""
+        const vals = node.values.map((v) => this.printExpr(v)).join(", ")
+        return `(${this.printExpr(node.expr)} ${neg}IN (${vals}))`
+      }
       default:
-        return "(?)"
+        // Refuse unknown expression types in DDL rather than emit `(?)`
+        // (which becomes a literal question-mark in the SQL text and
+        // either breaks the driver or — worse — silently binds an
+        // unrelated parameter). Pushes the user at a supported form.
+        throw new Error(
+          `DDLPrinter does not support expression type "${(node as { type: string }).type}" ` +
+            "in DDL contexts (CHECK/DEFAULT/WHERE). Use sql`<raw sql>` via sql.unsafe() for complex expressions.",
+        )
     }
   }
 }
