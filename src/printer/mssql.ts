@@ -1,5 +1,6 @@
 import type {
   BinaryOpNode,
+  CTENode,
   DeleteNode,
   FullTextSearchNode,
   FunctionCallNode,
@@ -115,6 +116,18 @@ export class MssqlPrinter extends BasePrinter {
     }
 
     return parts.join(" ")
+  }
+
+  /**
+   * SQL Server supports recursive CTEs but does not accept the
+   * `RECURSIVE` keyword — `WITH cte AS (...)` is used for both recursive
+   * and non-recursive CTEs. Emitting `WITH RECURSIVE` is a syntax error.
+   */
+  protected override printCTEs(ctes: CTENode[]): string {
+    const cteParts = ctes.map(
+      (c) => `${quoteIdentifier(c.name, this.dialect)} AS (${this.printSelect(c.query)})`,
+    )
+    return `WITH ${cteParts.join(", ")}`
   }
 
   protected override printGraphTable(

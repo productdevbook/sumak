@@ -8,6 +8,7 @@ import { mysqlDialect } from "../src/dialect/mysql.ts"
 import { pgDialect } from "../src/dialect/pg.ts"
 import { sqliteDialect } from "../src/dialect/sqlite.ts"
 import { UnsupportedDialectFeatureError } from "../src/errors.ts"
+import { MssqlPrinter } from "../src/printer/mssql.ts"
 import { MysqlPrinter } from "../src/printer/mysql.ts"
 import { PgPrinter } from "../src/printer/pg.ts"
 import { SqlitePrinter } from "../src/printer/sqlite.ts"
@@ -81,6 +82,20 @@ describe("Audit #12 regressions", () => {
       const r = new PgPrinter().print(node)
       expect(r.sql).toContain("WITH RECURSIVE")
     })
+
+    it("MSSQL emits WITH (not WITH RECURSIVE) even when recursive=true", async () => {
+      const { UpdateBuilder } = await import("../src/builder/update.ts")
+      const { SelectBuilder } = await import("../src/builder/select.ts")
+      const recursiveQuery = new SelectBuilder().columns("id").from("users").build()
+      const node = new UpdateBuilder()
+        .table("users")
+        .with("cte", recursiveQuery, true)
+        .set("id", { type: "literal", value: 1 })
+        .build()
+      const r = new MssqlPrinter().print(node)
+      expect(r.sql).toContain("WITH [cte]")
+      expect(r.sql).not.toContain("WITH RECURSIVE")
+    })
   })
 
   describe("orderBy embedded direction detection", () => {
@@ -95,6 +110,20 @@ describe("Audit #12 regressions", () => {
           .select("id")
           .orderBy("price DESC" as any),
       ).toThrow(/may not contain spaces/)
+    })
+
+    it("DELETE orderBy('price DESC') throws with a helpful message", async () => {
+      const { DeleteBuilder } = await import("../src/builder/delete.ts")
+      expect(() => new DeleteBuilder().from("t").orderBy("price DESC")).toThrow(
+        /may not contain spaces/,
+      )
+    })
+
+    it("UPDATE orderBy('price DESC') throws with a helpful message", async () => {
+      const { UpdateBuilder } = await import("../src/builder/update.ts")
+      expect(() => new UpdateBuilder().table("t").orderBy("price DESC")).toThrow(
+        /may not contain spaces/,
+      )
     })
 
     it("SELECT orderBy('price', 'DESC') works correctly", () => {
