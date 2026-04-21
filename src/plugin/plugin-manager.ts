@@ -77,22 +77,26 @@ export class PluginManager {
         return { ...del, ctes, joins, where }
       }
       case "merge": {
-        // MERGE sources are a security-critical traversal point: a
-        // subquery source on a multi-tenant table would otherwise read
-        // every tenant's rows and merge them into the target.
-        //
-        // Known gap: expression-level subqueries inside
-        // `whens[].condition` or `whens[].values` (e.g. a correlated
-        // EXISTS(SELECT ... FROM tenant_table) in a WHEN AND clause)
-        // are not walked here — they'd need a full expression-tree
-        // walker. These patterns are rare in practice; plugin authors
-        // must either avoid cross-scope subqueries in MERGE whens or
-        // wrap them in a CTE (which IS walked).
+        // Every MERGE slot that can carry a SELECT needs to walk
+        // through the plugin chain — a correlated subquery in any
+        // of these positions bypasses MultiTenant / SoftDelete filters.
         const mrg = node
         const ctes = mrg.ctes.map((c) => this.transformCTE(c))
         const source =
           mrg.source.type === "subquery" ? this.transformSubquery(mrg.source) : mrg.source
-        return { ...mrg, ctes, source }
+        const on = this.walkExpression(mrg.on)
+        const whens = mrg.whens.map((w) => {
+          if (w.type === "matched") {
+            const condition = w.condition ? this.walkExpression(w.condition) : w.condition
+            const set = w.set?.map((s) => ({ ...s, value: this.walkExpression(s.value) }))
+            return { ...w, condition, set }
+          }
+          // not_matched
+          const condition = w.condition ? this.walkExpression(w.condition) : w.condition
+          const values = w.values.map((v) => this.walkExpression(v))
+          return { ...w, condition, values }
+        })
+        return { ...mrg, ctes, source, on, whens }
       }
       default:
         return node

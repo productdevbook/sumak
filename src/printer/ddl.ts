@@ -18,7 +18,7 @@ import type { SelectNode } from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
-import { escapeStringLiteral, validateFunctionName } from "../utils/security.ts"
+import { escapeStringLiteral, validateDataType, validateFunctionName } from "../utils/security.ts"
 
 /**
  * Optional callback used by CREATE TABLE ... AS SELECT and CREATE VIEW ... AS
@@ -166,6 +166,11 @@ export class DDLPrinter {
           break
       }
     }
+    // Validate the final (post-autoIncrement-rewrite) data type before
+    // splicing into DDL. Without this, `addColumn("x", "INT; DROP
+    // TABLE …")` would land verbatim in CREATE TABLE. CAST paths
+    // already validate; the DDL path was missed.
+    validateDataType(dataType)
     const parts: string[] = [quoteIdentifier(col.name, this.dialect), dataType]
     if (col.primaryKey) parts.push("PRIMARY KEY")
     if (trailingTokens.length > 0) parts.push(...trailingTokens)
@@ -251,6 +256,7 @@ export class DDLPrinter {
               parts.push("DROP DEFAULT")
               break
             case "set_data_type":
+              validateDataType(action.set.dataType)
               parts.push("SET DATA TYPE", action.set.dataType)
               break
           }

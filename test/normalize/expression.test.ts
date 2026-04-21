@@ -93,7 +93,7 @@ describe("normalizeExpression", () => {
       expect((result as LiteralNode).value).toBe(50)
     })
 
-    it("folds string concatenation", () => {
+    it("does NOT fold `||` — dialect semantics differ (pg/sqlite concat vs mysql OR vs mssql invalid)", () => {
       const expr: BinaryOpNode = {
         type: "binary_op",
         op: "||",
@@ -101,8 +101,10 @@ describe("normalizeExpression", () => {
         right: lit("world"),
       }
       const result = normalizeExpression(expr)
-      expect(result.type).toBe("literal")
-      expect((result as LiteralNode).value).toBe("hello world")
+      // Expression must remain intact so the printer can route to the
+      // correct dialect semantics. Folding here would change meaning on
+      // MySQL (default sql_mode: `||` = logical OR, not concat).
+      expect(result.type).toBe("binary_op")
     })
 
     it("does not fold division by zero", () => {

@@ -239,10 +239,14 @@ function foldConstants(expr: ExpressionNode): ExpressionNode {
       const folded = foldNumeric(e.op, lv, rv)
       if (folded !== undefined) return { type: "literal", value: folded }
     }
-    // String concatenation
-    if (typeof lv === "string" && typeof rv === "string" && e.op === "||") {
-      return { type: "literal", value: lv + rv }
-    }
+    // Refuse to fold `||` at normalize time. Dialect semantics diverge:
+    //   pg / sqlite: string concat (`'a' || 'b' → 'ab'`).
+    //   mysql (default sql_mode, no PIPES_AS_CONCAT): logical OR
+    //     (`'0' || '0' → 0`, string-to-number coerced).
+    //   mssql: `||` is not an operator at all.
+    // The normalizer has no dialect context, so folding here would
+    // silently change meaning on MySQL and hide the parse error the
+    // driver would otherwise surface on MSSQL.
   }
 
   // Normalize comparison: literal on right (1 = x → x = 1)
