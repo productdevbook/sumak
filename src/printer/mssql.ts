@@ -361,8 +361,11 @@ export class MssqlPrinter extends BasePrinter {
   /**
    * Render a RETURNING list as MSSQL `OUTPUT` columns under the given
    * pseudo-table (`INSERTED` or `DELETED`). Handles `StarNode` bare and
-   * table-qualified — previously a `printed === "*"` string check missed
-   * the `"t".*` form and emitted invalid `OUTPUT INSERTED."t".*`.
+   * table-qualified — the pseudo-tables are fixed names, so a user's
+   * `returning(star("orders"))` (meaning "all columns of orders") maps
+   * to `INSERTED.*` (the pseudo-table has every column of the target).
+   * Emitting `INSERTED.[orders].*` produces an invalid three-part name
+   * that SQL Server rejects at parse.
    */
   private _outputCols(
     returning: readonly import("../ast/nodes.ts").ExpressionNode[],
@@ -371,7 +374,9 @@ export class MssqlPrinter extends BasePrinter {
     return returning
       .map((r) => {
         if (r.type === "star") {
-          return r.table ? `${prefix}.${quoteIdentifier(r.table, this.dialect)}.*` : `${prefix}.*`
+          // Drop any user-supplied table qualifier: OUTPUT targets the
+          // INSERTED/DELETED pseudo-table, never the base table directly.
+          return `${prefix}.*`
         }
         return `${prefix}.${this.printExpression(r)}`
       })

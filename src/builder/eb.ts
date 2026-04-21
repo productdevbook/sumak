@@ -454,6 +454,13 @@ export function max<T>(expr: Expression<T>): Expression<T> {
 
 /** COALESCE(a, b, c, ...) — returns first non-null value */
 export function coalesce<T>(...args: Expression<T | null>[]): Expression<T> {
+  if (args.length === 0) {
+    // `COALESCE()` is invalid on every dialect (PG, MySQL, SQLite,
+    // MSSQL all reject zero-arg COALESCE). Catch at build time — the
+    // runtime driver error ("COALESCE requires at least one argument")
+    // doesn't point at the caller.
+    throw new Error("coalesce() requires at least one argument")
+  }
   return wrap(
     rawFn(
       "COALESCE",
