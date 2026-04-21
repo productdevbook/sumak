@@ -1,6 +1,7 @@
 import type {
   DeleteNode,
   FullTextSearchNode,
+  FunctionCallNode,
   InsertNode,
   OrderByNode,
   SelectNode,
@@ -286,5 +287,21 @@ export class MssqlPrinter extends BasePrinter {
       )
     }
     return super.printOrderBy(node)
+  }
+
+  /**
+   * SQL Server does not support `<agg> FILTER (WHERE ...)`. Rewriting to
+   * `COUNT(CASE WHEN ... END)` changes NULL-handling subtly (COUNT skips
+   * nulls; the CASE produces nulls), so we refuse and point the caller
+   * at an explicit rewrite.
+   */
+  protected override printFunctionCall(node: FunctionCallNode): string {
+    if (node.filter) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "FILTER (WHERE ...) aggregate clause (rewrite as COUNT(CASE WHEN ... THEN 1 END) or SUM(CASE ...))",
+      )
+    }
+    return super.printFunctionCall(node)
   }
 }
