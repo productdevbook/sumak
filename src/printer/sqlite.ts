@@ -109,6 +109,28 @@ export class SqlitePrinter extends BasePrinter {
   }
 
   /**
+   * SQLite's `EXPLAIN` returns bytecode opcodes (rarely what users
+   * want); `EXPLAIN QUERY PLAN` is the form most callers mean. Neither
+   * accepts `ANALYZE` or `(FORMAT …)` — both PG-specific. Reject the
+   * PG options and point at raw SQL for the two SQLite forms.
+   */
+  protected override printExplain(node: import("../ast/nodes.ts").ExplainNode): string {
+    if (node.analyze) {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        "EXPLAIN ANALYZE (SQLite has no equivalent — use EXPLAIN QUERY PLAN via raw SQL)",
+      )
+    }
+    if (node.format) {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        "EXPLAIN (FORMAT ...) (SQLite only supports bare EXPLAIN and EXPLAIN QUERY PLAN)",
+      )
+    }
+    return super.printExplain(node)
+  }
+
+  /**
    * SQLite has no scalar `GREATEST` / `LEAST`; `MAX(a, b, …)` /
    * `MIN(a, b, …)` with multiple arguments act as the scalar form
    * (the same names overload as aggregates when given one arg). Rewrite.
