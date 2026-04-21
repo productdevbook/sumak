@@ -1,4 +1,10 @@
-import type { FullTextSearchNode, InsertNode, JoinNode, SelectNode } from "../ast/nodes.ts"
+import type {
+  BinaryOpNode,
+  FullTextSearchNode,
+  InsertNode,
+  JoinNode,
+  SelectNode,
+} from "../ast/nodes.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { BasePrinter } from "./base.ts"
@@ -32,6 +38,28 @@ export class SqlitePrinter extends BasePrinter {
 
   protected override printInsert(node: InsertNode): string {
     return super.printInsert(node)
+  }
+
+  /**
+   * SQLite has `IS` / `IS NOT` for null-safe equality but not
+   * `IS [NOT] DISTINCT FROM`, and has no `ILIKE`. Reject both so
+   * callers explicitly pick the SQLite-idiomatic form.
+   */
+  protected override printBinaryOp(node: BinaryOpNode): string {
+    if (node.op === "IS NOT DISTINCT FROM") {
+      // SQLite: `a IS b` IS already null-safe equality.
+      return `(${this.printExpression(node.left)} IS ${this.printExpression(node.right)})`
+    }
+    if (node.op === "IS DISTINCT FROM") {
+      return `(${this.printExpression(node.left)} IS NOT ${this.printExpression(node.right)})`
+    }
+    if (node.op === "ILIKE" || node.op === "NOT ILIKE") {
+      throw new UnsupportedDialectFeatureError(
+        "sqlite",
+        `${node.op} (SQLite's LIKE is case-insensitive by default for ASCII — use plain LIKE)`,
+      )
+    }
+    return super.printBinaryOp(node)
   }
 
   protected override printFullTextSearch(node: FullTextSearchNode): string {
