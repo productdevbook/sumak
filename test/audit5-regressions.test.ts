@@ -136,15 +136,17 @@ describe("Audit #5 regressions", () => {
   describe("printFunctionCall case policy", () => {
     it("standard SQL fn names uppercase (portable for MSSQL / case-sensitive MySQL)", () => {
       const printer = new PgPrinter()
-      const fn: FunctionCallNode = { type: "function_call", name: "row_number", args: [] }
+      // Use a non-window-only name so the WINDOW_ONLY_FUNCTIONS guard
+      // (added in a later audit round) doesn't reject the bare call.
+      const fn: FunctionCallNode = { type: "function_call", name: "upper", args: [] }
       const node: SelectNode = {
         ...createSelectNode(),
         from: tableRef("t"),
         columns: [fn],
       }
       const r = printer.print(node)
-      expect(r.sql).toContain("ROW_NUMBER(")
-      expect(r.sql).not.toContain("row_number(")
+      expect(r.sql).toContain("UPPER(")
+      expect(r.sql).not.toContain("upper(")
     })
 
     it("user-defined fn names pass through verbatim (preserves mixed-case UDFs)", () => {

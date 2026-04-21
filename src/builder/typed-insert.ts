@@ -53,9 +53,20 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
     const vals = entries.map(([_, v]) => param(0, v))
 
     let builder = this._builder
-    // Only set columns on first values() call
-    if (builder.build().columns.length === 0) {
+    const current = builder.build()
+    // Only set columns on first values() call; subsequent calls must
+    // provide the SAME set of keys in the same order. Silently
+    // producing `VALUES ($1, $2), ($3)` was a real bug.
+    if (current.columns.length === 0) {
       builder = builder.columns(...cols)
+    } else {
+      if (cols.length !== current.columns.length || cols.some((c, i) => c !== current.columns[i])) {
+        throw new Error(
+          ".values() row shape must match the first row. Expected columns " +
+            `[${current.columns.join(", ")}], got [${cols.join(", ")}]. ` +
+            "If you need different-shape rows, issue separate INSERTs.",
+        )
+      }
     }
     builder = new InsertBuilder({
       ...builder.build(),

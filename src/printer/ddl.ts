@@ -292,8 +292,39 @@ export class DDLPrinter {
   }
 
   private printCreateView(node: CreateViewNode): string {
+    if (node.orReplace && node.ifNotExists) {
+      // PG / MySQL reject the combination; most dialects treat the two
+      // as mutually exclusive. Catch it at print time rather than ship
+      // a statement the database will refuse.
+      throw new Error(
+        "CREATE VIEW: OR REPLACE and IF NOT EXISTS are mutually exclusive — " +
+          "pick one (OR REPLACE overwrites, IF NOT EXISTS leaves the existing view).",
+      )
+    }
     const parts: string[] = ["CREATE"]
-    if (node.orReplace) parts.push("OR REPLACE")
+    if (node.orReplace) {
+      if (this.dialect === "mssql") {
+        throw new UnsupportedDialectFeatureError(
+          "mssql",
+          "CREATE OR REPLACE VIEW (MSSQL has no OR REPLACE — use ALTER VIEW instead)",
+        )
+      }
+      if (this.dialect === "sqlite") {
+        throw new UnsupportedDialectFeatureError(
+          "sqlite",
+          "CREATE OR REPLACE VIEW (use DROP VIEW IF EXISTS + CREATE VIEW, or CREATE VIEW IF NOT EXISTS)",
+        )
+      }
+      parts.push("OR REPLACE")
+    }
+    if (node.materialized && this.dialect !== "pg") {
+      // PG and Oracle support materialized views; MySQL / SQLite / MSSQL
+      // do not. Refuse instead of emitting a statement the driver rejects.
+      throw new UnsupportedDialectFeatureError(
+        this.dialect,
+        "MATERIALIZED VIEW (PG-only — use a regular view or a table cache on other dialects)",
+      )
+    }
     if (node.temporary) parts.push("TEMPORARY")
     if (node.materialized) parts.push("MATERIALIZED")
     parts.push("VIEW")

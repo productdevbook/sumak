@@ -51,6 +51,26 @@ import type { Printer } from "./types.ts"
  * parentheses, on MSSQL. Other dialects accept either form but the
  * parens-free version is universally portable.
  */
+/**
+ * Functions that make sense only inside an `OVER (...)` window clause.
+ * Emitting them as a bare call — `ROW_NUMBER()` without `OVER` — is a
+ * runtime error on every dialect. We trap it at print time so the bug
+ * surfaces in the typechecked build step instead of a driver error.
+ */
+const WINDOW_ONLY_FUNCTIONS: ReadonlySet<string> = new Set([
+  "ROW_NUMBER",
+  "RANK",
+  "DENSE_RANK",
+  "PERCENT_RANK",
+  "CUME_DIST",
+  "NTILE",
+  "LAG",
+  "LEAD",
+  "FIRST_VALUE",
+  "LAST_VALUE",
+  "NTH_VALUE",
+])
+
 const NILADIC_FUNCTIONS: ReadonlySet<string> = new Set([
   "CURRENT_TIMESTAMP",
   "CURRENT_DATE",
@@ -140,6 +160,13 @@ const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
 export class BasePrinter implements Printer {
   protected params: unknown[] = []
   protected dialect: SQLDialect
+  /**
+   * Tracks whether we're currently rendering the `fn` half of a
+   * `window_function` node. Lets `printFunctionCall` throw when a
+   * window-only function (ROW_NUMBER, LAG, …) is emitted outside an
+   * OVER clause, but accept the same function inside one.
+   */
+  protected insideOver = false
 
   constructor(dialect: SQLDialect) {
     this.dialect = dialect
@@ -483,6 +510,15 @@ export class BasePrinter implements Printer {
 
   protected printFunctionCall(node: FunctionCallNode): string {
     validateFunctionName(node.name)
+    // Window-only functions (ROW_NUMBER, LAG, …) are meaningless without
+    // an OVER clause — every dialect rejects them at runtime. Trap the
+    // missing OVER at print time with a message that points at `over()`.
+    if (!this.insideOver && WINDOW_ONLY_FUNCTIONS.has(node.name.toUpperCase())) {
+      throw new Error(
+        `${node.name.toUpperCase()} is a window function — it must be used with \`over(${node.name.toLowerCase()}(), w => …)\`. ` +
+          "Bare calls emit invalid SQL on every dialect.",
+      )
+    }
     // SQL:92 niladic functions are spelled as keywords (no parentheses).
     // `CURRENT_TIMESTAMP()` is invalid on MSSQL; the bare keyword is
     // portable across pg/mysql/sqlite/mssql.
@@ -751,7 +787,16 @@ export class BasePrinter implements Printer {
 
   protected printWindowFunction(node: WindowFunctionNode): string {
     const parts: string[] = []
-    parts.push(this.printFunctionCall(node.fn))
+    // Signal to `printFunctionCall` that we're legitimately emitting a
+    // window-only function; otherwise the WINDOW_ONLY_FUNCTIONS guard
+    // would fire on every ROW_NUMBER / LAG / LEAD / etc.
+    const prev = this.insideOver
+    this.insideOver = true
+    try {
+      parts.push(this.printFunctionCall(node.fn))
+    } finally {
+      this.insideOver = prev
+    }
     parts.push("OVER")
 
     const overParts: string[] = []
