@@ -53,7 +53,7 @@ const SAFE_DATA_TYPE_RE =
  * already flow through escapeStringLiteral; this regex re-verifies
  * that no raw `'` or `\\` sneaked in via direct AST construction.
  */
-const SAFE_ENUM_TYPE_RE = /^enum\((?:'(?:''|\\\\|[^'\\])*'(?:,(?:'(?:''|\\\\|[^'\\])*'))*)?\)$/
+const SAFE_ENUM_TYPE_RE = /^enum\((?:'(?:''|\\\\|[^'\\])*'(?:,(?:'(?:''|\\\\|[^'\\])*'))*)?\)$/i
 
 export function validateDataType(dataType: string): void {
   if (SAFE_DATA_TYPE_RE.test(dataType)) return

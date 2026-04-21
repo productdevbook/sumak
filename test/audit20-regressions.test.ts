@@ -128,6 +128,22 @@ describe("Audit #20 regressions", () => {
       expect(() => new DDLPrinter("pg").print(node)).toThrow(SecurityError)
     })
 
+    it("uppercase ENUM('a','b') is also accepted (case-insensitive)", () => {
+      const node = {
+        type: "create_table" as const,
+        table: { type: "table_ref" as const, name: "t" },
+        columns: [
+          {
+            type: "column_definition" as const,
+            name: "status",
+            dataType: "ENUM('active','inactive')",
+          },
+        ],
+        constraints: [],
+      }
+      expect(() => new DDLPrinter("pg").print(node)).not.toThrow()
+    })
+
     it("legitimate enumType dataType is accepted (enum('a','b'))", () => {
       const node = {
         type: "create_table" as const,
