@@ -94,7 +94,14 @@ export class MssqlPrinter extends BasePrinter {
     // When a set-op is present we couldn't emit TOP (it would bind to the
     // left arm only), so any `.limit()` must land here as a FETCH clause
     // even without an explicit OFFSET.
-    if (node.offset || (node.limit && node.setOp)) {
+    // Treat literal-zero offset as "no pagination": `.offset(0)` as a
+    // no-op (for a stable pagination API across dialects) should not
+    // force an ORDER BY requirement when no LIMIT is present.
+    const isZeroOffset =
+      node.offset?.type === "literal" && (node.offset as { value: unknown }).value === 0
+    const needsOffsetFetch =
+      (node.offset && !(isZeroOffset && !node.limit)) || (node.limit && node.setOp)
+    if (needsOffsetFetch) {
       if (node.orderBy.length === 0) {
         throw new UnsupportedDialectFeatureError(
           "mssql",
@@ -202,6 +209,17 @@ export class MssqlPrinter extends BasePrinter {
   }
 
   protected override printUpdate(node: UpdateNode): string {
+    // SQL Server does not support UPDATE ... ORDER BY / LIMIT directly;
+    // silently dropping either (as the base printer's inherited behavior
+    // would) emits a much more permissive statement than the caller
+    // wrote — an UPDATE intended to bound rows modifies the entire
+    // matched set. Reject explicitly with a CTE/TOP-shaped hint.
+    if (node.limit || (node.orderBy && node.orderBy.length > 0)) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "UPDATE with LIMIT/ORDER BY — use a CTE: WITH cte AS (SELECT TOP N ... ORDER BY ...) UPDATE cte SET ...",
+      )
+    }
     const parts: string[] = []
 
     if (node.ctes.length > 0) {
@@ -237,6 +255,12 @@ export class MssqlPrinter extends BasePrinter {
   }
 
   protected override printDelete(node: DeleteNode): string {
+    if (node.limit || (node.orderBy && node.orderBy.length > 0)) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "DELETE with LIMIT/ORDER BY — use a CTE: WITH cte AS (SELECT TOP N ... ORDER BY ...) DELETE FROM cte",
+      )
+    }
     const parts: string[] = []
 
     if (node.ctes.length > 0) {

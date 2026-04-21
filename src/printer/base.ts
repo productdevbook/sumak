@@ -868,7 +868,11 @@ export class BasePrinter implements Printer {
     parts.push("USING")
 
     if (node.source.type === "subquery") {
-      parts.push(this.printSubquery(node.source))
+      // MERGE carries its own `sourceAlias`; emitting the subquery's
+      // inner alias too produces invalid `... AS "s" AS "s"`. Print
+      // the subquery body without its alias, then append the
+      // canonical `AS <sourceAlias>`.
+      parts.push(this.printSubquery({ ...node.source, alias: undefined }))
     } else {
       parts.push(this.printTableRef(node.source))
     }

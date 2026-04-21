@@ -71,6 +71,16 @@ export class PluginManager {
         )
         return { ...del, ctes, joins }
       }
+      case "merge": {
+        // MERGE sources are a security-critical traversal point: a
+        // subquery source on a multi-tenant table would otherwise read
+        // every tenant's rows and merge them into the target.
+        const mrg = node
+        const ctes = mrg.ctes.map((c) => this.transformCTE(c))
+        const source =
+          mrg.source.type === "subquery" ? this.transformSubquery(mrg.source) : mrg.source
+        return { ...mrg, ctes, source }
+      }
       default:
         return node
     }
