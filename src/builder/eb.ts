@@ -322,6 +322,24 @@ export function val<T extends string | number | boolean | null>(value: T): Expre
 }
 
 /**
+ * PostgreSQL `EXCLUDED.<col>` reference for use inside
+ * `ON CONFLICT DO UPDATE` expressions. Produces the correct
+ * `EXCLUDED."name"` form — not `"EXCLUDED.name"` (one quoted
+ * identifier with a literal dot) which is what `col("EXCLUDED.name")`
+ * would do.
+ *
+ * ```ts
+ * db.insertInto("users").values({ email, name })
+ *   .onConflict({ columns: ["email"], do: { update: [{
+ *     column: "name", value: excluded("name"),
+ *   }] }})
+ * ```
+ */
+export function excluded<T = unknown>(column: string): Expression<T> {
+  return wrap<T>({ type: "column_ref", table: "EXCLUDED", column })
+}
+
+/**
  * Unsafe raw SQL expression — escape hatch for arbitrary SQL in expressions.
  *
  * **WARNING:** Never pass user-controlled input as the SQL string.

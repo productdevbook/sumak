@@ -148,6 +148,12 @@ export class MssqlPrinter extends BasePrinter {
         "ON CONFLICT (use MERGE for upsert in MSSQL)",
       )
     }
+    if (node.insertMode && node.insertMode !== "INSERT") {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        `${node.insertMode} (SQLite-only syntax — use MERGE INTO for MSSQL upserts)`,
+      )
+    }
 
     const parts: string[] = []
 
@@ -155,8 +161,7 @@ export class MssqlPrinter extends BasePrinter {
       parts.push(this.printCTEs(node.ctes))
     }
 
-    const insertKeyword = node.insertMode ?? "INSERT"
-    parts.push(`${insertKeyword} INTO`, this.printTableRef(node.table))
+    parts.push("INSERT INTO", this.printTableRef(node.table))
 
     if (node.columns.length > 0) {
       parts.push(`(${node.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)
