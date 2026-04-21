@@ -203,6 +203,14 @@ export class MysqlPrinter extends BasePrinter {
    * PG's bare-key form (`data->'name'`), which MySQL rejects with
    * `ER_INVALID_JSON_PATH`. Rewrite the path literal here.
    *
+   * Note on cross-dialect semantics: if a caller passes `at("a.b")` the
+   * MySQL form becomes `$.a.b` — a two-level JSONPath. On PG the same
+   * node emits `data->'a.b'` — a literal single key. Sumak treats
+   * `.at(path)` as "the user-supplied JSON selector string"; dotted
+   * keys are rare and chaining (`.at("a").at("b")`) is the
+   * recommended portable form. Use `#>` with a segment array for
+   * path traversal (PG only).
+   *
    * `#>` / `#>>` path operators are PG-specific — reject with a pointer
    * at JSON_EXTRACT.
    */
