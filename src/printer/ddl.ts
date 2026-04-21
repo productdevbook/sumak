@@ -277,7 +277,17 @@ export class DDLPrinter {
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))
     if (node.table) parts.push("ON", quoteIdentifier(node.table, this.dialect))
-    if (node.cascade) parts.push("CASCADE")
+    if (node.cascade) {
+      // `DROP INDEX ... CASCADE` is PG-only. SQLite allows no cascade;
+      // MySQL / MSSQL both reject it at parse time.
+      if (this.dialect !== "pg") {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "DROP INDEX ... CASCADE (PG-only; drop dependent objects manually)",
+        )
+      }
+      parts.push("CASCADE")
+    }
     return parts.join(" ")
   }
 
@@ -332,7 +342,17 @@ export class DDLPrinter {
     parts.push("VIEW")
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))
-    if (node.cascade) parts.push("CASCADE")
+    if (node.cascade) {
+      // `DROP VIEW ... CASCADE` is PG-only. SQLite allows no cascade;
+      // MySQL / MSSQL reject the keyword entirely.
+      if (this.dialect !== "pg") {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "DROP VIEW ... CASCADE (PG-only; drop dependent objects manually)",
+        )
+      }
+      parts.push("CASCADE")
+    }
     return parts.join(" ")
   }
 
