@@ -62,6 +62,81 @@ const NILADIC_FUNCTIONS: ReadonlySet<string> = new Set([
   "LOCALTIMESTAMP",
 ])
 
+/**
+ * Standard SQL / ANSI built-in functions whose names are traditionally
+ * emitted uppercase for portability. Anything NOT in this set is a
+ * user-defined function or third-party extension and is emitted
+ * verbatim — users can write `"mixedCaseUdf"` or `my_udf` and get back
+ * the exact casing they passed, which matters for quoted identifiers
+ * in PG / case-sensitive MySQL collations.
+ */
+const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
+  // Aggregates
+  "COUNT",
+  "SUM",
+  "AVG",
+  "MIN",
+  "MAX",
+  "STDDEV",
+  "VARIANCE",
+  "STRING_AGG",
+  "GROUP_CONCAT",
+  "ARRAY_AGG",
+  "JSON_AGG",
+  "JSONB_AGG",
+  "JSON_OBJECT_AGG",
+  // Window
+  "ROW_NUMBER",
+  "RANK",
+  "DENSE_RANK",
+  "PERCENT_RANK",
+  "CUME_DIST",
+  "NTILE",
+  "LAG",
+  "LEAD",
+  "FIRST_VALUE",
+  "LAST_VALUE",
+  "NTH_VALUE",
+  // String
+  "UPPER",
+  "LOWER",
+  "CONCAT",
+  "SUBSTRING",
+  "TRIM",
+  "LTRIM",
+  "RTRIM",
+  "LENGTH",
+  "CHAR_LENGTH",
+  "REPLACE",
+  "POSITION",
+  // Numeric
+  "ABS",
+  "ROUND",
+  "CEIL",
+  "CEILING",
+  "FLOOR",
+  "POWER",
+  "SQRT",
+  "GREATEST",
+  "LEAST",
+  "MOD",
+  // Conditional
+  "COALESCE",
+  "NULLIF",
+  // Cast / conversion
+  "CAST",
+  "CONVERT",
+  // JSON
+  "JSON_BUILD_OBJECT",
+  "JSONB_BUILD_OBJECT",
+  "JSON_BUILD_ARRAY",
+  "TO_JSON",
+  "TO_JSONB",
+  // Full-text
+  "FREETEXT",
+  "CONTAINS",
+])
+
 export class BasePrinter implements Printer {
   protected params: unknown[] = []
   protected dialect: SQLDialect
@@ -423,11 +498,13 @@ export class BasePrinter implements Printer {
     if (node.orderBy && node.orderBy.length > 0) {
       inner += ` ORDER BY ${node.orderBy.map((o) => this.printOrderBy(o)).join(", ")}`
     }
-    // Uppercase the function name for consistency with the niladic path
-    // and portability (MSSQL / case-sensitive MySQL collations). Users
-    // writing lowercase `row_number` via raw AST still get canonical
-    // `ROW_NUMBER(…)` output.
-    let result = `${node.name.toUpperCase()}(${inner})`
+    // Uppercase only standard SQL / ANSI built-ins for portability.
+    // User-defined and extension functions keep their original casing
+    // so quoted identifiers in PG / case-sensitive MySQL collations
+    // resolve to the right function.
+    const upper = node.name.toUpperCase()
+    const emittedName = STANDARD_FUNCTIONS.has(upper) ? upper : node.name
+    let result = `${emittedName}(${inner})`
     if (node.filter) {
       result += ` FILTER (WHERE ${this.printExpression(node.filter)})`
     }

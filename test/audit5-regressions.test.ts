@@ -49,6 +49,18 @@ describe("Audit #5 regressions", () => {
       const r = printer.print(node)
       expect(r.sql).toContain("OUTPUT DELETED.[users].*")
     })
+
+    it("INSERT OUTPUT with non-star column nodes still prefixes correctly", () => {
+      const node: InsertNode = {
+        ...createInsertNode({ type: "table_ref", name: "users" }),
+        columns: ["name"],
+        values: [[param(0, "Alice")]],
+        returning: [col("id"), col("name")],
+      }
+      const r = printer.print(node)
+      expect(r.sql).toContain("INSERTED.[id]")
+      expect(r.sql).toContain("INSERTED.[name]")
+    })
   })
 
   describe("MySQL GROUPS window frame rejection", () => {
@@ -101,16 +113,30 @@ describe("Audit #5 regressions", () => {
       const r = q1.union(q2).toSQL()
       expect(r.sql).not.toContain("ORDER BY")
     })
+
+    it("three-way UNION chain emits two UNIONs, no orphan ORDER BY", () => {
+      const q1 = db.selectFrom("users").select("id")
+      const q2 = db.selectFrom("users").select("id")
+      const q3 = db.selectFrom("users").select("id")
+      const r = q1.union(q2).union(q3).toSQL()
+      const unions = (r.sql.match(/UNION/g) ?? []).length
+      expect(unions).toBe(2)
+    })
+
+    it("UNION + outer LIMIT emits LIMIT after the second SELECT", () => {
+      const q1 = db.selectFrom("users").select("id")
+      const q2 = db.selectFrom("users").select("id")
+      const r = q1.limit(10).union(q2).toSQL()
+      const limitIdx = r.sql.indexOf("LIMIT")
+      const unionIdx = r.sql.indexOf("UNION")
+      expect(limitIdx).toBeGreaterThan(unionIdx)
+    })
   })
 
-  describe("printFunctionCall uppercases fn name", () => {
-    it("lowercase fn name in AST emits uppercase SQL", () => {
+  describe("printFunctionCall case policy", () => {
+    it("standard SQL fn names uppercase (portable for MSSQL / case-sensitive MySQL)", () => {
       const printer = new PgPrinter()
-      const fn: FunctionCallNode = {
-        type: "function_call",
-        name: "row_number",
-        args: [],
-      }
+      const fn: FunctionCallNode = { type: "function_call", name: "row_number", args: [] }
       const node: SelectNode = {
         ...createSelectNode(),
         from: tableRef("t"),
@@ -119,6 +145,19 @@ describe("Audit #5 regressions", () => {
       const r = printer.print(node)
       expect(r.sql).toContain("ROW_NUMBER(")
       expect(r.sql).not.toContain("row_number(")
+    })
+
+    it("user-defined fn names pass through verbatim (preserves mixed-case UDFs)", () => {
+      const printer = new PgPrinter()
+      const fn: FunctionCallNode = { type: "function_call", name: "my_custom_udf", args: [] }
+      const node: SelectNode = {
+        ...createSelectNode(),
+        from: tableRef("t"),
+        columns: [fn],
+      }
+      const r = printer.print(node)
+      expect(r.sql).toContain("my_custom_udf(")
+      expect(r.sql).not.toContain("MY_CUSTOM_UDF(")
     })
   })
 
