@@ -412,11 +412,16 @@ export class Sumak<DB> {
     if (typeof node.type === "string" && node.type.startsWith("tcl_")) {
       return new TclPrinter(this._dialect.name).print(node as TclNode)
     }
-    // Route DDL nodes directly — same reasoning. Wire in the dialect's printer
-    // so CREATE TABLE ... AS SELECT / CREATE VIEW AS can render the SELECT body.
+    // Route DDL nodes directly — DDL itself is not subject to plugins
+    // (you cannot "soft-delete" a CREATE TABLE). However, when the DDL
+    // carries an embedded SELECT (CREATE TABLE … AS SELECT, CREATE
+    // VIEW AS SELECT), the inner SELECT MUST still pass through the
+    // full pipeline — plugin transforms, hooks, normalize, optimize —
+    // otherwise a `CREATE VIEW tenant_orders AS SELECT * FROM orders`
+    // on a multi-tenant table silently captures every tenant's rows
+    // into the view. Route `asSelect` recursively through compile().
     if (isDDLNode(node)) {
-      const base = this._dialect.createPrinter()
-      return new DDLPrinter(this._dialect.name, (sel) => base.print(sel)).print(node as DDLNode)
+      return new DDLPrinter(this._dialect.name, (sel) => this.compile(sel)).print(node as DDLNode)
     }
 
     // 1. Plugin AST transform
@@ -512,8 +517,10 @@ export class Sumak<DB> {
    * ```
    */
   generateDDL(options?: { ifNotExists?: boolean }): CompiledQuery[] {
-    const base = this._dialect.createPrinter()
-    const printer = new DDLPrinter(this._dialect.name, (sel) => base.print(sel))
+    // Route any embedded SELECT through compile() so plugins, hooks,
+    // normalize, and optimize apply — a CREATE TABLE ... AS SELECT on
+    // a multi-tenant table would otherwise leak across tenants.
+    const printer = new DDLPrinter(this._dialect.name, (sel) => this.compile(sel))
     const results: CompiledQuery[] = []
 
     for (const [tableName, columns] of Object.entries(this._tables)) {
@@ -557,8 +564,9 @@ export class Sumak<DB> {
 
   /** Compile a DDL node to SQL. */
   compileDDL(node: DDLNode): CompiledQuery {
-    const base = this._dialect.createPrinter()
-    const printer = new DDLPrinter(this._dialect.name, (sel) => base.print(sel))
+    // Same as compile(): embedded SELECTs in AS SELECT / asSelect must
+    // route through the full pipeline so plugins apply.
+    const printer = new DDLPrinter(this._dialect.name, (sel) => this.compile(sel))
     return printer.print(node)
   }
 
