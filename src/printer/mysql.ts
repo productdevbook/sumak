@@ -144,6 +144,14 @@ export class MysqlPrinter extends BasePrinter {
     )
   }
 
+  /** MySQL does not implement ANSI `MERGE`; use INSERT ... ON DUPLICATE KEY UPDATE. */
+  protected override printMerge(_node: import("../ast/nodes.ts").MergeNode): string {
+    throw new UnsupportedDialectFeatureError(
+      "mysql",
+      "MERGE INTO (use INSERT ... ON DUPLICATE KEY UPDATE on MySQL)",
+    )
+  }
+
   /** MySQL does not support `DELETE … RETURNING` — PG / SQLite 3.35+ only. */
   protected override printDelete(node: DeleteNode): string {
     if (node.returning.length > 0) {
