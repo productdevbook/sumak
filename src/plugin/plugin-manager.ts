@@ -61,7 +61,11 @@ export class PluginManager {
         const joins = upd.joins.map((j) =>
           j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
         )
-        return { ...upd, ctes, joins }
+        // Same WHERE-subquery traversal as SELECT: without this,
+        // `UPDATE products SET … WHERE EXISTS (SELECT … FROM tenants)`
+        // leaves the EXISTS subquery unfiltered.
+        const where = upd.where ? this.walkExpression(upd.where) : upd.where
+        return { ...upd, ctes, joins, where }
       }
       case "delete": {
         const del = node
@@ -69,7 +73,8 @@ export class PluginManager {
         const joins = del.joins.map((j) =>
           j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
         )
-        return { ...del, ctes, joins }
+        const where = del.where ? this.walkExpression(del.where) : del.where
+        return { ...del, ctes, joins, where }
       }
       case "merge": {
         // MERGE sources are a security-critical traversal point: a

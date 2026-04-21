@@ -56,6 +56,40 @@ describe("Audit #17 regressions", () => {
       expect(r.sql).toContain('FROM "orders" WHERE ("tenant_id" = $1)')
     })
 
+    it("UPDATE ... WHERE EXISTS (SELECT FROM target) filters the inner SELECT", async () => {
+      const { createUpdateNode } = await import("../src/ast/nodes.ts")
+      const innerOrders: SelectNode = {
+        ...createSelectNode(),
+        from: { type: "table_ref", name: "orders" },
+        columns: [{ type: "column_ref", column: "id" }],
+      }
+      const upd = createUpdateNode({ type: "table_ref", name: "products" })
+      upd.set.push({ column: "name", value: { type: "literal", value: "x" } })
+      upd.where = { type: "exists", query: innerOrders, negated: false }
+      const transformed = pm.transformNode(upd) as typeof upd
+      const r = new PgPrinter().print(transformed)
+      expect(r.sql).toContain('FROM "orders" WHERE ("tenant_id" = $1)')
+    })
+
+    it("DELETE ... WHERE id IN (SELECT FROM target) filters the inner SELECT", async () => {
+      const { createDeleteNode } = await import("../src/ast/nodes.ts")
+      const innerOrders: SelectNode = {
+        ...createSelectNode(),
+        from: { type: "table_ref", name: "orders" },
+        columns: [{ type: "column_ref", column: "id" }],
+      }
+      const del = createDeleteNode({ type: "table_ref", name: "products" })
+      del.where = {
+        type: "in",
+        expr: { type: "column_ref", column: "id" },
+        values: innerOrders,
+        negated: false,
+      }
+      const transformed = pm.transformNode(del) as typeof del
+      const r = new PgPrinter().print(transformed)
+      expect(r.sql).toContain('FROM "orders" WHERE ("tenant_id" = $1)')
+    })
+
     it("WHERE col = (SELECT scalar FROM target) filters the inner SELECT", () => {
       const innerOrders: SelectNode = {
         ...createSelectNode(),
