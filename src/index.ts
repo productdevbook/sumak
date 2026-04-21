@@ -83,6 +83,11 @@ export { subqueryExpr, toJson, tuple } from "./builder/eb.ts"
 // ─── Escape hatches — use only when no typed helper fits ───────────────────
 export { unsafeRawExpr, unsafeSqlFn } from "./builder/eb.ts"
 
+// ─── ON CONFLICT helpers ───────────────────────────────────────────────────
+// `excluded("name")` → `EXCLUDED."name"` — PG's pseudo-table reference
+// for the row that would have been inserted (use inside `.onConflict()`).
+export { excluded } from "./builder/eb.ts"
+
 // ─── Date/time helpers ─────────────────────────────────────────────────────
 export { now, currentTimestamp } from "./builder/eb.ts"
 

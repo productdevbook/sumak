@@ -28,6 +28,16 @@ export class MysqlPrinter extends BasePrinter {
         "ON CONFLICT (use onDuplicateKeyUpdate for MySQL)",
       )
     }
+    if (node.insertMode && node.insertMode !== "INSERT") {
+      // `INSERT OR IGNORE/REPLACE/…` is SQLite syntax. MySQL has
+      // `INSERT IGNORE` / `REPLACE INTO` / `ON DUPLICATE KEY UPDATE`,
+      // but the shapes are different enough that silent rewriting
+      // would surprise callers. Refuse and point at the MySQL path.
+      throw new UnsupportedDialectFeatureError(
+        "mysql",
+        `${node.insertMode} (SQLite-only syntax — use onDuplicateKeyUpdate, or raw \`INSERT IGNORE\` via sql.unsafe)`,
+      )
+    }
 
     let sql = super.printInsert(node)
 

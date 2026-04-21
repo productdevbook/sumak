@@ -40,17 +40,20 @@ describe("SQLite INSERT OR IGNORE / INSERT OR REPLACE", () => {
       dialect: pgDialect(),
       tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
     })
-    // orIgnore is primarily SQLite but the AST is dialect-agnostic
-    const q = pgdb.insertInto("users").values({ name: "Alice" }).orIgnore().compile(pgdb.printer())
-    expect(q.sql).toContain("INSERT OR IGNORE INTO")
+    // `INSERT OR IGNORE` is SQLite-only syntax — non-SQLite dialects
+    // now reject the node rather than emit invalid SQL.
+    expect(() =>
+      pgdb.insertInto("users").values({ name: "Alice" }).orIgnore().compile(pgdb.printer()),
+    ).toThrow(/SQLite-only/)
   })
 
-  it("works in MySQL too", () => {
+  it("MySQL rejects .orIgnore() — suggests onDuplicateKeyUpdate", () => {
     const mydb = sumak({
       dialect: mysqlDialect(),
       tables: { users: { id: serial().primaryKey(), name: text().notNull() } },
     })
-    const q = mydb.insertInto("users").values({ name: "Alice" }).orIgnore().compile(mydb.printer())
-    expect(q.sql).toContain("INSERT OR IGNORE INTO")
+    expect(() =>
+      mydb.insertInto("users").values({ name: "Alice" }).orIgnore().compile(mydb.printer()),
+    ).toThrow(/SQLite-only/)
   })
 })
