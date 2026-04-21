@@ -127,12 +127,7 @@ export class MssqlPrinter extends BasePrinter {
 
     // MSSQL: OUTPUT instead of RETURNING
     if (node.returning.length > 0) {
-      const cols = node.returning.map((r) => {
-        const printed = this.printExpression(r)
-        if (printed === "*") return "INSERTED.*"
-        return `INSERTED.${printed}`
-      })
-      parts.push("OUTPUT", cols.join(", "))
+      parts.push("OUTPUT", this._outputCols(node.returning, "INSERTED"))
     }
 
     if (node.defaultValues) {
@@ -166,12 +161,7 @@ export class MssqlPrinter extends BasePrinter {
 
     // MSSQL: OUTPUT instead of RETURNING
     if (node.returning.length > 0) {
-      const cols = node.returning.map((r) => {
-        const printed = this.printExpression(r)
-        if (printed === "*") return "INSERTED.*"
-        return `INSERTED.${printed}`
-      })
-      parts.push("OUTPUT", cols.join(", "))
+      parts.push("OUTPUT", this._outputCols(node.returning, "INSERTED"))
     }
 
     // MSSQL `UPDATE t SET ... FROM t INNER JOIN ... WHERE`: FROM precedes JOINs.
@@ -201,12 +191,7 @@ export class MssqlPrinter extends BasePrinter {
 
     // MSSQL: OUTPUT instead of RETURNING
     if (node.returning.length > 0) {
-      const cols = node.returning.map((r) => {
-        const printed = this.printExpression(r)
-        if (printed === "*") return "DELETED.*"
-        return `DELETED.${printed}`
-      })
-      parts.push("OUTPUT", cols.join(", "))
+      parts.push("OUTPUT", this._outputCols(node.returning, "DELETED"))
     }
 
     for (const join of node.joins) {
@@ -218,6 +203,26 @@ export class MssqlPrinter extends BasePrinter {
     }
 
     return parts.join(" ")
+  }
+
+  /**
+   * Render a RETURNING list as MSSQL `OUTPUT` columns under the given
+   * pseudo-table (`INSERTED` or `DELETED`). Handles `StarNode` bare and
+   * table-qualified — previously a `printed === "*"` string check missed
+   * the `"t".*` form and emitted invalid `OUTPUT INSERTED."t".*`.
+   */
+  private _outputCols(
+    returning: readonly import("../ast/nodes.ts").ExpressionNode[],
+    prefix: "INSERTED" | "DELETED",
+  ): string {
+    return returning
+      .map((r) => {
+        if (r.type === "star") {
+          return r.table ? `${prefix}.${quoteIdentifier(r.table, this.dialect)}.*` : `${prefix}.*`
+        }
+        return `${prefix}.${this.printExpression(r)}`
+      })
+      .join(", ")
   }
 
   protected override printFullTextSearch(node: FullTextSearchNode): string {

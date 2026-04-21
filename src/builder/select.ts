@@ -223,6 +223,14 @@ export class SelectBuilder {
   }
 
   private setOp(op: SetOperator, query: SelectNode): SelectBuilder {
+    // Chain-friendly: if this node already has a setOp, append the new
+    // operation to the end of the chain instead of overwriting it.
+    // Without this, `q1.union(q2).union(q3)` silently dropped q2 because
+    // the second `.union()` replaced `setOp.query` instead of extending.
+    if (this.node.setOp) {
+      const appended = appendSetOp(this.node.setOp, { op, query })
+      return new SelectBuilder({ ...this.node, setOp: appended })
+    }
     return new SelectBuilder({ ...this.node, setOp: { op, query } })
   }
 
@@ -237,4 +245,27 @@ export function select(...cols: (string | ExpressionNode)[]): SelectBuilder {
     return builder.columns(...cols)
   }
   return builder.allColumns()
+}
+
+/**
+ * Walk a setOp chain to its tail and append the new setOp there.
+ * Preserves the left-associative chain order so
+ * `q1.union(q2).union(q3)` emits `q1 UNION q2 UNION q3` — the second
+ * `.union(q3)` hooks onto the end of `q1`'s existing chain, not onto
+ * its root, so q2 is not silently dropped.
+ */
+function appendSetOp(
+  existing: { op: SetOperator; query: SelectNode },
+  next: { op: SetOperator; query: SelectNode },
+): { op: SetOperator; query: SelectNode } {
+  if (!existing.query.setOp) {
+    return {
+      op: existing.op,
+      query: { ...existing.query, setOp: next },
+    }
+  }
+  return {
+    op: existing.op,
+    query: { ...existing.query, setOp: appendSetOp(existing.query.setOp, next) },
+  }
 }
