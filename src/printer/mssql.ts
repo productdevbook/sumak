@@ -84,7 +84,15 @@ export class MssqlPrinter extends BasePrinter {
     // result, not to the left arm. Emitting OFFSET/FETCH before the
     // set-op was invalid SQL (SQL Server rejects the statement).
     if (node.setOp) {
-      parts.push(node.setOp.op, this.printSelect(node.setOp.query))
+      // Wrap the inner SELECT in parens when it carries its own
+      // ORDER BY / OFFSET / FETCH (LIMIT) — without parens those
+      // clauses bind to the combined result on SQL Server, not to
+      // the inner arm, silently changing what the caller asked for.
+      const inner = node.setOp.query
+      const innerHasPagination =
+        inner.orderBy.length > 0 || inner.limit !== undefined || inner.offset !== undefined
+      const printedInner = this.printSelect(inner)
+      parts.push(node.setOp.op, innerHasPagination ? `(${printedInner})` : printedInner)
     }
 
     if (node.orderBy.length > 0) {

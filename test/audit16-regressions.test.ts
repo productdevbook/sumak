@@ -155,6 +155,24 @@ describe("Audit #16 regressions", () => {
       expect(r.sql).toContain("UNION SELECT")
       expect(r.sql).not.toContain("UNION (")
     })
+
+    it("MSSQL also wraps inner UNION arm with pagination in parens", async () => {
+      const { MssqlPrinter } = await import("../src/printer/mssql.ts")
+      const inner = new SelectBuilder()
+        .columns("*")
+        .from("posts")
+        .orderBy({ type: "column_ref", column: "id" }, "ASC")
+        .build()
+      const q = new SelectBuilder()
+        .columns("*")
+        .from("posts")
+        .union(inner)
+        .orderBy({ type: "column_ref", column: "id" }, "DESC")
+        .build()
+      const r = new MssqlPrinter().print(q)
+      // Inner carries ORDER BY → parens required; outer ORDER BY follows.
+      expect(r.sql).toMatch(/UNION \(SELECT .* ORDER BY \[id\] ASC\) ORDER BY \[id\] DESC/)
+    })
   })
 
   describe("MSSQL rejects CREATE … IF NOT EXISTS", () => {
