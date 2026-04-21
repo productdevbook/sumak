@@ -178,6 +178,16 @@ export class MysqlPrinter extends BasePrinter {
           `EXPLAIN (FORMAT ${node.format}) — MySQL supports TRADITIONAL, JSON, TREE only`,
         )
       }
+      // MySQL 8.0.18–8.0.31 disallow FORMAT with ANALYZE entirely;
+      // 8.0.32+ allows FORMAT=TREE with ANALYZE but still not JSON /
+      // TRADITIONAL. Refuse the non-TREE combos rather than silently
+      // emit SQL the server rejects.
+      if (node.analyze && node.format !== "TREE") {
+        throw new UnsupportedDialectFeatureError(
+          "mysql",
+          `EXPLAIN ANALYZE FORMAT=${node.format} — MySQL only supports FORMAT=TREE with ANALYZE`,
+        )
+      }
       parts.push(`FORMAT=${node.format}`)
     }
     // Route through printNode on `this` so dialect-specific statement

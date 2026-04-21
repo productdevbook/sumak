@@ -102,5 +102,25 @@ describe("Audit #21 regressions", () => {
       const xmlNode: ExplainNode = { type: "explain", statement: stmt, format: "XML" }
       expect(() => new MysqlPrinter().print(xmlNode)).toThrow(UnsupportedDialectFeatureError)
     })
+
+    it("MySQL EXPLAIN ANALYZE only accepts FORMAT=TREE (not JSON/TRADITIONAL)", () => {
+      const jsonNode: ExplainNode = {
+        type: "explain",
+        statement: stmt,
+        analyze: true,
+        format: "JSON",
+      }
+      expect(() => new MysqlPrinter().print(jsonNode)).toThrow(UnsupportedDialectFeatureError)
+
+      const treeNode: ExplainNode = {
+        type: "explain",
+        statement: stmt,
+        analyze: true,
+        format: "TEXT",
+      }
+      // TEXT is not in the MySQL-accepted set; the `format !== "TREE"`
+      // guard catches all non-TREE formats when ANALYZE is set.
+      expect(() => new MysqlPrinter().print(treeNode)).toThrow(UnsupportedDialectFeatureError)
+    })
   })
 })

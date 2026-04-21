@@ -13,7 +13,13 @@ export interface ExplainNode {
   type: "explain"
   statement: SelectNode | InsertNode | UpdateNode | DeleteNode
   analyze?: boolean
-  format?: "TEXT" | "JSON" | "YAML" | "XML"
+  /**
+   * Plan-output format. Dialect support varies:
+   *  - pg: TEXT, JSON, YAML, XML
+   *  - mysql: TRADITIONAL (=TEXT), JSON, TREE; only TREE allowed with ANALYZE
+   *  - sqlite/mssql: not supported (printer throws)
+   */
+  format?: "TEXT" | "JSON" | "YAML" | "XML" | "TREE" | "TRADITIONAL"
 }
 
 export type ExpressionNode =
