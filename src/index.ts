@@ -17,6 +17,8 @@ export { mssqlDialect } from "./dialect/mssql.ts"
 export { mysqlDialect } from "./dialect/mysql.ts"
 export { sqliteDialect } from "./dialect/sqlite.ts"
 export type { Dialect } from "./dialect/types.ts"
+export { assertFeature, dialectsForFeature, FEATURES, supportsFeature } from "./dialect/features.ts"
+export type { FeatureKey } from "./dialect/features.ts"
 
 // ─── Query builders (renamed: Typed* → *, untyped classes are now internal) ─
 export { TypedSelectBuilder as SelectBuilder } from "./builder/typed-select.ts"

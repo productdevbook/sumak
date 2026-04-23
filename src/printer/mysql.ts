@@ -11,6 +11,7 @@ import type {
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
+import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { escapeStringLiteral } from "../utils/security.ts"
@@ -23,7 +24,7 @@ export class MysqlPrinter extends BasePrinter {
 
   protected override printInsert(node: InsertNode): string {
     if (node.returning.length > 0) {
-      throw new UnsupportedDialectFeatureError("mysql", "RETURNING")
+      assertFeature("mysql", "RETURNING")
     }
     if (node.ctes.some((c) => c.recursive)) {
       throw new UnsupportedDialectFeatureError(
@@ -62,7 +63,7 @@ export class MysqlPrinter extends BasePrinter {
 
   protected override printSelect(node: SelectNode): string {
     if (node.distinctOn) {
-      throw new UnsupportedDialectFeatureError("mysql", "DISTINCT ON")
+      assertFeature("mysql", "DISTINCT_ON")
     }
     // MySQL 8.0 supports `FOR UPDATE` and `FOR SHARE` only. PG's finer-
     // grained lock modes (`NO KEY UPDATE`, `KEY SHARE`) are unknown to
@@ -86,7 +87,7 @@ export class MysqlPrinter extends BasePrinter {
    */
   protected override printUpdate(node: UpdateNode): string {
     if (node.returning.length > 0) {
-      throw new UnsupportedDialectFeatureError("mysql", "RETURNING on UPDATE")
+      assertFeature("mysql", "RETURNING_UPDATE")
     }
     if (node.ctes.some((c) => c.recursive)) {
       throw new UnsupportedDialectFeatureError(
@@ -233,7 +234,7 @@ export class MysqlPrinter extends BasePrinter {
   /** MySQL does not support `DELETE … RETURNING` — PG / SQLite 3.35+ only. */
   protected override printDelete(node: DeleteNode): string {
     if (node.returning.length > 0) {
-      throw new UnsupportedDialectFeatureError("mysql", "RETURNING on DELETE")
+      assertFeature("mysql", "RETURNING_DELETE")
     }
     if (node.ctes.some((c) => c.recursive)) {
       throw new UnsupportedDialectFeatureError(

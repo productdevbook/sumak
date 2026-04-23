@@ -11,6 +11,7 @@ import type {
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
+import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { BasePrinter } from "./base.ts"
@@ -28,7 +29,7 @@ export class MssqlPrinter extends BasePrinter {
     }
 
     if (node.distinctOn) {
-      throw new UnsupportedDialectFeatureError("mssql", "DISTINCT ON")
+      assertFeature("mssql", "DISTINCT_ON")
     }
 
     parts.push("SELECT")

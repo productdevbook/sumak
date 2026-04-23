@@ -8,6 +8,7 @@ import type {
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
+import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
 import { escapeStringLiteral } from "../utils/security.ts"
@@ -20,10 +21,10 @@ export class SqlitePrinter extends BasePrinter {
 
   protected override printSelect(node: SelectNode): string {
     if (node.distinctOn) {
-      throw new UnsupportedDialectFeatureError("sqlite", "DISTINCT ON")
+      assertFeature("sqlite", "DISTINCT_ON")
     }
     if (node.lock) {
-      throw new UnsupportedDialectFeatureError("sqlite", "FOR UPDATE/SHARE")
+      assertFeature("sqlite", "FOR_UPDATE")
     }
     return super.printSelect(node)
   }
@@ -35,7 +36,7 @@ export class SqlitePrinter extends BasePrinter {
    */
   protected override printJoin(node: JoinNode): string {
     if (node.lateral) {
-      throw new UnsupportedDialectFeatureError("sqlite", "LATERAL JOIN")
+      assertFeature("sqlite", "LATERAL_JOIN")
     }
     return super.printJoin(node)
   }
