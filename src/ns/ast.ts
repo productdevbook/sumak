@@ -30,6 +30,7 @@ import {
 } from "../ast/nodes.ts"
 import { ASTTransformer } from "../ast/transformer.ts"
 import { visitNode } from "../ast/visitor.ts"
+import { ASTWalker, mapPreserve } from "../ast/walker.ts"
 
 /**
  * Low-level AST factory namespace — advanced use.
@@ -82,4 +83,6 @@ export const ast = {
   // Traversal
   visit: visitNode,
   Transformer: ASTTransformer,
+  Walker: ASTWalker,
+  mapPreserve,
 } as const

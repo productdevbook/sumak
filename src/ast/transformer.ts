@@ -1,4 +1,3 @@
-import { assertNever } from "../errors.ts"
 import type {
   ASTNode,
   DeleteNode,
@@ -8,190 +7,59 @@ import type {
   SelectNode,
   UpdateNode,
 } from "./nodes.ts"
+import { ASTWalker } from "./walker.ts"
 
-export class ASTTransformer {
+/**
+ * Legacy public transformer API — kept as a thin shim over {@link ASTWalker}.
+ *
+ * Subclasses override `transformExpression` (and optionally the DML
+ * transforms) to rewrite nodes. Every override delegates to `super`
+ * for the default identity-preserving traversal, which is provided by
+ * {@link ASTWalker}. New code should extend `ASTWalker` directly — the
+ * walker's exhaustive switch surface makes new AST variants impossible
+ * to forget, and its traversal covers CTEs / subqueries / MERGE WHEN
+ * branches that the legacy `ASTTransformer` skipped.
+ *
+ * Kept public because `ns/ast.ts` re-exports it as `ast.Transformer`.
+ */
+export class ASTTransformer extends ASTWalker {
   transform(node: ASTNode): ASTNode {
-    switch (node.type) {
-      case "select":
-        return this.transformSelect(node)
-      case "insert":
-        return this.transformInsert(node)
-      case "update":
-        return this.transformUpdate(node)
-      case "delete":
-        return this.transformDelete(node)
-      case "merge":
-        return this.transformMerge(node)
-      case "explain":
-        return { ...node, statement: this.transform(node.statement) as any }
-      default:
-        return this.transformExpression(node)
-    }
+    return this.visitNode(node)
   }
 
   transformSelect(node: SelectNode): SelectNode {
-    return {
-      ...node,
-      columns: node.columns.map((c) => this.transformExpression(c)),
-      where: node.where ? this.transformExpression(node.where) : undefined,
-      having: node.having ? this.transformExpression(node.having) : undefined,
-      joins: node.joins.map((j) => ({
-        ...j,
-        on: j.on ? this.transformExpression(j.on) : undefined,
-      })),
-      orderBy: node.orderBy.map((o) => ({
-        ...o,
-        expr: this.transformExpression(o.expr),
-      })),
-    }
+    return this.visitSelect(node)
   }
 
   transformInsert(node: InsertNode): InsertNode {
-    return {
-      ...node,
-      values: node.values.map((row) => row.map((v) => this.transformExpression(v))),
-    }
+    return this.visitInsert(node)
   }
 
   transformUpdate(node: UpdateNode): UpdateNode {
-    return {
-      ...node,
-      set: node.set.map((s) => ({
-        ...s,
-        value: this.transformExpression(s.value),
-      })),
-      where: node.where ? this.transformExpression(node.where) : undefined,
-    }
+    return this.visitUpdate(node)
   }
 
   transformDelete(node: DeleteNode): DeleteNode {
-    return {
-      ...node,
-      where: node.where ? this.transformExpression(node.where) : undefined,
-    }
+    return this.visitDelete(node)
   }
 
   transformMerge(node: MergeNode): MergeNode {
-    return {
-      ...node,
-      on: this.transformExpression(node.on),
-      whens: node.whens.map((w) => {
-        if (w.type === "matched") {
-          return {
-            ...w,
-            condition: w.condition ? this.transformExpression(w.condition) : undefined,
-            set: w.set?.map((s) => ({ ...s, value: this.transformExpression(s.value) })),
-          }
-        }
-        return {
-          ...w,
-          condition: w.condition ? this.transformExpression(w.condition) : undefined,
-          values: w.values.map((v) => this.transformExpression(v)),
-        }
-      }),
-    }
+    return this.visitMerge(node)
   }
 
+  /**
+   * Default: delegate to the walker so child expressions are walked
+   * identity-preservingly. Subclasses override this method to rewrite
+   * specific expression shapes; they should call `super.transformExpression`
+   * for nodes they don't match so inner children still get traversed.
+   */
   transformExpression(node: ExpressionNode): ExpressionNode {
-    switch (node.type) {
-      case "binary_op":
-        return {
-          ...node,
-          left: this.transformExpression(node.left),
-          right: this.transformExpression(node.right),
-        }
-      case "unary_op":
-        return {
-          ...node,
-          operand: this.transformExpression(node.operand),
-        }
-      case "function_call":
-        return {
-          ...node,
-          args: node.args.map((a) => this.transformExpression(a)),
-        }
-      case "between":
-        return {
-          ...node,
-          expr: this.transformExpression(node.expr),
-          low: this.transformExpression(node.low),
-          high: this.transformExpression(node.high),
-        }
-      case "in":
-        return {
-          ...node,
-          expr: this.transformExpression(node.expr),
-          values: Array.isArray(node.values)
-            ? node.values.map((v) => this.transformExpression(v))
-            : node.values,
-        }
-      case "is_null":
-        return {
-          ...node,
-          expr: this.transformExpression(node.expr),
-        }
-      case "cast":
-        return {
-          ...node,
-          expr: this.transformExpression(node.expr),
-        }
-      case "json_access":
-        return {
-          ...node,
-          expr: this.transformExpression(node.expr),
-        }
-      case "array_expr":
-        return {
-          ...node,
-          elements: node.elements.map((e) => this.transformExpression(e)),
-        }
-      case "window_function":
-        return {
-          ...node,
-          fn: this.transformExpression(node.fn) as import("./nodes.ts").FunctionCallNode,
-          partitionBy: node.partitionBy.map((p) => this.transformExpression(p)),
-          orderBy: node.orderBy.map((o) => ({
-            ...o,
-            expr: this.transformExpression(o.expr),
-          })),
-        }
-      case "aliased_expr":
-        return {
-          ...node,
-          expr: this.transformExpression(node.expr),
-        }
-      case "full_text_search":
-        return {
-          ...node,
-          columns: node.columns.map((c) => this.transformExpression(c)),
-          query: this.transformExpression(node.query),
-        }
-      case "case":
-        return {
-          ...node,
-          operand: node.operand ? this.transformExpression(node.operand) : undefined,
-          whens: node.whens.map((w) => ({
-            condition: this.transformExpression(w.condition),
-            result: this.transformExpression(w.result),
-          })),
-          else_: node.else_ ? this.transformExpression(node.else_) : undefined,
-        }
-      case "tuple":
-        return {
-          ...node,
-          elements: node.elements.map((e) => this.transformExpression(e)),
-        }
-      // Terminal / opaque nodes — no child expressions to walk.
-      case "column_ref":
-      case "literal":
-      case "param":
-      case "raw":
-      case "subquery":
-      case "exists":
-      case "star":
-        return node
-      default:
-        return assertNever(node, "ASTTransformer.transformExpression")
-    }
+    return super.visitExpression(node)
+  }
+
+  // Route the walker's internal recursion through `transformExpression`
+  // so subclass overrides see every expression in the tree.
+  override visitExpression(expr: ExpressionNode): ExpressionNode {
+    return this.transformExpression(expr)
   }
 }

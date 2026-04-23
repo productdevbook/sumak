@@ -1,5 +1,13 @@
-import type { ASTNode, CTENode, ExpressionNode, SelectNode, SubqueryNode } from "../ast/nodes.ts"
-import { assertNever } from "../errors.ts"
+import type {
+  ASTNode,
+  DeleteNode,
+  ExplainNode,
+  InsertNode,
+  MergeNode,
+  SelectNode,
+  UpdateNode,
+} from "../ast/nodes.ts"
+import { ASTWalker } from "../ast/walker.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
@@ -8,26 +16,29 @@ import type { SumakPlugin } from "./types.ts"
  *
  * **Security:** Only AST-level transforms are allowed. Plugins cannot modify
  * compiled SQL strings directly, preserving parameterization guarantees.
+ *
+ * **Traversal.** The manager extends {@link ASTWalker}: every
+ * nested `SelectNode` reached through CTEs, FROM/JOIN subqueries,
+ * INSERT sources, UPDATE/DELETE joins, WHERE/HAVING/EXISTS/IN
+ * subqueries, MERGE source + WHEN conditions, EXPLAIN statements, and
+ * expression-level subqueries is passed through the plugin chain. The
+ * walker's exhaustive switch guarantees we fail the compile when a new
+ * AST variant is added without updating the traversal.
  */
-export class PluginManager {
+export class PluginManager extends ASTWalker {
   private readonly plugins: readonly SumakPlugin[]
 
   constructor(plugins: SumakPlugin[]) {
+    super()
     this.plugins = Object.freeze([...plugins])
   }
 
   /**
-   * Apply all transformNode phases in order. The transform walks the AST:
-   * after transforming the top-level node, every nested `SelectNode`
-   * (CTEs, FROM subqueries, JOIN subqueries, INSERT sources, UPDATE
-   * from-subqueries, EXISTS/subquery expressions) is transformed too.
-   *
-   * Without this walk, tenant-isolation plugins (MultiTenantPlugin) and
-   * soft-delete plugins silently fail on CTEs over target tables — the
-   * top-level INSERT/SELECT is filtered, but the CTE's SELECT reads raw
-   * data. Idempotency flags on each plugin (e.g. MultiTenantApplied)
-   * prevent double-application when a plugin already walked part of the
-   * tree itself.
+   * Apply all `transformNode` phases in order to the top-level node, then
+   * descend into every nested statement / expression slot and re-apply
+   * the chain to each `SelectNode` encountered. Idempotency flags on
+   * individual plugins (e.g. `MultiTenantApplied`) keep double-applied
+   * transforms from stacking.
    */
   transformNode(node: ASTNode): ASTNode {
     // Short-circuit when no plugin implements `transformNode` — avoids
@@ -35,232 +46,56 @@ export class PluginManager {
     // object identity for callers that compare with `toBe`.
     if (!this.plugins.some((p) => p.transformNode)) return node
 
+    // Dispatching through visitNode already applies the plugin chain at
+    // every SelectNode / DML node it reaches (see the visit* overrides).
+    // Top-level chain application is done inside those overrides too.
+    return this.visitNode(node)
+  }
+
+  private applyPluginChain(node: ASTNode): ASTNode {
     let result = node
-    for (const plugin of this.plugins) {
-      if (plugin.transformNode) {
-        result = plugin.transformNode(result)
-      }
-    }
-    return this.walkChildSelects(result)
-  }
-
-  private walkChildSelects(node: ASTNode): ASTNode {
-    switch (node.type) {
-      case "select":
-        return this.walkSelect(node)
-      case "insert": {
-        const insert = node
-        const ctes = insert.ctes.map((c) => this.transformCTE(c))
-        const source = insert.source
-          ? (this.walkSelect(insert.source) as SelectNode)
-          : insert.source
-        return { ...insert, ctes, source }
-      }
-      case "update": {
-        const upd = node
-        const ctes = upd.ctes.map((c) => this.transformCTE(c))
-        const joins = upd.joins.map((j) =>
-          j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
-        )
-        // Same WHERE-subquery traversal as SELECT: without this,
-        // `UPDATE products SET … WHERE EXISTS (SELECT … FROM tenants)`
-        // leaves the EXISTS subquery unfiltered.
-        const where = upd.where ? this.walkExpression(upd.where) : upd.where
-        return { ...upd, ctes, joins, where }
-      }
-      case "delete": {
-        const del = node
-        const ctes = del.ctes.map((c) => this.transformCTE(c))
-        const joins = del.joins.map((j) =>
-          j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
-        )
-        const where = del.where ? this.walkExpression(del.where) : del.where
-        return { ...del, ctes, joins, where }
-      }
-      case "merge": {
-        // Every MERGE slot that can carry a SELECT needs to walk
-        // through the plugin chain — a correlated subquery in any
-        // of these positions bypasses MultiTenant / SoftDelete filters.
-        const mrg = node
-        const ctes = mrg.ctes.map((c) => this.transformCTE(c))
-        const source =
-          mrg.source.type === "subquery" ? this.transformSubquery(mrg.source) : mrg.source
-        const on = this.walkExpression(mrg.on)
-        const whens = mrg.whens.map((w) => {
-          if (w.type === "matched") {
-            const condition = w.condition ? this.walkExpression(w.condition) : w.condition
-            const set = w.set?.map((s) => ({ ...s, value: this.walkExpression(s.value) }))
-            return { ...w, condition, set }
-          }
-          // not_matched
-          const condition = w.condition ? this.walkExpression(w.condition) : w.condition
-          const values = w.values.map((v) => this.walkExpression(v))
-          return { ...w, condition, values }
-        })
-        return { ...mrg, ctes, source, on, whens }
-      }
-      case "explain":
-        return {
-          ...node,
-          statement: this.walkChildSelects(node.statement) as typeof node.statement,
-        }
-      // Expression nodes — they arrived here because plugins can hand us
-      // a bare ExpressionNode. Route through walkExpression so nested
-      // subqueries/SELECTs inside them still get plugin-transformed.
-      case "column_ref":
-      case "literal":
-      case "binary_op":
-      case "unary_op":
-      case "function_call":
-      case "param":
-      case "raw":
-      case "subquery":
-      case "between":
-      case "in":
-      case "is_null":
-      case "case":
-      case "cast":
-      case "exists":
-      case "star":
-      case "json_access":
-      case "array_expr":
-      case "window_function":
-      case "aliased_expr":
-      case "full_text_search":
-      case "tuple":
-        return this.walkExpression(node)
-      default:
-        return assertNever(node, "PluginManager.walkChildSelects")
-    }
-  }
-
-  private walkSelect(node: SelectNode): SelectNode {
-    const ctes = node.ctes.map((c) => this.transformCTE(c))
-    const from =
-      node.from && node.from.type === "subquery" ? this.transformSubquery(node.from) : node.from
-    const joins = node.joins.map((j) =>
-      j.table.type === "subquery" ? { ...j, table: this.transformSubquery(j.table) } : j,
-    )
-    // Descend into WHERE / HAVING expression trees. Without this,
-    // `WHERE EXISTS (SELECT ... FROM users)` over a tenant-aware table
-    // bypasses MultiTenant / SoftDelete — the inner SELECT is invisible
-    // to the manager's subquery traversal because it lives in an
-    // expression, not in FROM/JOIN.
-    const where = node.where ? this.walkExpression(node.where) : node.where
-    const having = node.having ? this.walkExpression(node.having) : node.having
-    return { ...node, ctes, from, joins, where, having }
-  }
-
-  /**
-   * Walk an expression tree, replacing every nested `SelectNode` it
-   * carries (via `subquery`, `exists`, or `in`-with-subquery) with the
-   * plugin-transformed version. Keeps the outer ExpressionNode shape
-   * intact.
-   */
-  private walkExpression(expr: ExpressionNode): ExpressionNode {
-    switch (expr.type) {
-      case "subquery":
-        return this.transformSubquery(expr)
-      case "exists":
-        return { ...expr, query: this.transformSelectThroughPlugins(expr.query) }
-      case "in": {
-        // `InNode.values` is either `ExpressionNode[]` or a bare
-        // `SelectNode` (subquery IN). Walk into the SELECT through the
-        // plugin chain so a tenant-aware table there still gets filtered.
-        const values = Array.isArray(expr.values)
-          ? expr.values.map((v) => this.walkExpression(v))
-          : this.transformSelectThroughPlugins(expr.values)
-        return {
-          ...expr,
-          expr: this.walkExpression(expr.expr),
-          values,
-        }
-      }
-      case "binary_op":
-        return {
-          ...expr,
-          left: this.walkExpression(expr.left),
-          right: this.walkExpression(expr.right),
-        }
-      case "unary_op":
-        return { ...expr, operand: this.walkExpression(expr.operand) }
-      case "is_null":
-        return { ...expr, expr: this.walkExpression(expr.expr) }
-      case "between":
-        return {
-          ...expr,
-          expr: this.walkExpression(expr.expr),
-          low: this.walkExpression(expr.low),
-          high: this.walkExpression(expr.high),
-        }
-      case "cast":
-        return { ...expr, expr: this.walkExpression(expr.expr) }
-      case "case":
-        return {
-          ...expr,
-          operand: expr.operand ? this.walkExpression(expr.operand) : expr.operand,
-          whens: expr.whens.map((w) => ({
-            condition: this.walkExpression(w.condition),
-            result: this.walkExpression(w.result),
-          })),
-          else_: expr.else_ ? this.walkExpression(expr.else_) : expr.else_,
-        }
-      case "function_call":
-        return {
-          ...expr,
-          args: expr.args.map((a) => this.walkExpression(a)),
-          filter: expr.filter ? this.walkExpression(expr.filter) : expr.filter,
-        }
-      case "aliased_expr":
-        return { ...expr, expr: this.walkExpression(expr.expr) }
-      case "json_access":
-        return { ...expr, expr: this.walkExpression(expr.expr) }
-      case "tuple":
-        return { ...expr, elements: expr.elements.map((e) => this.walkExpression(e)) }
-      case "array_expr":
-        return { ...expr, elements: expr.elements.map((e) => this.walkExpression(e)) }
-      case "full_text_search":
-        return {
-          ...expr,
-          columns: expr.columns.map((c) => this.walkExpression(c)),
-          query: this.walkExpression(expr.query),
-        }
-      case "window_function": {
-        const fn = this.walkExpression(expr.fn) as typeof expr.fn
-        return {
-          ...expr,
-          fn,
-          partitionBy: expr.partitionBy.map((p) => this.walkExpression(p)),
-          orderBy: expr.orderBy.map((o) => ({ ...o, expr: this.walkExpression(o.expr) })),
-        }
-      }
-      case "column_ref":
-      case "literal":
-      case "param":
-      case "raw":
-      case "star":
-        // Terminal nodes — cannot carry a SelectNode or child expression.
-        return expr
-      default:
-        return assertNever(expr, "PluginManager.walkExpression")
-    }
-  }
-
-  private transformCTE(cte: CTENode): CTENode {
-    return { ...cte, query: this.transformSelectThroughPlugins(cte.query) }
-  }
-
-  private transformSubquery(sub: SubqueryNode): SubqueryNode {
-    return { ...sub, query: this.transformSelectThroughPlugins(sub.query) }
-  }
-
-  private transformSelectThroughPlugins(node: SelectNode): SelectNode {
-    let result: ASTNode = node
     for (const plugin of this.plugins) {
       if (plugin.transformNode) result = plugin.transformNode(result)
     }
-    // Recurse — the nested SELECT may itself contain CTEs / subqueries.
-    return this.walkChildSelects(result) as SelectNode
+    return result
+  }
+
+  // ── Walker overrides: push each nested SELECT through the plugin chain
+  //    on the way in, so inner SELECTs get the same plugin treatment as
+  //    the outer query. visitSelect (and sibling DML visitors) run the
+  //    chain and then delegate to the base walker to recurse into this
+  //    node's own children.
+
+  override visitSelect(node: SelectNode): SelectNode {
+    const transformed = this.applyPluginChain(node) as SelectNode
+    return super.visitSelect(transformed)
+  }
+
+  override visitInsert(node: InsertNode): InsertNode {
+    const transformed = this.applyPluginChain(node) as InsertNode
+    return super.visitInsert(transformed)
+  }
+
+  override visitUpdate(node: UpdateNode): UpdateNode {
+    const transformed = this.applyPluginChain(node) as UpdateNode
+    return super.visitUpdate(transformed)
+  }
+
+  override visitDelete(node: DeleteNode): DeleteNode {
+    const transformed = this.applyPluginChain(node) as DeleteNode
+    return super.visitDelete(transformed)
+  }
+
+  override visitMerge(node: MergeNode): MergeNode {
+    const transformed = this.applyPluginChain(node) as MergeNode
+    return super.visitMerge(transformed)
+  }
+
+  override visitExplain(node: ExplainNode): ExplainNode {
+    // EXPLAIN itself is not a DML target plugins rewrite — but its
+    // inner statement is, and the base walker already routes it through
+    // visitNode → visit{Select,Insert,...} which re-apply the chain.
+    return super.visitExplain(node)
   }
 
   /** Apply all transformResult phases in order. */
