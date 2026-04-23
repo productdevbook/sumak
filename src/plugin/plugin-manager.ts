@@ -1,4 +1,5 @@
 import type { ASTNode, CTENode, ExpressionNode, SelectNode, SubqueryNode } from "../ast/nodes.ts"
+import { assertNever } from "../errors.ts"
 import type { SumakPlugin } from "./types.ts"
 
 /**
@@ -98,8 +99,38 @@ export class PluginManager {
         })
         return { ...mrg, ctes, source, on, whens }
       }
+      case "explain":
+        return {
+          ...node,
+          statement: this.walkChildSelects(node.statement) as typeof node.statement,
+        }
+      // Expression nodes — they arrived here because plugins can hand us
+      // a bare ExpressionNode. Route through walkExpression so nested
+      // subqueries/SELECTs inside them still get plugin-transformed.
+      case "column_ref":
+      case "literal":
+      case "binary_op":
+      case "unary_op":
+      case "function_call":
+      case "param":
+      case "raw":
+      case "subquery":
+      case "between":
+      case "in":
+      case "is_null":
+      case "case":
+      case "cast":
+      case "exists":
+      case "star":
+      case "json_access":
+      case "array_expr":
+      case "window_function":
+      case "aliased_expr":
+      case "full_text_search":
+      case "tuple":
+        return this.walkExpression(node)
       default:
-        return node
+        return assertNever(node, "PluginManager.walkChildSelects")
     }
   }
 
@@ -182,12 +213,36 @@ export class PluginManager {
         }
       case "aliased_expr":
         return { ...expr, expr: this.walkExpression(expr.expr) }
-      default:
-        // literal, column_ref, star, param, raw, json_access,
-        // full_text_search, window_function, tuple, array_expr:
-        // none can carry a SelectNode without going through one of the
-        // handled wrappers above. Leave as-is.
+      case "json_access":
+        return { ...expr, expr: this.walkExpression(expr.expr) }
+      case "tuple":
+        return { ...expr, elements: expr.elements.map((e) => this.walkExpression(e)) }
+      case "array_expr":
+        return { ...expr, elements: expr.elements.map((e) => this.walkExpression(e)) }
+      case "full_text_search":
+        return {
+          ...expr,
+          columns: expr.columns.map((c) => this.walkExpression(c)),
+          query: this.walkExpression(expr.query),
+        }
+      case "window_function": {
+        const fn = this.walkExpression(expr.fn) as typeof expr.fn
+        return {
+          ...expr,
+          fn,
+          partitionBy: expr.partitionBy.map((p) => this.walkExpression(p)),
+          orderBy: expr.orderBy.map((o) => ({ ...o, expr: this.walkExpression(o.expr) })),
+        }
+      }
+      case "column_ref":
+      case "literal":
+      case "param":
+      case "raw":
+      case "star":
+        // Terminal nodes — cannot carry a SelectNode or child expression.
         return expr
+      default:
+        return assertNever(expr, "PluginManager.walkExpression")
     }
   }
 

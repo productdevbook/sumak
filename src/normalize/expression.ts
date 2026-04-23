@@ -5,6 +5,7 @@ import type {
   SelectNode,
   UnaryOpNode,
 } from "../ast/nodes.ts"
+import { assertNever } from "../errors.ts"
 import type { CNF, NormalizeOptions } from "./types.ts"
 import { DEFAULT_NORMALIZE_OPTIONS } from "./types.ts"
 
@@ -348,6 +349,10 @@ function exprFingerprint(expr: ExpressionNode): string {
       return `fn:${expr.name}:${expr.distinct ?? false}:[${expr.args.map(exprFingerprint).join(",")}]`
     case "cast":
       return `cast:${expr.dataType}:${exprFingerprint(expr.expr)}`
+    case "case":
+      return `case:${expr.operand ? exprFingerprint(expr.operand) : ""}:${expr.whens
+        .map((w) => `${exprFingerprint(w.condition)}=>${exprFingerprint(w.result)}`)
+        .join(",")}:${expr.else_ ? exprFingerprint(expr.else_) : ""}`
     case "exists":
       return `exists:${expr.negated}:${selectFingerprint(expr.query)}`
     case "star":
@@ -356,8 +361,20 @@ function exprFingerprint(expr: ExpressionNode): string {
       return `raw:${expr.sql}`
     case "subquery":
       return `subq:${expr.alias ?? ""}:${selectFingerprint(expr.query)}`
+    case "json_access":
+      return `json:${expr.operator}:${expr.path}:${exprFingerprint(expr.expr)}`
+    case "array_expr":
+      return `arr:[${expr.elements.map(exprFingerprint).join(",")}]`
+    case "tuple":
+      return `tup:[${expr.elements.map(exprFingerprint).join(",")}]`
+    case "aliased_expr":
+      return `alias:${expr.alias}:${exprFingerprint(expr.expr)}`
+    case "full_text_search":
+      return `fts:${expr.mode ?? ""}:${expr.language ?? ""}:${expr.columns.map(exprFingerprint).join(",")}:${exprFingerprint(expr.query)}`
+    case "window_function":
+      return `win:${exprFingerprint(expr.fn)}:${expr.partitionBy.map(exprFingerprint).join(",")}:${expr.orderBy.map((o) => `${exprFingerprint(o.expr)}:${o.direction}`).join(",")}`
     default:
-      return `unknown:${expr.type}`
+      return assertNever(expr, "exprFingerprint")
   }
 }
 
@@ -412,7 +429,11 @@ function recurse(
     case "cast":
       return { ...expr, expr: transform(expr.expr) }
     case "function_call":
-      return { ...expr, args: expr.args.map(transform) }
+      return {
+        ...expr,
+        args: expr.args.map(transform),
+        filter: expr.filter ? transform(expr.filter) : undefined,
+      }
     case "case":
       return {
         ...expr,
@@ -423,7 +444,37 @@ function recurse(
         })),
         else_: expr.else_ ? transform(expr.else_) : undefined,
       }
-    default:
+    case "aliased_expr":
+      return { ...expr, expr: transform(expr.expr) }
+    case "json_access":
+      return { ...expr, expr: transform(expr.expr) }
+    case "tuple":
+      return { ...expr, elements: expr.elements.map(transform) }
+    case "array_expr":
+      return { ...expr, elements: expr.elements.map(transform) }
+    case "full_text_search":
+      return {
+        ...expr,
+        columns: expr.columns.map(transform),
+        query: transform(expr.query),
+      }
+    case "window_function":
+      return {
+        ...expr,
+        fn: transform(expr.fn) as typeof expr.fn,
+        partitionBy: expr.partitionBy.map(transform),
+        orderBy: expr.orderBy.map((o) => ({ ...o, expr: transform(o.expr) })),
+      }
+    // Terminal / opaque nodes — no child expressions to walk.
+    case "column_ref":
+    case "literal":
+    case "param":
+    case "raw":
+    case "subquery":
+    case "exists":
+    case "star":
       return expr
+    default:
+      return assertNever(expr, "normalize.recurse")
   }
 }

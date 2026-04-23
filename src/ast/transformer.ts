@@ -1,3 +1,4 @@
+import { assertNever } from "../errors.ts"
 import type {
   ASTNode,
   DeleteNode,
@@ -165,8 +166,32 @@ export class ASTTransformer {
           columns: node.columns.map((c) => this.transformExpression(c)),
           query: this.transformExpression(node.query),
         }
-      default:
+      case "case":
+        return {
+          ...node,
+          operand: node.operand ? this.transformExpression(node.operand) : undefined,
+          whens: node.whens.map((w) => ({
+            condition: this.transformExpression(w.condition),
+            result: this.transformExpression(w.result),
+          })),
+          else_: node.else_ ? this.transformExpression(node.else_) : undefined,
+        }
+      case "tuple":
+        return {
+          ...node,
+          elements: node.elements.map((e) => this.transformExpression(e)),
+        }
+      // Terminal / opaque nodes — no child expressions to walk.
+      case "column_ref":
+      case "literal":
+      case "param":
+      case "raw":
+      case "subquery":
+      case "exists":
+      case "star":
         return node
+      default:
+        return assertNever(node, "ASTTransformer.transformExpression")
     }
   }
 }

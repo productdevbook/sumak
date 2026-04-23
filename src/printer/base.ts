@@ -40,7 +40,7 @@ import type {
   MergeWhenMatched,
   MergeWhenNotMatched,
 } from "../ast/nodes.ts"
-import { UnsupportedDialectFeatureError } from "../errors.ts"
+import { assertNever, UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { formatParam } from "../utils/param.ts"
@@ -193,8 +193,30 @@ export class BasePrinter implements Printer {
         return this.printMerge(node)
       case "explain":
         return this.printExplain(node)
-      default:
+      case "column_ref":
+      case "literal":
+      case "binary_op":
+      case "unary_op":
+      case "function_call":
+      case "param":
+      case "raw":
+      case "subquery":
+      case "between":
+      case "in":
+      case "is_null":
+      case "case":
+      case "cast":
+      case "exists":
+      case "star":
+      case "json_access":
+      case "array_expr":
+      case "window_function":
+      case "aliased_expr":
+      case "full_text_search":
+      case "tuple":
         return this.printExpression(node)
+      default:
+        return assertNever(node, "BasePrinter.printNode")
     }
   }
 
@@ -503,6 +525,8 @@ export class BasePrinter implements Printer {
         return this.printFullTextSearch(node)
       case "tuple":
         return this.printTuple(node)
+      default:
+        return assertNever(node, "BasePrinter.printExpression")
     }
   }
 

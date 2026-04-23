@@ -1,3 +1,4 @@
+import { assertNever } from "../errors.ts"
 import type {
   ASTNode,
   CTENode,
@@ -37,7 +38,29 @@ export function visitNode<R>(node: ASTNode, visitor: ASTVisitor<R>): R {
       return visitor.visitMerge(node)
     case "explain":
       return visitNode(node.statement, visitor)
-    default:
+    case "column_ref":
+    case "literal":
+    case "binary_op":
+    case "unary_op":
+    case "function_call":
+    case "param":
+    case "raw":
+    case "subquery":
+    case "between":
+    case "in":
+    case "is_null":
+    case "case":
+    case "cast":
+    case "exists":
+    case "star":
+    case "json_access":
+    case "array_expr":
+    case "window_function":
+    case "aliased_expr":
+    case "full_text_search":
+    case "tuple":
       return visitor.visitExpression(node)
+    default:
+      return assertNever(node, "visitNode")
   }
 }

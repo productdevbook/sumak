@@ -212,9 +212,11 @@ export type {
 
 // ─── Errors ────────────────────────────────────────────────────────────────
 export {
+  assertNever,
   EmptyQueryError,
   InvalidExpressionError,
   SecurityError,
   SumakError,
+  UnreachableNodeError,
   UnsupportedDialectFeatureError,
 } from "./errors.ts"

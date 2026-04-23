@@ -265,6 +265,17 @@ function collectTableRefs(expr: ExpressionNode, refs: Set<string>): void {
     // conservative (false negative: predicate stays in WHERE, which is
     // always safe; vs. false positive: pushes into an ON clause of the
     // wrong scope, which would be a bug).
+    case "subquery":
+    case "exists":
+    case "literal":
+    case "param":
+    case "raw":
+    case "star":
+      break
+    default: {
+      const _exhaustive: never = expr
+      void _exhaustive
+    }
   }
 }
 
