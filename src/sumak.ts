@@ -25,6 +25,8 @@ import { TypedSelectBuilder } from "./builder/typed-select.ts"
 import { TypedUpdateBuilder } from "./builder/typed-update.ts"
 import type { Dialect } from "./dialect/types.ts"
 import { MissingDriverError } from "./driver/execute.ts"
+import { runInTransaction } from "./driver/transaction.ts"
+import type { TransactionOptions } from "./driver/transaction.ts"
 import type { Driver, ExecuteResult, Row } from "./driver/types.ts"
 import { normalizeQuery } from "./normalize/query.ts"
 import type { NormalizeOptions } from "./normalize/types.ts"
@@ -102,6 +104,7 @@ export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<T> 
 export class Sumak<DB> {
   private _dialect: Dialect
   private _plugins: PluginManager
+  private _pluginsList: SumakPlugin[]
   private _hooks: Hookable
   private _normalizeOpts: NormalizeOptions | false
   private _optimizeOpts: OptimizeOptions | false
@@ -122,6 +125,7 @@ export class Sumak<DB> {
     } = {},
   ) {
     this._dialect = dialect
+    this._pluginsList = [...plugins]
     this._plugins = new PluginManager(plugins)
     this._hooks = new Hookable()
     this._tables = tables
@@ -178,6 +182,58 @@ export class Sumak<DB> {
    */
   async executeCompiledNoRows(query: CompiledQuery): Promise<ExecuteResult> {
     return this.driver().execute(query.sql, query.params)
+  }
+
+  /**
+   * Run a block inside a database transaction.
+   *
+   * ```ts
+   * const user = await db.transaction(async (tx) => {
+   *   const u = await tx.insertInto("users").values({ name: "Alice" }).returningAll().one()
+   *   await tx.insertInto("audit_log").values({ userId: u.id, action: "signup" }).exec()
+   *   return u
+   * })
+   * ```
+   *
+   * The callback gets a scoped `Sumak` instance whose builders execute
+   * inside the transaction. Commits on resolve, rolls back on throw.
+   * If the underlying `Driver` implements `transaction()`, sumak uses
+   * it (driver owns connection scoping); otherwise BEGIN/COMMIT/
+   * ROLLBACK are emitted via the TCL printer and sent through
+   * `driver.execute`.
+   *
+   * Nested `db.transaction()` calls use SQL savepoints via the outer
+   * tx's driver — if you need cross-connection nesting semantics,
+   * implement `Driver.transaction` with your own scoping rules.
+   */
+  async transaction<T>(
+    fn: (tx: Sumak<DB>) => Promise<T>,
+    opts: TransactionOptions = {},
+  ): Promise<T> {
+    const driver = this.driver()
+    return runInTransaction(
+      driver,
+      this._dialect.name,
+      async (scoped) => {
+        const scopedDb = new Sumak<DB>(this._dialect, this._pluginsArray(), this._tables, {
+          normalize: this._normalizeOpts === false ? false : this._normalizeOpts,
+          optimizeQueries: this._optimizeOpts === false ? false : this._optimizeOpts,
+          rules: this._customRules,
+          driver: scoped,
+        })
+        // Inherit registered hooks on the scoped instance so the tx
+        // block sees the same `result:transform` / `query:before` wiring
+        // the parent does.
+        scopedDb._hooks = this._hooks
+        return fn(scopedDb)
+      },
+      opts,
+    )
+  }
+
+  /** @internal — the plugins list used to rebuild a scoped Sumak for transactions. */
+  private _pluginsArray(): SumakPlugin[] {
+    return this._pluginsList
   }
 
   /**

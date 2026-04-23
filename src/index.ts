@@ -230,3 +230,4 @@ export {
 // then call `.many()` / `.one()` / `.first()` / `.exec()` on builders.
 export type { Driver, ExecuteResult, Row } from "./driver/types.ts"
 export { MissingDriverError, UnexpectedRowCountError } from "./driver/execute.ts"
+export type { TransactionOptions } from "./driver/transaction.ts"
