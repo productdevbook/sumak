@@ -160,9 +160,11 @@ export {
   optimisticLock,
   queryLimit,
   softDelete,
+  subjectType,
   withSchema,
 } from "./plugin/factories.ts"
-export type { SumakPlugin } from "./plugin/types.ts"
+export type { SubjectTypeConfig } from "./plugin/factories.ts"
+export type { ResultContext, SumakPlugin } from "./plugin/types.ts"
 
 // ─── Hooks ─────────────────────────────────────────────────────────────────
 export type { HookContext, HookName, SumakHooks } from "./plugin/hooks.ts"

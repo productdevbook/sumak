@@ -3,9 +3,15 @@ import { star } from "../ast/expression.ts"
 import type { ASTNode, ExplainNode, ExpressionNode, InsertNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import { runExecute, runQuery, UnexpectedRowCountError } from "../driver/execute.ts"
+import {
+  resultTransformer,
+  runExecute,
+  runQuery,
+  UnexpectedRowCountError,
+} from "../driver/execute.ts"
 import type { SumakExecutor } from "../driver/execute.ts"
 import type { ExecuteResult } from "../driver/types.ts"
+import { deriveResultContext } from "../plugin/result-context.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Insertable, SelectRow } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
@@ -409,7 +415,8 @@ export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, R> {
   /** Run the INSERT and return every row produced by `RETURNING`. */
   async many(): Promise<R[]> {
     const exec = this._requireExecutor()
-    const rows = await runQuery(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    const ctx = deriveResultContext(this.build())
+    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
     return rows as unknown as R[]
   }
 

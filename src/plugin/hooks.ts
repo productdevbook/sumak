@@ -1,5 +1,6 @@
 import type { ASTNode, DeleteNode, InsertNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import type { CompiledQuery } from "../types.ts"
+import type { ResultContext } from "./types.ts"
 
 /**
  * Hook context passed to hook handlers.
@@ -31,8 +32,16 @@ export interface SumakHooks {
   /** Fires before DELETE compilation. Can modify the DeleteNode. */
   "delete:before": (ctx: HookContext<DeleteNode>) => DeleteNode | void
 
-  /** Transform result rows. */
-  "result:transform": (rows: Record<string, unknown>[]) => Record<string, unknown>[]
+  /**
+   * Transform result rows. `ctx` (optional) carries AST context — the
+   * source table and a column→table map — for enrichers that need to
+   * know which query produced the rows. Handlers using the old
+   * single-arg signature continue to work: `ctx` just goes unread.
+   */
+  "result:transform": (
+    rows: Record<string, unknown>[],
+    ctx?: ResultContext,
+  ) => Record<string, unknown>[]
 }
 
 export type HookName = keyof SumakHooks

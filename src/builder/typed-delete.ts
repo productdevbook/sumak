@@ -2,9 +2,10 @@ import { star } from "../ast/expression.ts"
 import type { ASTNode, DeleteNode, ExplainNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import { runExecute, runFirst, runOne, runQuery } from "../driver/execute.ts"
+import { resultTransformer, runExecute, runFirst, runOne, runQuery } from "../driver/execute.ts"
 import type { SumakExecutor } from "../driver/execute.ts"
 import type { ExecuteResult } from "../driver/types.ts"
+import { deriveResultContext } from "../plugin/result-context.ts"
 import type { Printer } from "../printer/types.ts"
 import type { SelectRow } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
@@ -319,19 +320,22 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, R> {
   /** Run the DELETE and return every row produced by `RETURNING`. */
   async many(): Promise<R[]> {
     const exec = this._requireExecutor()
-    const rows = await runQuery(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    const ctx = deriveResultContext(this.build())
+    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
     return rows as unknown as R[]
   }
 
   async one(): Promise<R> {
     const exec = this._requireExecutor()
-    const row = await runOne(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    const ctx = deriveResultContext(this.build())
+    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
     return row as unknown as R
   }
 
   async first(): Promise<R | null> {
     const exec = this._requireExecutor()
-    const row = await runFirst(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    const ctx = deriveResultContext(this.build())
+    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
     return row as unknown as R | null
   }
 

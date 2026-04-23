@@ -1,16 +1,25 @@
+import type { ASTNode } from "../ast/nodes.ts"
 import { SumakError } from "../errors.ts"
+import type { ResultContext } from "../plugin/types.ts"
 import type { CompiledQuery } from "../types.ts"
 import type { Driver, ExecuteResult, Row } from "./types.ts"
 
 /**
  * Minimal surface a builder needs to execute. Lets builders call into
  * their parent `Sumak` without importing the class itself (circular).
+ *
+ * `transformResult` takes an optional {@link ResultContext} so
+ * enricher plugins (issue #90, RLS tagging, masking) can see which
+ * query produced the rows. Builders derive the context from the AST
+ * they just compiled and pass it through.
  */
 export interface SumakExecutor {
   driver(): Driver
   driverOrNull(): Driver | undefined
-  transformResult(rows: Row[]): Row[]
+  transformResult(rows: Row[], ctx?: ResultContext): Row[]
 }
+
+export type { ASTNode }
 
 /**
  * Thrown by `.one()` when the query returned zero rows or more than one
@@ -57,6 +66,11 @@ export async function runQuery(
 ): Promise<Row[]> {
   const rows = await driver.query(query.sql, query.params)
   return transform(rows)
+}
+
+/** Build a transform closure that forwards a ResultContext to the executor. */
+export function resultTransformer(exec: SumakExecutor, ctx?: ResultContext): RowTransformer {
+  return (rows: Row[]) => exec.transformResult(rows, ctx)
 }
 
 /**

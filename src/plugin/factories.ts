@@ -68,3 +68,6 @@ export function dataMasking(
 ): SumakPlugin {
   return new DataMaskingPlugin(config)
 }
+
+export { subjectType } from "./subject-type.ts"
+export type { SubjectTypeConfig } from "./subject-type.ts"

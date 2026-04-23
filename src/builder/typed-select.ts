@@ -10,9 +10,10 @@ import type {
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import { runFirst, runOne, runQuery } from "../driver/execute.ts"
+import { resultTransformer, runFirst, runOne, runQuery } from "../driver/execute.ts"
 import type { SumakExecutor } from "../driver/execute.ts"
 import type { Row } from "../driver/types.ts"
+import { deriveResultContext } from "../plugin/result-context.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Nullable, SelectRow } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
@@ -624,7 +625,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    */
   async many(): Promise<O[]> {
     const exec = this._requireExecutor()
-    const rows = await runQuery(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
+    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
     return rows as unknown as O[]
   }
 
@@ -635,7 +638,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    */
   async one(): Promise<O> {
     const exec = this._requireExecutor()
-    const row = await runOne(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
+    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
     return row as unknown as O
   }
 
@@ -646,7 +651,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    */
   async first(): Promise<O | null> {
     const exec = this._requireExecutor()
-    const row = await runFirst(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
+    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
     return row as unknown as O | null
   }
 

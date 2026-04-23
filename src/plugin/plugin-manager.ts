@@ -98,12 +98,20 @@ export class PluginManager extends ASTWalker {
     return super.visitExplain(node)
   }
 
-  /** Apply all transformResult phases in order. */
-  transformResult(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  /**
+   * Apply all `transformResult` phases in order. `ctx` (optional) is
+   * forwarded to each plugin so handlers that care about source
+   * tables / column maps see them; plugins written against the older
+   * single-arg signature simply ignore the extra argument.
+   */
+  transformResult(
+    rows: Record<string, unknown>[],
+    ctx?: import("./types.ts").ResultContext,
+  ): Record<string, unknown>[] {
     let result = rows
     for (const plugin of this.plugins) {
       if (plugin.transformResult) {
-        result = plugin.transformResult(result)
+        result = plugin.transformResult(result, ctx)
       }
     }
     return result

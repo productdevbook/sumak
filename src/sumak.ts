@@ -552,11 +552,17 @@ export class Sumak<DB> {
   }
 
   /**
-   * Transform result rows through plugins and hooks.
+   * Transform result rows through plugins and hooks. The optional
+   * `ctx` argument propagates AST context (source table, column map)
+   * down to both plugin `transformResult` calls and the
+   * `result:transform` hook.
    */
-  transformResult(rows: Record<string, unknown>[]): Record<string, unknown>[] {
-    let result = this._plugins.transformResult(rows)
-    const hookResult = this._hooks.callHook("result:transform", result)
+  transformResult(
+    rows: Record<string, unknown>[],
+    ctx?: import("./plugin/types.ts").ResultContext,
+  ): Record<string, unknown>[] {
+    let result = this._plugins.transformResult(rows, ctx)
+    const hookResult = this._hooks.callHook("result:transform", result, ctx)
     if (hookResult) result = hookResult
     return result
   }
