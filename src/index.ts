@@ -232,6 +232,24 @@ export type { Driver, ExecuteResult, Row } from "./driver/types.ts"
 export { MissingDriverError, UnexpectedRowCountError } from "./driver/execute.ts"
 export type { TransactionOptions } from "./driver/transaction.ts"
 
+// ─── Introspection ─────────────────────────────────────────────────────────
+// Read a live database's schema through a Driver, normalise to
+// IntrospectedSchema, and optionally generate matching sumak TS code.
+export {
+  generateSchemaCode,
+  introspect,
+  introspectMssql,
+  introspectMysql,
+  introspectPg,
+  introspectSqlite,
+} from "./introspect/index.ts"
+export type {
+  GenerateOptions,
+  IntrospectedColumn,
+  IntrospectedSchema,
+  IntrospectedTable,
+} from "./introspect/index.ts"
+
 // ─── Migrations ────────────────────────────────────────────────────────────
 // Structural schema-diff → DDL. Feed your current `tables` shape plus
 // the desired shape; get back a list of DDL nodes to apply.
