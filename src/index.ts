@@ -237,3 +237,10 @@ export type { TransactionOptions } from "./driver/transaction.ts"
 // the desired shape; get back a list of DDL nodes to apply.
 export { DestructiveMigrationError, diffSchemas } from "./migrate/diff.ts"
 export type { DiffOptions, SchemaDef } from "./migrate/diff.ts"
+export {
+  applyMigration,
+  MigrationRequiresDriverError,
+  planMigration,
+  runPlan,
+} from "./migrate/runner.ts"
+export type { ApplyResult, MigrationOptions, MigrationPlan } from "./migrate/runner.ts"
