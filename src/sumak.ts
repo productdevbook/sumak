@@ -24,6 +24,8 @@ import { TypedMergeBuilder } from "./builder/typed-merge.ts"
 import { TypedSelectBuilder } from "./builder/typed-select.ts"
 import { TypedUpdateBuilder } from "./builder/typed-update.ts"
 import type { Dialect } from "./dialect/types.ts"
+import { MissingDriverError } from "./driver/execute.ts"
+import type { Driver, ExecuteResult, Row } from "./driver/types.ts"
 import { normalizeQuery } from "./normalize/query.ts"
 import type { NormalizeOptions } from "./normalize/types.ts"
 import { optimize } from "./optimize/optimizer.ts"
@@ -50,6 +52,14 @@ export interface SumakConfig<T extends TablesConfig> {
   dialect: Dialect
   tables: T
   plugins?: SumakPlugin[]
+  /**
+   * Optional database driver — enables `.execute()` / `.one()` /
+   * `.many()` / `.first()` / `.exec()` on builders and
+   * `db.executeCompiled()` / `db.transaction()` on the sumak instance.
+   * Without it, sumak still builds and compiles SQL; you just execute
+   * yourself.
+   */
+  driver?: Driver
   /** Enable AST normalization (NbE). Default: true */
   normalize?: boolean | NormalizeOptions
   /** Enable AST optimization (rewrite rules). Default: true */
@@ -82,6 +92,7 @@ export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<T> 
     normalize: config.normalize,
     optimizeQueries: config.optimizeQueries,
     rules: config.rules,
+    driver: config.driver,
   })
 }
 
@@ -95,6 +106,7 @@ export class Sumak<DB> {
   private _normalizeOpts: NormalizeOptions | false
   private _optimizeOpts: OptimizeOptions | false
   private _customRules: RewriteRule[]
+  private _driver?: Driver
   /** @internal */
   _tables: Record<string, Record<string, ColumnBuilder<any, any, any>>>
 
@@ -106,12 +118,14 @@ export class Sumak<DB> {
       normalize?: boolean | NormalizeOptions
       optimizeQueries?: boolean | OptimizeOptions
       rules?: RewriteRule[]
+      driver?: Driver
     } = {},
   ) {
     this._dialect = dialect
     this._plugins = new PluginManager(plugins)
     this._hooks = new Hookable()
     this._tables = tables
+    this._driver = pipelineOpts.driver
     this._normalizeOpts =
       pipelineOpts.normalize === false
         ? false
@@ -125,6 +139,45 @@ export class Sumak<DB> {
           ? pipelineOpts.optimizeQueries
           : {}
     this._customRules = pipelineOpts.rules ?? []
+  }
+
+  /**
+   * Returns the configured driver, or throws {@link MissingDriverError}
+   * if the sumak instance was built without one. Used by the execute
+   * helpers on builders — most callers should use those instead.
+   */
+  driver(): Driver {
+    if (!this._driver) throw new MissingDriverError()
+    return this._driver
+  }
+
+  /**
+   * Like {@link driver} but returns `undefined` instead of throwing.
+   * Useful for code paths that optionally execute.
+   */
+  driverOrNull(): Driver | undefined {
+    return this._driver
+  }
+
+  /**
+   * Run an already-compiled query through the configured driver and
+   * apply `result:transform` plugins + hooks to the rows. Thin
+   * convenience on top of `driver().query(sql, params)` that closes the
+   * loop with sumak's result pipeline.
+   */
+  async executeCompiled(query: CompiledQuery): Promise<Row[]> {
+    const driver = this.driver()
+    const rows = await driver.query(query.sql, query.params)
+    return this.transformResult(rows) as Row[]
+  }
+
+  /**
+   * Fire-and-forget variant: run a compiled statement that returns no
+   * rows (INSERT/UPDATE/DELETE without RETURNING, DDL, TCL). Returns
+   * `{ affected: number }`.
+   */
+  async executeCompiledNoRows(query: CompiledQuery): Promise<ExecuteResult> {
+    return this.driver().execute(query.sql, query.params)
   }
 
   /**
@@ -148,6 +201,7 @@ export class Sumak<DB> {
       table,
       this._dialect.createPrinter(),
       (node: ASTNode) => this.compile(node),
+      this,
     )
   }
 
@@ -272,20 +326,33 @@ export class Sumak<DB> {
   }
 
   insertInto<T extends keyof DB & string>(table: T): TypedInsertBuilder<DB, T> {
-    return new TypedInsertBuilder<DB, T>(table, this._dialect.createPrinter(), (node: ASTNode) =>
-      this.compile(node),
+    return new TypedInsertBuilder<DB, T>(
+      table,
+      this._dialect.createPrinter(),
+      (node: ASTNode) => this.compile(node),
+      undefined,
+      this,
     )
   }
 
   update<T extends keyof DB & string>(table: T): TypedUpdateBuilder<DB, T> {
-    return new TypedUpdateBuilder<DB, T>(table, this._dialect.createPrinter(), (node: ASTNode) =>
-      this.compile(node),
+    return new TypedUpdateBuilder<DB, T>(
+      table,
+      this._dialect.createPrinter(),
+      (node: ASTNode) => this.compile(node),
+      undefined,
+      this,
     )
   }
 
   deleteFrom<T extends keyof DB & string>(table: T): TypedDeleteBuilder<DB, T> {
-    return new TypedDeleteBuilder<DB, T>(table, this._dialect.createPrinter(), (node: ASTNode) =>
-      this.compile(node),
+    return new TypedDeleteBuilder<DB, T>(
+      table,
+      this._dialect.createPrinter(),
+      (node: ASTNode) => this.compile(node),
+      undefined,
+      false,
+      this,
     )
   }
 

@@ -222,3 +222,9 @@ export {
   UnreachableNodeError,
   UnsupportedDialectFeatureError,
 } from "./errors.ts"
+
+// ─── Driver adapter ────────────────────────────────────────────────────────
+// Optional execute layer — pass a `Driver` to `sumak({ …, driver })` and
+// then call `.many()` / `.one()` / `.first()` / `.exec()` on builders.
+export type { Driver, ExecuteResult, Row } from "./driver/types.ts"
+export { MissingDriverError, UnexpectedRowCountError } from "./driver/execute.ts"

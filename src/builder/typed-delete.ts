@@ -2,6 +2,9 @@ import { star } from "../ast/expression.ts"
 import type { ASTNode, DeleteNode, ExplainNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
+import { runExecute, runFirst, runOne, runQuery } from "../driver/execute.ts"
+import type { SumakExecutor } from "../driver/execute.ts"
+import type { ExecuteResult } from "../driver/types.ts"
 import type { Printer } from "../printer/types.ts"
 import type { SelectRow } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
@@ -24,6 +27,8 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   readonly _compile?: (node: ASTNode) => CompiledQuery
   /** @internal */
   readonly _allowAllRows: boolean
+  /** @internal */
+  readonly _executor?: SumakExecutor
 
   constructor(
     table: TB & string,
@@ -31,11 +36,13 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
     compile?: (node: ASTNode) => CompiledQuery,
     builder?: DeleteBuilder,
     allowAllRows = false,
+    executor?: SumakExecutor,
   ) {
     this._builder = builder ?? new DeleteBuilder().from(table)
     this._printer = printer
     this._compile = compile
     this._allowAllRows = allowAllRows
+    this._executor = executor
   }
 
   /** @internal */
@@ -46,7 +53,23 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
       this._compile,
       builder,
       this._allowAllRows,
+      this._executor,
     )
+  }
+
+  /** Run the DELETE and return `{ affected }`. */
+  async exec(): Promise<ExecuteResult> {
+    const exec = this._requireExecutor()
+    return runExecute(exec.driver(), this.toSQL())
+  }
+
+  private _requireExecutor(): SumakExecutor {
+    if (!this._executor) {
+      throw new Error(
+        "execute methods require a builder created through a sumak() instance configured with a driver.",
+      )
+    }
+    return this._executor
   }
 
   /**
@@ -67,6 +90,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
       this._compile,
       this._builder,
       true,
+      this._executor,
     )
   }
 
@@ -164,6 +188,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
       }),
       this._printer,
       this._compile,
+      this._executor,
     )
   }
 
@@ -178,6 +203,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
       }),
       this._printer,
       this._compile,
+      this._executor,
     )
   }
 
@@ -251,22 +277,26 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   }
 }
 
-export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, _R> {
+export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, R> {
   /** @internal */
   readonly _builder: DeleteBuilder
   /** @internal */
   readonly _printer?: Printer
   /** @internal */
   readonly _compile?: (node: ASTNode) => CompiledQuery
+  /** @internal */
+  readonly _executor?: SumakExecutor
 
   constructor(
     builder: DeleteBuilder,
     printer?: Printer,
     compile?: (node: ASTNode) => CompiledQuery,
+    executor?: SumakExecutor,
   ) {
     this._builder = builder
     this._printer = printer
     this._compile = compile
+    this._executor = executor
   }
 
   build(): DeleteNode {
@@ -284,5 +314,33 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, _R> {
       throw new Error("toSQL() requires a printer. Use db.deleteFrom() to construct the builder.")
     }
     return this._printer.print(this.build())
+  }
+
+  /** Run the DELETE and return every row produced by `RETURNING`. */
+  async many(): Promise<R[]> {
+    const exec = this._requireExecutor()
+    const rows = await runQuery(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    return rows as unknown as R[]
+  }
+
+  async one(): Promise<R> {
+    const exec = this._requireExecutor()
+    const row = await runOne(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    return row as unknown as R
+  }
+
+  async first(): Promise<R | null> {
+    const exec = this._requireExecutor()
+    const row = await runFirst(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    return row as unknown as R | null
+  }
+
+  private _requireExecutor(): SumakExecutor {
+    if (!this._executor) {
+      throw new Error(
+        "execute methods require a builder created through a sumak() instance configured with a driver.",
+      )
+    }
+    return this._executor
   }
 }

@@ -10,6 +10,9 @@ import type {
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
+import { runFirst, runOne, runQuery } from "../driver/execute.ts"
+import type { SumakExecutor } from "../driver/execute.ts"
+import type { Row } from "../driver/types.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Nullable, SelectRow } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
@@ -34,17 +37,39 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   private _printer?: Printer
   /** @internal — full compile pipeline (plugins + hooks + printer) */
   _compile?: (node: ASTNode) => CompiledQuery
+  /** @internal — executor from the owning Sumak instance, if any */
+  _executor?: SumakExecutor
 
   constructor(
     builder: SelectBuilder,
     table?: string,
     printer?: Printer,
     compile?: (node: ASTNode) => CompiledQuery,
+    executor?: SumakExecutor,
   ) {
     this._builder = builder
     this._table = (table ?? "") as TB & string
     this._printer = printer
     this._compile = compile
+    this._executor = executor
+  }
+
+  /**
+   * Clone this builder with a new inner `SelectBuilder`, preserving
+   * table name, printer, compile pipeline, and executor. Every chain
+   * step (.select, .where, .orderBy, …) routes through this so the
+   * driver/result context survives the whole chain — without it, any
+   * `this._executor` stays behind on the original builder and
+   * `.many()` at the end of the chain would throw "no executor".
+   */
+  protected _chain<O2 = O>(builder: SelectBuilder): TypedSelectBuilder<DB, TB, O2> {
+    return new TypedSelectBuilder<DB, TB, O2>(
+      builder,
+      this._table,
+      this._printer,
+      this._compile,
+      this._executor,
+    )
   }
 
   /**
@@ -92,28 +117,18 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
         const node = unwrap(expr as Expression<any>)
         builder = builder.columns(aliasExpr(node, alias))
       }
-      return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
+      return this._chain(builder)
     }
     // Column-name form.
     if (args.length === 0) {
       throw new Error(".select() requires at least one column or expression.")
     }
-    return new TypedSelectBuilder(
-      this._builder.columns(...(args as string[])),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.columns(...(args as string[])))
   }
 
   /** Select all columns. */
   selectAll(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.allColumns(),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.allColumns())
   }
 
   /**
@@ -124,12 +139,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * Last-call wins: calling `.onlyDeleted()` after this replaces the mode.
    */
   includeDeleted(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.withSoftDeleteMode("include"),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.withSoftDeleteMode("include"))
   }
 
   /**
@@ -139,32 +149,17 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * Last-call wins: calling `.includeDeleted()` after this replaces the mode.
    */
   onlyDeleted(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.withSoftDeleteMode("only"),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.withSoftDeleteMode("only"))
   }
 
   /** DISTINCT */
   distinct(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.distinct(),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.distinct())
   }
 
   /** DISTINCT ON (PG-specific) */
   distinctOn<K extends keyof DB[TB] & string>(...cols: K[]): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.distinctOn(...cols),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.distinctOn(...cols))
   }
 
   /**
@@ -185,19 +180,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return new TypedSelectBuilder(
-        this._builder.where(unwrap(result)),
-        this._table,
-        this._printer,
-        this._compile,
-      )
+      return this._chain(this._builder.where(unwrap(result)))
     }
-    return new TypedSelectBuilder(
-      this._builder.where(unwrap(exprOrCallback)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.where(unwrap(exprOrCallback)))
   }
 
   /**
@@ -209,19 +194,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return new TypedSelectBuilder(
-        this._builder.orWhere(unwrap(result)),
-        this._table,
-        this._printer,
-        this._compile,
-      )
+      return this._chain(this._builder.orWhere(unwrap(result)))
     }
-    return new TypedSelectBuilder(
-      this._builder.orWhere(unwrap(exprOrCallback)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.orWhere(unwrap(exprOrCallback)))
   }
 
   /**
@@ -236,12 +211,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
   ): TypedSelectBuilder<DB, TB | T, O & SelectRow<DB, T>> {
     const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table)
-    return new TypedSelectBuilder(
-      this._builder.innerJoin(table, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.innerJoin(table, unwrap(on)))
   }
 
   /**
@@ -252,12 +222,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
   ): TypedSelectBuilder<DB, TB | T, O & Nullable<SelectRow<DB, T>>> {
     const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table)
-    return new TypedSelectBuilder(
-      this._builder.leftJoin(table, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.leftJoin(table, unwrap(on)))
   }
 
   /** RIGHT JOIN */
@@ -266,23 +231,13 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
   ): TypedSelectBuilder<DB, TB | T, Nullable<O> & SelectRow<DB, T>> {
     const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table)
-    return new TypedSelectBuilder(
-      this._builder.rightJoin(table, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.rightJoin(table, unwrap(on)))
   }
 
   /** GROUP BY — accepts column names or expressions */
   groupBy(...cols: ((keyof O & string) | Expression<any>)[]): TypedSelectBuilder<DB, TB, O> {
     const resolved = cols.map((c) => (typeof c === "string" ? c : unwrap(c)))
-    return new TypedSelectBuilder(
-      this._builder.groupBy(...resolved),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.groupBy(...resolved))
   }
 
   /** HAVING */
@@ -292,19 +247,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return new TypedSelectBuilder(
-        this._builder.having(unwrap(result)),
-        this._table,
-        this._printer,
-        this._compile,
-      )
+      return this._chain(this._builder.having(unwrap(result)))
     }
-    return new TypedSelectBuilder(
-      this._builder.having(unwrap(exprOrCallback)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.having(unwrap(exprOrCallback)))
   }
 
   /** ORDER BY — accepts column name or expression */
@@ -314,42 +259,22 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     nulls?: "FIRST" | "LAST",
   ): TypedSelectBuilder<DB, TB, O> {
     const expr = typeof col === "string" ? col : unwrap(col)
-    return new TypedSelectBuilder(
-      this._builder.orderBy(expr, direction, nulls),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.orderBy(expr, direction, nulls))
   }
 
   /** LIMIT */
   limit(n: number): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.limit({ type: "literal", value: n }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.limit({ type: "literal", value: n }))
   }
 
   /** OFFSET */
   offset(n: number): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.offset({ type: "literal", value: n }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.offset({ type: "literal", value: n }))
   }
 
   /** FOR SYSTEM_TIME (SQL:2011 temporal query) */
   forSystemTime(clause: TemporalClause): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.forSystemTime(clause),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.forSystemTime(clause))
   }
 
   /**
@@ -405,7 +330,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (options.of && options.of.length > 0) builder = builder.lockOf(options.of as string[])
     if (options.skipLocked) builder = builder.skipLocked()
     if (options.noWait) builder = builder.noWait()
-    return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
+    return this._chain(builder)
   }
 
   /**
@@ -418,72 +343,37 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     options?: { recursive?: boolean },
   ): TypedSelectBuilder<DB, TB, O> {
     const q = "build" in query ? query.build() : query
-    return new TypedSelectBuilder(
-      this._builder.with(name, q, options?.recursive === true),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.with(name, q, options?.recursive === true))
   }
 
   /** UNION */
   union(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.union(query.build()),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.union(query.build()))
   }
 
   /** UNION ALL */
   unionAll(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.unionAll(query.build()),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.unionAll(query.build()))
   }
 
   /** INTERSECT */
   intersect(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.intersect(query.build()),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.intersect(query.build()))
   }
 
   /** INTERSECT ALL */
   intersectAll(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.intersectAll(query.build()),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.intersectAll(query.build()))
   }
 
   /** EXCEPT */
   except(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.except(query.build()),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.except(query.build()))
   }
 
   /** EXCEPT ALL */
   exceptAll(query: TypedSelectBuilder<DB, any, O>): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      this._builder.exceptAll(query.build()),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.exceptAll(query.build()))
   }
 
   /** FULL JOIN — both sides become nullable. */
@@ -492,12 +382,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     onOrCallback: Expression<boolean> | ((cols: JoinProxies<DB, TB, T>) => Expression<boolean>),
   ): TypedSelectBuilder<DB, TB | T, Nullable<O> & Nullable<SelectRow<DB, T>>> {
     const on = resolveJoinOn<DB, TB, T>(onOrCallback, this._table, table)
-    return new TypedSelectBuilder(
-      this._builder.join("FULL", table, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.join("FULL", table, unwrap(on)))
   }
 
   /** INNER JOIN LATERAL (subquery) */
@@ -511,12 +396,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       query: subquery.build(),
       alias,
     }
-    return new TypedSelectBuilder(
-      this._builder.innerJoinLateral(sub, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.innerJoinLateral(sub, unwrap(on)))
   }
 
   /** LEFT JOIN LATERAL (subquery) */
@@ -530,12 +410,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       query: subquery.build(),
       alias,
     }
-    return new TypedSelectBuilder(
-      this._builder.leftJoinLateral(sub, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.leftJoinLateral(sub, unwrap(on)))
   }
 
   /**
@@ -565,11 +440,8 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       },
     })
     const on = onCallback(proxies)
-    return new TypedSelectBuilder(
+    return this._chain(
       this._builder.join("INNER", { type: "table_ref", name: table, alias }, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
     )
   }
 
@@ -596,11 +468,8 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       },
     })
     const on = onCallback(proxies)
-    return new TypedSelectBuilder(
+    return this._chain(
       this._builder.join("LEFT", { type: "table_ref", name: table, alias }, unwrap(on)),
-      this._table,
-      this._printer,
-      this._compile,
     )
   }
 
@@ -608,12 +477,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   crossJoin<T extends keyof DB & string>(
     table: T,
   ): TypedSelectBuilder<DB, TB | T, O & SelectRow<DB, T>> {
-    return new TypedSelectBuilder(
-      this._builder.join("CROSS", table),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.join("CROSS", table))
   }
 
   /** CROSS JOIN LATERAL (subquery) */
@@ -626,82 +490,42 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       query: subquery.build(),
       alias,
     }
-    return new TypedSelectBuilder(
-      this._builder.crossJoinLateral(sub),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(this._builder.crossJoinLateral(sub))
   }
 
   /** Clear WHERE clause. */
   clearWhere(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      new SelectBuilder({ ...this._builder.build(), where: undefined }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(new SelectBuilder({ ...this._builder.build(), where: undefined }))
   }
 
   /** Clear ORDER BY clause. */
   clearOrderBy(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      new SelectBuilder({ ...this._builder.build(), orderBy: [] }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(new SelectBuilder({ ...this._builder.build(), orderBy: [] }))
   }
 
   /** Clear LIMIT. */
   clearLimit(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      new SelectBuilder({ ...this._builder.build(), limit: undefined }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(new SelectBuilder({ ...this._builder.build(), limit: undefined }))
   }
 
   /** Clear OFFSET. */
   clearOffset(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      new SelectBuilder({ ...this._builder.build(), offset: undefined }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(new SelectBuilder({ ...this._builder.build(), offset: undefined }))
   }
 
   /** Clear GROUP BY clause. */
   clearGroupBy(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      new SelectBuilder({ ...this._builder.build(), groupBy: [] }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(new SelectBuilder({ ...this._builder.build(), groupBy: [] }))
   }
 
   /** Clear HAVING clause. */
   clearHaving(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      new SelectBuilder({ ...this._builder.build(), having: undefined }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(new SelectBuilder({ ...this._builder.build(), having: undefined }))
   }
 
   /** Clear SELECT columns (resets to empty). */
   clearSelect(): TypedSelectBuilder<DB, TB, O> {
-    return new TypedSelectBuilder(
-      new SelectBuilder({ ...this._builder.build(), columns: [] }),
-      this._table,
-      this._printer,
-      this._compile,
-    )
+    return this._chain(new SelectBuilder({ ...this._builder.build(), columns: [] }))
   }
 
   /** Pipe builder through a function for reusable query fragments. */
@@ -764,7 +588,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
     builder = builder.limit({ type: "literal", value: pageSize + 1 })
 
-    return new TypedSelectBuilder(builder, this._table, this._printer, this._compile)
+    return this._chain(builder)
   }
 
   /** Build the AST node. */
@@ -788,6 +612,53 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       )
     }
     return this._printer.print(this.build())
+  }
+
+  /**
+   * Execute this SELECT and return every matching row. Applies
+   * `result:transform` plugins + hooks. Typed as the builder's output
+   * row shape `O`.
+   *
+   * Requires a driver — `sumak({ …, driver })`. Without one, throws
+   * {@link import("../driver/execute.ts").MissingDriverError}.
+   */
+  async many(): Promise<O[]> {
+    const exec = this._requireExecutor()
+    const rows = await runQuery(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    return rows as unknown as O[]
+  }
+
+  /**
+   * Execute this SELECT and return the single matching row. Throws
+   * `UnexpectedRowCountError` if zero or >1 rows come back. Use when
+   * the query's shape (e.g. primary-key lookup) guarantees one row.
+   */
+  async one(): Promise<O> {
+    const exec = this._requireExecutor()
+    const row = await runOne(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    return row as unknown as O
+  }
+
+  /**
+   * Execute this SELECT and return the first row, or `null` if there
+   * are no rows. The query is not implicitly `LIMIT 1`-ed — use
+   * `.limit(1)` if you want that.
+   */
+  async first(): Promise<O | null> {
+    const exec = this._requireExecutor()
+    const row = await runFirst(exec.driver(), this.toSQL(), (r) => exec.transformResult(r))
+    return row as unknown as O | null
+  }
+
+  private _requireExecutor(): SumakExecutor {
+    if (!this._executor) {
+      throw new Error(
+        "execute methods (many/one/first) are only available on builders created through " +
+          "a sumak() instance — e.g. `db.selectFrom('users').many()`. A standalone " +
+          "TypedSelectBuilder was constructed without an executor.",
+      )
+    }
+    return this._executor
   }
 
   /**
