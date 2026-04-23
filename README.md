@@ -49,6 +49,9 @@
 - [Dialects](#dialects)
 - [Namespaces](#namespaces)
 - [Transactions](#transactions)
+- [Executing Queries (Driver)](#executing-queries-driver)
+- [Migrations](#migrations)
+- [Introspection](#introspection)
 - [Architecture](#architecture)
 
 ---
@@ -1463,12 +1466,40 @@ const db = sumak({
 })
 ```
 
+### subjectType (CASL / authorization)
+
+Stamp every row coming back from a mapped table with a stable
+subject-type string. Authorization libraries like CASL can then match
+rules against the row directly, without the caller having to wrap
+results in `as(row, "Message")`.
+
+```ts
+import { sumak, pgDialect, subjectType } from "sumak"
+
+const db = sumak({
+  dialect: pgDialect(),
+  driver,
+  plugins: [subjectType({ tables: { messages: "Message", users: "User" } })],
+  tables: { messages: { ... }, users: { ... } },
+})
+
+const msg = await db.selectFrom("messages").where(({ id }) => id.eq(1)).one()
+// msg.__typename === "Message"
+
+// CASL — rule referencing "Message" matches without a manual cast.
+ability.can("update", msg)
+```
+
+Customise the field name with `field: "_subject"`. The plugin never
+overwrites a field already present on the row. Fires on `.many()` /
+`.one()` / `.first()` — driverless `toSQL()` flows return unchanged SQL.
+
 ### Combining plugins
 
 ```ts
 import {
   sumak, pgDialect,
-  withSchema, softDelete, audit, multiTenant, queryLimit,
+  withSchema, softDelete, audit, multiTenant, queryLimit, subjectType,
 } from "sumak"
 
 const db = sumak({
@@ -1478,6 +1509,7 @@ const db = sumak({
     softDelete({ tables: ["users"] }),
     audit({ tables: ["users", "posts"] }),
     multiTenant({ tables: ["users", "posts"], tenantId: () => currentTenantId }),
+    subjectType({ tables: { users: "User", posts: "Post" } }),
     queryLimit({ maxRows: 5000 }),
   ],
   tables: { ... },
@@ -1587,6 +1619,39 @@ ast.visit(node, visitor)
 
 ## Transactions
 
+### `db.transaction()` — scoped execution (needs a driver)
+
+When a `Driver` is configured (see [Executing Queries](#executing-queries-driver)),
+wrap a block of work in a real transaction. Commits on resolve, rolls back on throw:
+
+```ts
+const user = await db.transaction(async (tx) => {
+  const u = await tx.insertInto("users").values({ name: "Alice" }).returningAll().one()
+  await tx.insertInto("audit_log").values({ userId: u.id, action: "signup" }).exec()
+  return u
+})
+```
+
+Pass isolation / read-only / dialect-specific options as the second argument:
+
+```ts
+await db.transaction(
+  async (tx) => {
+    /* ... */
+  },
+  {
+    isolation: "SERIALIZABLE",
+    readOnly: true,
+  },
+)
+```
+
+If your `Driver` implements `transaction(fn)`, sumak delegates to it — the driver
+owns connection pinning. Otherwise sumak emits `BEGIN` / `COMMIT` / `ROLLBACK`
+via `driver.execute`, which is safe for drivers with sticky connections.
+
+### Lower-level TCL builders
+
 Generate dialect-aware TCL SQL — `BEGIN`, `COMMIT`, `ROLLBACK`, `SAVEPOINT`, and isolation levels. Same philosophy as DDL: sumak builds the SQL, your driver executes it.
 
 ```ts
@@ -1643,6 +1708,160 @@ tx.setTransaction({ isolation: "SNAPSHOT" })
 | Savepoint         | `SAVEPOINT x`         | `SAVEPOINT x`               | `SAVEPOINT x`                            | `SAVE TRANSACTION x` |
 | Release savepoint | `RELEASE SAVEPOINT x` | `RELEASE SAVEPOINT x`       | `RELEASE SAVEPOINT x`                    | Not supported        |
 | Commit            | `COMMIT`              | `COMMIT`                    | `COMMIT`                                 | `COMMIT TRANSACTION` |
+
+---
+
+## Executing Queries (Driver)
+
+By default, sumak just builds SQL — you execute it. Pass a `Driver` to
+`sumak({ …, driver })` and every builder gets async execute methods:
+
+```ts
+import { sumak, pgDialect, type Driver } from "sumak"
+import { Pool } from "pg"
+
+// 10-line adapter — user-provided so sumak has zero runtime deps.
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const driver: Driver = {
+  async query(sql, params) {
+    const r = await pool.query(sql, [...params])
+    return r.rows
+  },
+  async execute(sql, params) {
+    const r = await pool.query(sql, [...params])
+    return { affected: r.rowCount ?? 0 }
+  },
+}
+
+const db = sumak({ dialect: pgDialect(), driver, tables: { ... } })
+```
+
+### Execute methods
+
+```ts
+// SELECT
+const users = await db.selectFrom("users").many() // Row[]
+const user = await db
+  .selectFrom("users")
+  .where(({ id }) => id.eq(1))
+  .one() // Row (throws on ≠1)
+const found = await db
+  .selectFrom("users")
+  .where(({ id }) => id.eq(1))
+  .first() // Row | null
+
+// INSERT / UPDATE / DELETE without RETURNING
+const r = await db.insertInto("users").values({ name: "Alice" }).exec() // { affected }
+
+// INSERT / UPDATE / DELETE with RETURNING
+const rows = await db.insertInto("users").values({ name: "Alice" }).returningAll().many()
+const row = await db
+  .update("users")
+  .set({ active: false })
+  .where(({ id }) => id.eq(1))
+  .returningAll()
+  .one()
+```
+
+Without a driver, `.many()` / `.one()` / `.first()` / `.exec()` throw
+`MissingDriverError`; `.toSQL()` still works.
+
+### Error model
+
+- `MissingDriverError` — a builder was asked to execute but no driver is configured.
+- `UnexpectedRowCountError` — `.one()` saw 0 or >1 rows.
+
+Driver errors (connection loss, constraint violations, etc.) surface unchanged
+so retry/observability wrappers keep working.
+
+---
+
+## Migrations
+
+Sumak ships a structural schema-diff engine: feed it two `tables` shapes, get
+back the DDL steps to go from one to the other.
+
+```ts
+import { sumak, pgDialect, serial, text, diffSchemas, applyMigration } from "sumak"
+
+const before = {
+  users: { id: serial().primaryKey(), name: text().notNull() },
+}
+const after = {
+  users: { id: serial().primaryKey(), name: text().notNull(), email: text() },
+  posts: { id: serial().primaryKey(), title: text().notNull() },
+}
+
+// Pure — no driver needed. Returns DDLNode[].
+const nodes = diffSchemas(before, after)
+```
+
+### Plan + apply
+
+```ts
+// Returns the plan (compiled SQL per step) without touching the database.
+const plan = planMigration(db, before, after)
+console.log(plan.steps.map((s) => s.sql))
+console.log("destructive:", plan.hasDestructiveSteps)
+
+// Plan + execute in a single transaction (rolls back on any failure).
+const { applied, statements } = await applyMigration(db, before, after)
+```
+
+### Destructive-change guard
+
+Drops are opt-in — the diff throws `DestructiveMigrationError` unless you ask for them:
+
+```ts
+diffSchemas(before, after, { allowDestructive: true }) // OK, emits DROPs
+diffSchemas(before, after, { allowDestructive: "ignore" }) // skip DROPs, keep adds
+```
+
+### Ordering
+
+The diff output is safe to run as a single transaction on PG: drops →
+new-table creates (topologically sorted by FK dependencies) → ADD COLUMN
+/ ALTER COLUMN on survivors.
+
+---
+
+## Introspection
+
+Read a live database's schema and generate matching sumak TypeScript code.
+
+```ts
+import { sumak, pgDialect, introspect, generateSchemaCode } from "sumak"
+import { writeFileSync } from "node:fs"
+
+const db = sumak({ dialect: pgDialect(), driver, tables: {} })
+const schema = await introspect(db.driver(), "pg") // IntrospectedSchema
+
+// Emit a file you can commit next to your app:
+writeFileSync("schema.ts", generateSchemaCode(schema))
+```
+
+Per-dialect entry points: `introspectPg`, `introspectMysql`,
+`introspectSqlite`, `introspectMssql`. They all normalise to the same
+`IntrospectedSchema` shape, so the generator and migration diff don't
+care which engine produced it.
+
+### What's recovered
+
+- Table + column names.
+- Data types (mapped back to sumak column factories).
+- `notNull` / `nullable`, `primaryKey`, `unique`, foreign keys with
+  `ON DELETE` / `ON UPDATE` actions.
+- SERIAL / AUTOINCREMENT / IDENTITY detection (via each dialect's tell:
+  `nextval(…)` default on PG, `auto_increment` on MySQL, `is_identity`
+  on MSSQL, pragma info on SQLite).
+
+### What's not yet recovered
+
+- Custom `DEFAULT` expressions (the raw SQL is captured in
+  `defaultExpression` but the generator can't round-trip it yet).
+- Composite primary keys, CHECK constraints — use manual migration
+  steps for these; introspection notes them but `generateSchemaCode`
+  doesn't emit them.
 
 ---
 
