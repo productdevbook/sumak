@@ -231,3 +231,9 @@ export {
 export type { Driver, ExecuteResult, Row } from "./driver/types.ts"
 export { MissingDriverError, UnexpectedRowCountError } from "./driver/execute.ts"
 export type { TransactionOptions } from "./driver/transaction.ts"
+
+// ─── Migrations ────────────────────────────────────────────────────────────
+// Structural schema-diff → DDL. Feed your current `tables` shape plus
+// the desired shape; get back a list of DDL nodes to apply.
+export { DestructiveMigrationError, diffSchemas } from "./migrate/diff.ts"
+export type { DiffOptions, SchemaDef } from "./migrate/diff.ts"
