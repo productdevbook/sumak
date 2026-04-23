@@ -28,8 +28,26 @@ import type {
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { brandExpression, isExpression } from "../ast/typed-expression.ts"
+import { InvalidExpressionError } from "../errors.ts"
 import type { SelectType } from "../schema/types.ts"
 import { validateFunctionName } from "../utils/security.ts"
+
+/**
+ * Assert that a variadic builder received at least `min` arguments. Use
+ * at the entry point of functions whose SQL form rejects the empty case
+ * on every dialect (COALESCE, CONCAT, GREATEST, LEAST, …). The resulting
+ * error points at the caller instead of surfacing as a driver-level
+ * parse failure at execution time.
+ */
+function assertMinArity(name: string, args: readonly unknown[], min: number): void {
+  if (args.length < min) {
+    const words = ["zero", "one", "two", "three"]
+    const count = min < words.length ? words[min] : String(min)
+    throw new InvalidExpressionError(
+      `${name}() requires at least ${count} argument${min === 1 ? "" : "s"}, got ${args.length}`,
+    )
+  }
+}
 
 /**
  * A typed column reference that exposes comparison methods.
@@ -454,13 +472,9 @@ export function max<T>(expr: Expression<T>): Expression<T> {
 
 /** COALESCE(a, b, c, ...) — returns first non-null value */
 export function coalesce<T>(...args: Expression<T | null>[]): Expression<T> {
-  if (args.length === 0) {
-    // `COALESCE()` is invalid on every dialect (PG, MySQL, SQLite,
-    // MSSQL all reject zero-arg COALESCE). Catch at build time — the
-    // runtime driver error ("COALESCE requires at least one argument")
-    // doesn't point at the caller.
-    throw new Error("coalesce() requires at least one argument")
-  }
+  // Every dialect rejects `COALESCE()`. Catch at build time so the error
+  // points at the caller, not at the driver's eventual parse failure.
+  assertMinArity("coalesce", args, 1)
   return wrap(
     rawFn(
       "COALESCE",
@@ -775,6 +789,7 @@ export function lower(expr: Expression<string>): Expression<string> {
 
 /** CONCAT(a, b, ...) */
 export function concat(...args: Expression<string>[]): Expression<string> {
+  assertMinArity("concat", args, 1)
   return wrap(
     rawFn(
       "CONCAT",
@@ -821,6 +836,9 @@ export function nullif<T>(a: Expression<T>, b: Expression<T>): Expression<T | nu
 
 /** GREATEST(a, b, ...) */
 export function greatest<T>(...args: Expression<T>[]): Expression<T> {
+  // Each dialect that supports GREATEST rejects the zero-arg form;
+  // one-arg is technically legal on some but nonsensical.
+  assertMinArity("greatest", args, 2)
   return wrap(
     rawFn(
       "GREATEST",
@@ -831,6 +849,7 @@ export function greatest<T>(...args: Expression<T>[]): Expression<T> {
 
 /** LEAST(a, b, ...) */
 export function least<T>(...args: Expression<T>[]): Expression<T> {
+  assertMinArity("least", args, 2)
   return wrap(
     rawFn(
       "LEAST",
@@ -870,6 +889,11 @@ export function toJson<T>(expr: Expression<T>): Expression<unknown> {
 export function jsonBuildObject(
   ...pairs: [string, Expression<any>][]
 ): Expression<Record<string, unknown>> {
+  // `JSON_BUILD_OBJECT()` with no args emits `'{}'::json` on PG — but
+  // a builder call with zero pairs is almost always a logic bug (the
+  // caller meant to populate it). Refuse at build time; the user can
+  // always write `val('{}' as any)` if they really want an empty object.
+  assertMinArity("jsonBuildObject", pairs, 1)
   const args: ExpressionNode[] = []
   for (const [key, val] of pairs) {
     args.push(rawLit(key))
@@ -962,6 +986,10 @@ export function aggOrderBy<T>(
  * ```
  */
 export function tuple(...exprs: Expression<any>[]): Expression<any> {
+  // `()` is a syntax error across PG / MySQL / SQLite / MSSQL. A single-
+  // element tuple emits `(x)` — equivalent to a parenthesized expression
+  // and legal, so we allow it.
+  assertMinArity("tuple", exprs, 1)
   const node: TupleNode = {
     type: "tuple",
     elements: exprs.map((e) => (e as any).node),
