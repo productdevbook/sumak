@@ -31,6 +31,7 @@ import type { Expression } from "../ast/typed-expression.ts"
 import { brandExpression, isExpression } from "../ast/typed-expression.ts"
 import { InvalidExpressionError } from "../errors.ts"
 import type { SelectType } from "../schema/types.ts"
+import { notifyUnsafeUsage } from "../security.ts"
 import { validateFunctionName } from "../utils/security.ts"
 
 /**
@@ -368,8 +369,15 @@ export function excluded<T = unknown>(column: string): Expression<T> {
  * .where(() => unsafeRawExpr("age > 18"))
  * .select({ year: unsafeRawExpr<number>("EXTRACT(YEAR FROM created_at)") })
  * ```
+ *
+ * Dev-mode audit: set `process.env.SUMAK_WARN_UNSAFE` or call
+ * `setUnsafeWarnHandler(fn)` to receive a one-time callback per call
+ * site (deduplicated by stack trace). Useful for getting a signal on
+ * how much unsafe SQL the codebase accumulates over time without
+ * failing the build.
  */
 export function unsafeRawExpr<T = unknown>(sql: string, params: unknown[] = []): Expression<T> {
+  notifyUnsafeUsage("unsafeRawExpr", sql)
   return wrap<T>({ type: "raw", sql, params })
 }
 
@@ -393,8 +401,11 @@ export function sqlFn(name: string, ...args: Expression<any>[]): Expression<any>
  *
  * **WARNING:** Never pass user-controlled input as the function name.
  * This bypasses security validation and can lead to SQL injection.
+ *
+ * Dev-mode audit: same opt-in hook as {@link unsafeRawExpr}.
  */
 export function unsafeSqlFn(name: string, ...args: Expression<any>[]): Expression<any> {
+  notifyUnsafeUsage("unsafeSqlFn", name)
   return wrap(
     rawFn(
       name,

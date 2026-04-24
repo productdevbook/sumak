@@ -84,6 +84,9 @@ export { subqueryExpr, toJson, tuple } from "./builder/eb.ts"
 
 // ─── Escape hatches — use only when no typed helper fits ───────────────────
 export { unsafeRawExpr, unsafeSqlFn } from "./builder/eb.ts"
+// Opt-in audit around the escape hatches + static AST auditors.
+export { findRawNodes, hasRawNodes, setUnsafeWarnHandler } from "./security.ts"
+export type { RawOccurrence, UnsafeUsageEvent, UnsafeUsageHandler } from "./security.ts"
 export {
   all,
   any,
