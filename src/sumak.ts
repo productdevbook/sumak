@@ -41,14 +41,42 @@ import { DDLPrinter } from "./printer/ddl.ts"
 import { TclPrinter } from "./printer/tcl.ts"
 import type { Printer } from "./printer/types.ts"
 import type { ColumnBuilder } from "./schema/column.ts"
+import { normalizeTableEntry } from "./schema/table.ts"
+import type { NormalizedTable, TableConstraints, TableDefinition } from "./schema/table.ts"
 import type { SelectRow } from "./schema/types.ts"
 import type { CompiledQuery, SQLDialect } from "./types.ts"
 
 /**
- * Tables config constraint.
- * Each table = Record of ColumnBuilder instances.
+ * A single table entry accepted by {@link sumak}. Either a raw columns
+ * map (`{ id: serial(), name: text() }`) for the simple case, or a
+ * {@link TableDefinition} (from `defineTable(...)`) when the table
+ * needs composite keys, table-level CHECK constraints, or named FKs.
  */
-type TablesConfig = Record<string, Record<string, ColumnBuilder<any, any, any>>>
+type TableInput =
+  | Record<string, ColumnBuilder<any, any, any>>
+  | TableDefinition<string, Record<string, ColumnBuilder<any, any, any>>>
+
+type TablesConfig = Record<string, TableInput>
+
+/**
+ * Resolve a {@link TableInput} to the columns-map shape that the rest
+ * of the type system keys off (SelectRow / InsertRow / UpdateRow all
+ * index into this). Raw maps pass through; `TableDefinition` is
+ * projected onto its `columns` field.
+ */
+type TableColumns<T> =
+  T extends TableDefinition<any, infer Cols>
+    ? Cols
+    : T extends Record<string, ColumnBuilder<any, any, any>>
+      ? T
+      : never
+
+/**
+ * Database type derived from a {@link TablesConfig}. Equivalent to
+ * `{ [K in keyof T]: TableColumns<T[K]> }` but kept at top-level so
+ * Sumak<T> reads as "DB shaped by T" rather than "DB = mapped type".
+ */
+type DBFromConfig<T extends TablesConfig> = { [K in keyof T]: TableColumns<T[K]> }
 
 export interface SumakConfig<T extends TablesConfig> {
   dialect: Dialect
@@ -89,13 +117,22 @@ export interface SumakConfig<T extends TablesConfig> {
  * db.selectFrom("users").select("id", "name")...
  * ```
  */
-export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<T> {
-  return new Sumak(config.dialect, config.plugins ?? [], config.tables, {
+export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<DBFromConfig<T>> {
+  const normalized = normalizeTablesInput(config.tables)
+  return new Sumak<DBFromConfig<T>>(config.dialect, config.plugins ?? [], normalized, {
     normalize: config.normalize,
     optimizeQueries: config.optimizeQueries,
     rules: config.rules,
     driver: config.driver,
   })
+}
+
+function normalizeTablesInput(tables: TablesConfig): Record<string, NormalizedTable> {
+  const out: Record<string, NormalizedTable> = {}
+  for (const [name, entry] of Object.entries(tables)) {
+    out[name] = normalizeTableEntry(entry)
+  }
+  return out
 }
 
 /**
@@ -110,13 +147,27 @@ export class Sumak<DB> {
   private _optimizeOpts: OptimizeOptions | false
   private _customRules: RewriteRule[]
   private _driver?: Driver
-  /** @internal */
+  /**
+   * Back-compat flat view: table name → columns map. The rest of the
+   * codebase (diff, introspect fallback paths, test helpers) reads
+   * tables this way, so we keep it synchronous with `_schema`.
+   * @internal
+   */
   _tables: Record<string, Record<string, ColumnBuilder<any, any, any>>>
+  /**
+   * Canonical schema metadata: table name → { columns, constraints? }.
+   * Carries composite primary keys, table-level uniques / CHECKs, and
+   * named FKs that can't live on individual columns.
+   * @internal
+   */
+  _schema: Record<string, NormalizedTable>
 
   constructor(
     dialect: Dialect,
     plugins: SumakPlugin[] = [],
-    tables: Record<string, Record<string, ColumnBuilder<any, any, any>>> = {},
+    tables:
+      | Record<string, Record<string, ColumnBuilder<any, any, any>>>
+      | Record<string, NormalizedTable> = {},
     pipelineOpts: {
       normalize?: boolean | NormalizeOptions
       optimizeQueries?: boolean | OptimizeOptions
@@ -128,7 +179,8 @@ export class Sumak<DB> {
     this._pluginsList = [...plugins]
     this._plugins = new PluginManager(plugins)
     this._hooks = new Hookable()
-    this._tables = tables
+    this._schema = normalizeConstructorTables(tables)
+    this._tables = Object.fromEntries(Object.entries(this._schema).map(([k, v]) => [k, v.columns]))
     this._driver = pipelineOpts.driver
     this._normalizeOpts =
       pipelineOpts.normalize === false
@@ -865,3 +917,50 @@ export class ScopedSumak<DB> {
     })
   }
 }
+
+/**
+ * Accept either the legacy shape (table → columns map) or the
+ * normalized shape (table → `{ columns, constraints? }`). Leaf values
+ * are `ColumnBuilder` instances in the legacy shape; in the normalized
+ * shape the entry is always an object with a `columns` field.
+ */
+function normalizeConstructorTables(
+  tables:
+    | Record<string, Record<string, ColumnBuilder<any, any, any>>>
+    | Record<string, NormalizedTable>,
+): Record<string, NormalizedTable> {
+  const out: Record<string, NormalizedTable> = {}
+  for (const [name, entry] of Object.entries(tables)) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      "columns" in entry &&
+      isColumnsRecord(entry.columns)
+    ) {
+      const normalized = entry as NormalizedTable
+      out[name] = normalized.constraints
+        ? { columns: normalized.columns, constraints: normalized.constraints }
+        : { columns: normalized.columns }
+    } else {
+      out[name] = { columns: entry as Record<string, ColumnBuilder<any, any, any>> }
+    }
+  }
+  return out
+}
+
+function isColumnsRecord(value: unknown): value is Record<string, ColumnBuilder<any, any, any>> {
+  if (value === null || typeof value !== "object") return false
+  // Empty objects are valid columns records (zero-column tables aren't
+  // useful but we don't want to misclassify them as legacy). For
+  // non-empty objects, any value with a `_def` field is a ColumnBuilder.
+  for (const v of Object.values(value)) {
+    return v !== null && typeof v === "object" && "_def" in v
+  }
+  return true
+}
+
+/**
+ * Unused in this file but kept alongside {@link normalizeConstructorTables}
+ * so anyone reading the module can see the two sides of the input path.
+ */
+export type { TableConstraints }

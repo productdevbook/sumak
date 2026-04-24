@@ -4,14 +4,40 @@
 
 ### Schema DSL
 
-- **`ColumnBuilder.check(expr, { name? })` — column-level CHECK
-  constraints.** Two shapes: `integer().check("age >= 0")` for raw SQL
-  (schema-author controlled; never user input) and `.check(sql\`age >=
-  0\`)` for an Expression that flows through the printer with proper
-  dialect quoting and parameter binding. Captured on `ColumnDef.check`
-  and lowered into `CREATE TABLE` by the migration diff engine.
-  Verified against pglite: a real CHECK fires at the engine on INSERT,
-  the constraint name propagates to the error message.
+- **Column-level CHECK — `ColumnBuilder.check(expr, { name? })`.** Two
+  call shapes feeding one storage form. Raw SQL
+  (`integer().check("age >= 0")`) is intended for schema-author
+  expressions; the Expression form
+  (`integer().check(sql...age >= 0..., { name: "ck_age" })`) preserves
+  the pre-built AST node so the printer handles dialect quoting and
+  parameter binding. Captured on `ColumnDef.check` and lowered into
+  `ColumnDefinitionNode.check` by the migration diff engine so
+  `CREATE TABLE` carries the constraint inline. Verified against
+  pglite: the CHECK fires at the engine on INSERT and the constraint
+  name propagates to the error message.
+
+- **Table-level constraints via `defineTable(name, columns, options)`.**
+  The third argument accepts
+  `constraints: { primaryKey?, uniques?, checks?, foreignKeys? }`
+  for the cases column-level builders can't express: composite
+  `primaryKey: ["orderId", "sku"]` (or the named `{ name, columns }`
+  object form for stable migrations), named composite
+  `uniques: [{ name, columns }]`, table-level CHECKs
+  `checks: [{ name?, expression }]` where `expression` is either a
+  raw SQL string (schema-author controlled) or a sumak
+  `Expression<boolean>`, and named / composite
+  `foreignKeys: [{ name?, columns, references, onDelete?, onUpdate? }]`.
+  `sumak({ tables })` accepts the `defineTable` wrapper and the legacy
+  raw-columns shape interchangeably (a `TableInput` union); existing
+  call sites keep working unchanged. The diff engine compares
+  `TableConstraints` across before / after and emits
+  `ADD CONSTRAINT` / `DROP CONSTRAINT` alongside column actions, and
+  `topoSortForCreation` walks both column-level and table-level FKs so
+  dependency ordering still holds. All four kinds are proven
+  end-to-end against pglite — composite PK rejects duplicate tuples,
+  table-level CHECK rejects bad rows, composite UNIQUE added via
+  ALTER enforces, and a CASCADE FK removes dependents on parent
+  delete.
 
 ### Bug fixes (correctness)
 

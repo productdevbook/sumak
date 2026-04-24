@@ -43,7 +43,16 @@ export type { ColumnDef } from "./column.ts"
 
 // Table
 export { defineTable } from "./table.ts"
-export type { InferTable, TableDefinition } from "./table.ts"
+export type {
+  CheckDef,
+  ForeignKeyDef,
+  InferTable,
+  PrimaryKeyDef,
+  TableConstraints,
+  TableDefinition,
+  TableOptions,
+  UniqueDef,
+} from "./table.ts"
 
 // Type utilities
 export type {
