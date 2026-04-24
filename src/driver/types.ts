@@ -180,3 +180,77 @@ export async function withSignal<T>(
  * unpacks it into (sql, params) for the `Driver` call.
  */
 export type { CompiledQuery }
+
+// ── Observability — onQuery hook ──────────────────────────────────────
+
+/**
+ * The three phases every sumak execute path surfaces to its
+ * `onQuery` observer. Logging, tracing, and metrics wrappers subscribe
+ * to the lifecycle without having to wrap every builder call
+ * individually.
+ *
+ * - `start` fires right before the driver call is dispatched.
+ * - `end` fires on resolve with the wall-clock duration and, for
+ *   `query` calls, the number of rows returned.
+ * - `error` fires on reject with the duration and the thrown value.
+ *
+ * `kind` distinguishes the three call modes the execute layer makes:
+ * row-returning queries, non-returning executes, and transactional
+ * BEGIN/COMMIT/ROLLBACK. Transactions additionally set `txPhase` so
+ * an observer can correlate a COMMIT event with the BEGIN that
+ * started it.
+ */
+export type QueryEventKind = "query" | "execute" | "transaction"
+
+export interface QueryEventBase {
+  readonly kind: QueryEventKind
+  readonly sql: string
+  readonly params: readonly unknown[]
+  /**
+   * Optional correlation id set to a monotonic integer per
+   * `onQuery({ phase: "start" })`. The matching `end` / `error` event
+   * carries the same id so observers can build spans without racing
+   * on (sql, params) identity. Transactions use a single id across
+   * BEGIN / COMMIT / ROLLBACK so the correlation holds for the whole
+   * scope.
+   */
+  readonly id: number
+  /**
+   * When `kind === "transaction"`, tags the transactional boundary
+   * event: `"begin"` on the BEGIN dispatch, `"commit"` on success,
+   * `"rollback"` on a thrown error or abort. Statements run inside
+   * the transaction remain `kind: "query" | "execute"`.
+   */
+  readonly txPhase?: "begin" | "commit" | "rollback"
+}
+
+export interface QueryStartEvent extends QueryEventBase {
+  readonly phase: "start"
+}
+
+export interface QueryEndEvent extends QueryEventBase {
+  readonly phase: "end"
+  readonly durationMs: number
+  /** Row count returned by `driver.query`. Undefined for `execute` / transaction events. */
+  readonly rowCount?: number
+  /** Rows affected reported by `driver.execute`. Undefined for `query` / transaction events. */
+  readonly affected?: number
+}
+
+export interface QueryErrorEvent extends QueryEventBase {
+  readonly phase: "error"
+  readonly durationMs: number
+  readonly error: unknown
+}
+
+export type QueryEvent = QueryStartEvent | QueryEndEvent | QueryErrorEvent
+
+/**
+ * Listener contract for `SumakConfig.onQuery`. Synchronous by design —
+ * sumak never awaits it — so a slow observer doesn't become part of
+ * the critical path. Observers that need async work (network export,
+ * disk logging) should buffer in the handler and flush on their own
+ * schedule. Thrown errors from the listener are swallowed so an
+ * observability bug never takes down a query.
+ */
+export type OnQueryListener = (event: QueryEvent) => void

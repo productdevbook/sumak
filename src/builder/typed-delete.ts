@@ -2,7 +2,14 @@ import { star } from "../ast/expression.ts"
 import type { ASTNode, DeleteNode, ExplainNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import { resultTransformer, runExecute, runFirst, runOne, runQuery } from "../driver/execute.ts"
+import {
+  listenerFor,
+  resultTransformer,
+  runExecute,
+  runFirst,
+  runOne,
+  runQuery,
+} from "../driver/execute.ts"
 import type { SumakExecutor } from "../driver/execute.ts"
 import type { ExecuteResult } from "../driver/types.ts"
 import { deriveResultContext } from "../plugin/result-context.ts"
@@ -61,7 +68,7 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
   /** Run the DELETE and return `{ affected }`. */
   async exec(options?: { signal?: AbortSignal }): Promise<ExecuteResult> {
     const exec = this._requireExecutor()
-    return runExecute(exec.driver(), this.toSQL(), options)
+    return runExecute(exec.driver(), this.toSQL(), options, listenerFor(exec))
   }
 
   private _requireExecutor(): SumakExecutor {
@@ -321,21 +328,39 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, R> {
   async many(options?: { signal?: AbortSignal }): Promise<R[]> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
+    const rows = await runQuery(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )
     return rows as unknown as R[]
   }
 
   async one(options?: { signal?: AbortSignal }): Promise<R> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
+    const row = await runOne(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )
     return row as unknown as R
   }
 
   async first(options?: { signal?: AbortSignal }): Promise<R | null> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
+    const row = await runFirst(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )
     return row as unknown as R | null
   }
 

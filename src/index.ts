@@ -228,7 +228,19 @@ export {
 // ─── Driver adapter ────────────────────────────────────────────────────────
 // Optional execute layer — pass a `Driver` to `sumak({ …, driver })` and
 // then call `.many()` / `.one()` / `.first()` / `.exec()` on builders.
-export type { Driver, ExecuteResult, Row } from "./driver/types.ts"
+export type {
+  Driver,
+  DriverCallOptions,
+  ExecuteResult,
+  OnQueryListener,
+  QueryEndEvent,
+  QueryErrorEvent,
+  QueryEvent,
+  QueryEventKind,
+  QueryStartEvent,
+  Row,
+} from "./driver/types.ts"
+export { AbortError, isAbortError, withSignal } from "./driver/types.ts"
 export { MissingDriverError, UnexpectedRowCountError } from "./driver/execute.ts"
 export type { TransactionOptions } from "./driver/transaction.ts"
 

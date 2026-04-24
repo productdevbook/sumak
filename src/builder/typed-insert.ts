@@ -4,6 +4,7 @@ import type { ASTNode, ExplainNode, ExpressionNode, InsertNode, SelectNode } fro
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import {
+  listenerFor,
   resultTransformer,
   runExecute,
   runQuery,
@@ -64,7 +65,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
    */
   async exec(options?: { signal?: AbortSignal }): Promise<ExecuteResult> {
     const exec = this._requireExecutor()
-    return runExecute(exec.driver(), this.toSQL(), options)
+    return runExecute(exec.driver(), this.toSQL(), options, listenerFor(exec))
   }
 
   private _requireExecutor(): SumakExecutor {
@@ -416,7 +417,13 @@ export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, R> {
   async many(options?: { signal?: AbortSignal }): Promise<R[]> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
+    const rows = await runQuery(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )
     return rows as unknown as R[]
   }
 

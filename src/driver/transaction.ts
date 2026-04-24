@@ -1,7 +1,8 @@
 import type { BeginNode, CommitNode, RollbackNode } from "../ast/tcl-nodes.ts"
 import { TclPrinter } from "../printer/tcl.ts"
 import type { SQLDialect } from "../types.ts"
-import type { Driver } from "./types.ts"
+import { allocQueryEventId } from "./execute.ts"
+import type { Driver, OnQueryListener, QueryEvent } from "./types.ts"
 
 /**
  * Options for {@link runInTransaction} / `db.transaction()`.
@@ -46,12 +47,77 @@ export async function runInTransaction<T>(
   driver: Driver,
   dialect: SQLDialect,
   fn: (tx: Driver) => Promise<T>,
-  opts: TransactionOptions & { signal?: AbortSignal } = {},
+  opts: TransactionOptions & { signal?: AbortSignal; onQuery?: OnQueryListener } = {},
 ): Promise<T> {
   if (driver.transaction) {
-    return driver.transaction(fn, opts.signal ? { signal: opts.signal } : undefined)
+    return runWithTxEvents(opts.onQuery, (wrappedFn) =>
+      driver.transaction!(wrappedFn, opts.signal ? { signal: opts.signal } : undefined),
+    )(fn)
   }
   return manualTransaction(driver, dialect, fn, opts)
+}
+
+/**
+ * Wrap the transactional path in begin / commit / rollback observability
+ * events. Shared by the delegated-driver path ({@link runInTransaction})
+ * and the manual TCL path ({@link manualTransaction}) so observers see
+ * the same lifecycle regardless of which branch the driver lands on.
+ */
+function runWithTxEvents(
+  listener: OnQueryListener | undefined,
+  runTx: <T>(fn: (tx: Driver) => Promise<T>) => Promise<T>,
+) {
+  return async <T>(fn: (tx: Driver) => Promise<T>): Promise<T> => {
+    const id = allocQueryEventId()
+    const emit = (event: QueryEvent): void => {
+      if (!listener) return
+      try {
+        listener(event)
+      } catch {
+        // Observability must never take down a query.
+      }
+    }
+    const start = now()
+    emit({
+      phase: "start",
+      kind: "transaction",
+      sql: "BEGIN",
+      params: [],
+      id,
+      txPhase: "begin",
+    })
+    try {
+      const result = await runTx(fn)
+      emit({
+        phase: "end",
+        kind: "transaction",
+        sql: "COMMIT",
+        params: [],
+        id,
+        durationMs: now() - start,
+        txPhase: "commit",
+      })
+      return result
+    } catch (err) {
+      emit({
+        phase: "error",
+        kind: "transaction",
+        sql: "ROLLBACK",
+        params: [],
+        id,
+        durationMs: now() - start,
+        txPhase: "rollback",
+        error: err,
+      })
+      throw err
+    }
+  }
+}
+
+function now(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now()
 }
 
 /**
@@ -64,7 +130,7 @@ async function manualTransaction<T>(
   driver: Driver,
   dialect: SQLDialect,
   fn: (tx: Driver) => Promise<T>,
-  opts: TransactionOptions,
+  opts: TransactionOptions & { onQuery?: OnQueryListener },
 ): Promise<T> {
   const printer = new TclPrinter(dialect)
   const beginNode: BeginNode = { type: "tcl_begin" }
@@ -77,23 +143,25 @@ async function manualTransaction<T>(
   const commitNode: CommitNode = { type: "tcl_commit" }
   const rollbackNode: RollbackNode = { type: "tcl_rollback" }
 
-  const begin = printer.print(beginNode)
-  await driver.execute(begin.sql, begin.params)
-  try {
-    const result = await fn(driver)
-    const commit = printer.print(commitNode)
-    await driver.execute(commit.sql, commit.params)
-    return result
-  } catch (err) {
-    const rollback = printer.print(rollbackNode)
+  return runWithTxEvents(opts.onQuery, async (body) => {
+    const begin = printer.print(beginNode)
+    await driver.execute(begin.sql, begin.params)
     try {
-      await driver.execute(rollback.sql, rollback.params)
-    } catch (rollbackErr) {
-      // Surface the original error; attach the rollback failure so
-      // observability doesn't lose it. Prefer the user's error — the
-      // rollback failure is almost always a downstream consequence.
-      ;(err as Error & { rollbackError?: unknown }).rollbackError = rollbackErr
+      const result = await body(driver)
+      const commit = printer.print(commitNode)
+      await driver.execute(commit.sql, commit.params)
+      return result
+    } catch (err) {
+      const rollback = printer.print(rollbackNode)
+      try {
+        await driver.execute(rollback.sql, rollback.params)
+      } catch (rollbackErr) {
+        // Surface the original error; attach the rollback failure so
+        // observability doesn't lose it. Prefer the user's error — the
+        // rollback failure is almost always a downstream consequence.
+        ;(err as Error & { rollbackError?: unknown }).rollbackError = rollbackErr
+      }
+      throw err
     }
-    throw err
-  }
+  })(fn)
 }

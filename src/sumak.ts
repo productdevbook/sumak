@@ -24,10 +24,10 @@ import { TypedMergeBuilder } from "./builder/typed-merge.ts"
 import { TypedSelectBuilder } from "./builder/typed-select.ts"
 import { TypedUpdateBuilder } from "./builder/typed-update.ts"
 import type { Dialect } from "./dialect/types.ts"
-import { MissingDriverError } from "./driver/execute.ts"
+import { MissingDriverError, runExecute, runQuery } from "./driver/execute.ts"
 import { runInTransaction } from "./driver/transaction.ts"
 import type { TransactionOptions } from "./driver/transaction.ts"
-import type { Driver, ExecuteResult, Row } from "./driver/types.ts"
+import type { Driver, ExecuteResult, OnQueryListener, Row } from "./driver/types.ts"
 import { normalizeQuery } from "./normalize/query.ts"
 import type { NormalizeOptions } from "./normalize/types.ts"
 import { optimize } from "./optimize/optimizer.ts"
@@ -90,6 +90,13 @@ export interface SumakConfig<T extends TablesConfig> {
    * yourself.
    */
   driver?: Driver
+  /**
+   * Observability listener — called synchronously around every driver
+   * call with `{ phase: "start" | "end" | "error", sql, params,
+   * durationMs?, rowCount?, error? }`. Thrown errors are swallowed so
+   * a logger bug can't take down a query. See {@link OnQueryListener}.
+   */
+  onQuery?: OnQueryListener
   /** Enable AST normalization (NbE). Default: true */
   normalize?: boolean | NormalizeOptions
   /** Enable AST optimization (rewrite rules). Default: true */
@@ -124,6 +131,7 @@ export function sumak<T extends TablesConfig>(config: SumakConfig<T>): Sumak<DBF
     optimizeQueries: config.optimizeQueries,
     rules: config.rules,
     driver: config.driver,
+    onQuery: config.onQuery,
   })
 }
 
@@ -147,6 +155,7 @@ export class Sumak<DB> {
   private _optimizeOpts: OptimizeOptions | false
   private _customRules: RewriteRule[]
   private _driver?: Driver
+  private _onQuery?: OnQueryListener
   /**
    * Back-compat flat view: table name → columns map. The rest of the
    * codebase (diff, introspect fallback paths, test helpers) reads
@@ -173,6 +182,7 @@ export class Sumak<DB> {
       optimizeQueries?: boolean | OptimizeOptions
       rules?: RewriteRule[]
       driver?: Driver
+      onQuery?: OnQueryListener
     } = {},
   ) {
     this._dialect = dialect
@@ -182,6 +192,7 @@ export class Sumak<DB> {
     this._schema = normalizeConstructorTables(tables)
     this._tables = Object.fromEntries(Object.entries(this._schema).map(([k, v]) => [k, v.columns]))
     this._driver = pipelineOpts.driver
+    this._onQuery = pipelineOpts.onQuery
     this._normalizeOpts =
       pipelineOpts.normalize === false
         ? false
@@ -216,15 +227,29 @@ export class Sumak<DB> {
   }
 
   /**
+   * Expose the configured observability listener to the execute
+   * helpers. `undefined` when none is set; callers should short-circuit
+   * without emitting anything.
+   */
+  onQuery(): OnQueryListener | undefined {
+    return this._onQuery
+  }
+
+  /**
    * Run an already-compiled query through the configured driver and
    * apply `result:transform` plugins + hooks to the rows. Thin
    * convenience on top of `driver().query(sql, params)` that closes the
    * loop with sumak's result pipeline.
    */
   async executeCompiled(query: CompiledQuery): Promise<Row[]> {
-    const driver = this.driver()
-    const rows = await driver.query(query.sql, query.params)
-    return this.transformResult(rows) as Row[]
+    const rows = await runQuery(
+      this.driver(),
+      query,
+      (r) => this.transformResult(r) as Row[],
+      undefined,
+      this._onQuery,
+    )
+    return rows
   }
 
   /**
@@ -233,7 +258,7 @@ export class Sumak<DB> {
    * `{ affected: number }`.
    */
   async executeCompiledNoRows(query: CompiledQuery): Promise<ExecuteResult> {
-    return this.driver().execute(query.sql, query.params)
+    return runExecute(this.driver(), query, undefined, this._onQuery)
   }
 
   /**
@@ -272,6 +297,7 @@ export class Sumak<DB> {
           optimizeQueries: this._optimizeOpts === false ? false : this._optimizeOpts,
           rules: this._customRules,
           driver: scoped,
+          onQuery: this._onQuery,
         })
         // Inherit registered hooks on the scoped instance so the tx
         // block sees the same `result:transform` / `query:before` wiring
@@ -279,7 +305,7 @@ export class Sumak<DB> {
         scopedDb._hooks = this._hooks
         return fn(scopedDb)
       },
-      opts,
+      { ...opts, onQuery: this._onQuery },
     )
   }
 

@@ -10,7 +10,7 @@ import type {
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import { resultTransformer, runFirst, runOne, runQuery } from "../driver/execute.ts"
+import { listenerFor, resultTransformer, runFirst, runOne, runQuery } from "../driver/execute.ts"
 import type { SumakExecutor } from "../driver/execute.ts"
 import type { Row } from "../driver/types.ts"
 import { deriveResultContext } from "../plugin/result-context.ts"
@@ -627,7 +627,13 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const exec = this._requireExecutor()
     const ast = this.build()
     const ctx = deriveResultContext(ast)
-    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
+    const rows = await runQuery(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )
     return rows as unknown as O[]
   }
 
@@ -640,7 +646,13 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const exec = this._requireExecutor()
     const ast = this.build()
     const ctx = deriveResultContext(ast)
-    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
+    const row = await runOne(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )
     return row as unknown as O
   }
 
@@ -653,7 +665,13 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const exec = this._requireExecutor()
     const ast = this.build()
     const ctx = deriveResultContext(ast)
-    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
+    const row = await runFirst(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )
     return row as unknown as O | null
   }
 
