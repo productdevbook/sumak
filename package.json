@@ -58,6 +58,22 @@
     "./schema": {
       "types": "./dist/schema.d.mts",
       "default": "./dist/schema.mjs"
+    },
+    "./drivers/pg": {
+      "types": "./dist/drivers/pg.d.mts",
+      "default": "./dist/drivers/pg.mjs"
+    },
+    "./drivers/mysql2": {
+      "types": "./dist/drivers/mysql2.d.mts",
+      "default": "./dist/drivers/mysql2.mjs"
+    },
+    "./drivers/better-sqlite3": {
+      "types": "./dist/drivers/better-sqlite3.d.mts",
+      "default": "./dist/drivers/better-sqlite3.mjs"
+    },
+    "./drivers/mssql": {
+      "types": "./dist/drivers/mssql.d.mts",
+      "default": "./dist/drivers/mssql.mjs"
     }
   },
   "scripts": {
