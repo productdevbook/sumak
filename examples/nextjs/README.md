@@ -1,6 +1,6 @@
-# sumak + Next.js 15
+# sumak + Next.js 16
 
-Next.js App Router + Server Components + Server Actions with a multi-tenant scope.
+Next.js 16 App Router + Server Components + Server Actions with a multi-tenant scope.
 
 ## What it shows
 

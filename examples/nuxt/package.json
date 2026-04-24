@@ -1,18 +1,18 @@
 {
-  "name": "sumak-example-nextjs",
+  "name": "sumak-example-nuxt",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
     "migrate": "sumak migrate up"
   },
   "dependencies": {
-    "next": "^16.2.4",
+    "nuxt": "^4.4.2",
     "pg": "^8.20.0",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
     "sumak": "*"
   },
   "engines": {

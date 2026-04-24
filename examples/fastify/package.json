@@ -4,12 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --experimental-strip-types --watch --env-file=.env src/server.ts",
+    "dev": "node --watch --env-file=.env src/server.ts",
     "migrate": "sumak migrate up"
   },
   "dependencies": {
     "fastify": "^5.8.5",
     "pg": "^8.20.0",
     "sumak": "*"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
