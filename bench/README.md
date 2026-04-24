@@ -25,6 +25,40 @@ pnpm vitest bench --run bench/compile.bench.ts
 | update-where     | `UPDATE users SET name = $1 WHERE id = $2`                                                     |
 | delete-where     | `DELETE FROM users WHERE id = $1`                                                              |
 
+## Results
+
+Compile throughput measured on an Apple M-series laptop, Node 24, vitest 4.1. Numbers drift across machines — treat only the **relative ordering** as signal.
+
+| scenario           | sumak (hz) |   kysely (hz) | drizzle (hz) | sumak vs kysely | sumak vs drizzle |
+| ------------------ | ---------: | ------------: | -----------: | --------------: | ---------------: |
+| `select-all`       |  1,794,929 |     1,597,645 |       87,529 |       **1.11×** |       **19.40×** |
+| `select-where-eq`  |  1,194,919 |       666,188 |       80,344 |       **1.79×** |       **14.87×** |
+| `select-where-and` |  1,505,721 |       605,936 |       38,868 |       **2.48×** |       **38.74×** |
+| `join-2-tables`    |    478,841 |       284,523 |       52,851 |       **1.68×** |        **9.06×** |
+| `insert-values`    |    632,812 |       489,578 |       67,126 |       **1.29×** |        **9.43×** |
+| `update-where`     |  1,141,395 |       718,878 |       78,405 |       **1.59×** |       **14.56×** |
+| `delete-where`     |    665,789 | **1,024,416** |      150,204 |           0.65× |        **4.43×** |
+
+sumak is the fastest compiler on six of seven scenarios. `delete-where` is the exception: kysely's dedicated delete path wins by ~1.5×, tracked as a known callback-WHERE overhead worth investigating.
+
+Against **drizzle**, sumak is between **9× and 39× faster** across the board — drizzle's template-literal-heavy internal representation costs a lot per call.
+
+### Per-compile wall time
+
+Same numbers, inverted to nanoseconds per compile — useful for sanity-checking whether the compile path is ever going to show up on a trace.
+
+| scenario           |  sumak | kysely | drizzle |
+| ------------------ | -----: | -----: | ------: |
+| `select-all`       | 557 ns | 626 ns | 11.4 µs |
+| `select-where-eq`  | 837 ns | 1.5 µs | 12.4 µs |
+| `select-where-and` | 664 ns | 1.7 µs | 25.7 µs |
+| `join-2-tables`    | 2.1 µs | 3.5 µs | 18.9 µs |
+| `insert-values`    | 1.6 µs | 2.0 µs | 14.9 µs |
+| `update-where`     | 876 ns | 1.4 µs | 12.8 µs |
+| `delete-where`     | 1.5 µs | 977 ns |  6.7 µs |
+
+Even the slowest sumak scenario (`join-2-tables`, ~2µs) compiles three orders of magnitude below a local Postgres round-trip (~1ms). Compile cost is not where your end-to-end latency lives — but it _is_ what shows up on a Lambda cold start.
+
 ## Why compile-time only?
 
 Query builders live or die on the hot path between the TypeScript call and the SQL string. A benchmark that also spins up a real database would measure Postgres plus the network, not the library. On a Lambda cold path or a serverless edge runtime, compile time is the dominant overhead and the right thing to optimise.
