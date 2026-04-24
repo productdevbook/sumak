@@ -1016,6 +1016,87 @@ export function valuesClause(args: {
   }
 }
 
+/**
+ * `GROUP BY GROUPING SETS ((a, b), (a), ())` — explicit
+ * multi-dimensional grouping. Each entry of `sets` is a list of
+ * grouping expressions evaluated together; an empty tuple inside
+ * means "the grand-total row" (legal only here, not in CUBE /
+ * ROLLUP).
+ *
+ * ```ts
+ * db.selectFrom("sales")
+ *   .select("region", "category", { total: sum(col("amount")) })
+ *   .groupBy(groupingSets([
+ *     [col("region"), col("category")],
+ *     [col("region")],
+ *     [],
+ *   ]))
+ * ```
+ *
+ * PG + MSSQL. SQLite and MySQL reject — use CUBE / ROLLUP
+ * equivalents on SQLite, or write `WITH ROLLUP` via
+ * `unsafeRawExpr` on MySQL.
+ */
+export function groupingSets(sets: ReadonlyArray<ReadonlyArray<GroupingItem>>): Expression<any> {
+  return buildGrouping("grouping_sets", sets)
+}
+
+/**
+ * `GROUP BY CUBE(a, b, …)` — all 2^n combinations of the grouping
+ * columns. PG + MSSQL + SQLite 3.46+.
+ */
+export function cube(...cols: GroupingItem[]): Expression<any> {
+  return buildGrouping("cube", [cols])
+}
+
+/**
+ * `GROUP BY ROLLUP(a, b, …)` — hierarchical rollup from finest to
+ * coarsest. PG + MSSQL + SQLite 3.46+ via the standard syntax. MySQL
+ * users write the semantically-equivalent `... GROUP BY a, b WITH
+ * ROLLUP` via `unsafeRawExpr`.
+ */
+export function rollup(...cols: GroupingItem[]): Expression<any> {
+  return buildGrouping("rollup", [cols])
+}
+
+/**
+ * Grouping-set builders accept any expression-shaped value — a sumak
+ * `Expression<T>` (with a `.node`), a `Col<T>`, or a bare
+ * `ExpressionNode` (`col("x")`'s direct return). We coerce them all
+ * to `ExpressionNode` here so callers don't have to wrap/unwrap.
+ */
+type GroupingItem = Expression<any> | Col<any> | ExpressionNode
+
+function groupingItemToNode(item: GroupingItem): ExpressionNode {
+  if (item instanceof Col) return (item as Col<any>)._node
+  if (isExpression(item)) return (item as Expression<any>).node
+  return item as ExpressionNode
+}
+
+function buildGrouping(
+  kind: "grouping_sets" | "cube" | "rollup",
+  sets: ReadonlyArray<ReadonlyArray<GroupingItem>>,
+): Expression<any> {
+  if (sets.length === 0) {
+    throw new InvalidExpressionError(
+      `${kind === "grouping_sets" ? "groupingSets" : kind}() requires at least one group.`,
+    )
+  }
+  if (kind !== "grouping_sets") {
+    // CUBE / ROLLUP take a single flat list — the builder only
+    // exposes variadic arg surfaces so this shouldn't hit authored
+    // code. The guard catches hand-crafted AST misuse.
+    if (sets[0]!.length === 0) {
+      throw new InvalidExpressionError(`${kind}() requires at least one grouping expression.`)
+    }
+  }
+  return wrap({
+    type: "grouping",
+    kind,
+    sets: sets.map((s) => s.map(groupingItemToNode)),
+  })
+}
+
 function buildQuantified<T>(
   quantifier: "ANY" | "ALL" | "SOME",
   operand: Expression<T[]> | Expression<T>,

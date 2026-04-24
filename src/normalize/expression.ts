@@ -375,6 +375,8 @@ function exprFingerprint(expr: ExpressionNode): string {
       return `win:${exprFingerprint(expr.fn)}:${expr.partitionBy.map(exprFingerprint).join(",")}:${expr.orderBy.map((o) => `${exprFingerprint(o.expr)}:${o.direction}`).join(",")}`
     case "quantified":
       return `q:${expr.quantifier}:${exprFingerprint(expr.operand)}`
+    case "grouping":
+      return `grp:${expr.kind}:${expr.sets.map((s) => s.map(exprFingerprint).join(",")).join(";")}`
     default:
       return assertNever(expr, "exprFingerprint")
   }
@@ -472,6 +474,8 @@ function recurse(
       // it so the inner columns / params go through the same
       // simplification passes every other expression sees.
       return { ...expr, operand: transform(expr.operand) as typeof expr.operand }
+    case "grouping":
+      return { ...expr, sets: expr.sets.map((s) => s.map(transform)) }
     // Terminal / opaque nodes — no child expressions to walk.
     case "column_ref":
     case "literal":

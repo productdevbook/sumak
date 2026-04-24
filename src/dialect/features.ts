@@ -83,6 +83,24 @@ export const FEATURES = {
    * MySQL accepts subquery form but not this one.
    */
   QUANTIFIED_ARRAY: { label: "ANY/ALL array operand", dialects: ["pg"] },
+
+  /**
+   * `GROUP BY GROUPING SETS ((a, b), (a), ())`. PG + MSSQL only.
+   * MySQL has no `GROUPING SETS` construct; SQLite added CUBE and
+   * ROLLUP in 3.46 but not GROUPING SETS.
+   */
+  GROUPING_SETS: { label: "GROUPING SETS", dialects: ["pg", "mssql"] },
+  /** `GROUP BY CUBE(a, b)`. PG + MSSQL + SQLite 3.46+. */
+  GROUPING_CUBE: { label: "CUBE", dialects: ["pg", "mssql", "sqlite"] },
+  /**
+   * `GROUP BY ROLLUP(a, b)`. PG + MSSQL + SQLite 3.46+. MySQL has
+   * the same semantics under a different syntax (`GROUP BY a, b WITH
+   * ROLLUP`) — not surfaced via `GROUPING_ROLLUP` because emitting
+   * the standard form on MySQL would fail at parse. MySQL users can
+   * write `WITH ROLLUP` via `unsafeRawExpr` today; a dedicated
+   * builder switch is a follow-up.
+   */
+  GROUPING_ROLLUP: { label: "ROLLUP", dialects: ["pg", "mssql", "sqlite"] },
   JSON_ARROW: { label: "-> / ->> JSON operators", dialects: ["pg"] },
   JSON_PATH_ARROW: { label: "#> / #>> JSON path operators", dialects: ["pg"] },
   JSONB: { label: "JSONB", dialects: ["pg"] },

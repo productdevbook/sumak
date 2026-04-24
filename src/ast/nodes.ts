@@ -45,6 +45,7 @@ export type ExpressionNode =
   | FullTextSearchNode
   | TupleNode
   | QuantifiedExprNode
+  | GroupingExprNode
 
 export interface ColumnRefNode {
   type: "column_ref"
@@ -225,6 +226,27 @@ export interface ValuesClauseNode {
   rows: ExpressionNode[][]
   alias: string
   columnAliases: string[]
+}
+
+/**
+ * `GROUPING SETS ((a, b), (a), ())` / `CUBE(a, b)` / `ROLLUP(a, b)` —
+ * multi-dimensional grouping extensions to GROUP BY. Stored as a
+ * special expression node so the `SelectNode.groupBy` slot can hold
+ * a mix of regular column expressions and these grouping constructs.
+ * Each entry in the `sets` field is a "group" (a list of columns
+ * evaluated together). An empty group means "one total row" — legal
+ * inside GROUPING SETS, not meaningful for CUBE/ROLLUP.
+ *
+ * Feature-matrix gated: PG / MSSQL support all three; SQLite has
+ * `ROLLUP` and `CUBE` (3.46+) but not `GROUPING SETS`; MySQL has
+ * `WITH ROLLUP` on GROUP BY with a syntactic twist — we reject
+ * GROUPING SETS / CUBE on MySQL and render ROLLUP via a printer
+ * override to the `GROUP BY ... WITH ROLLUP` form.
+ */
+export interface GroupingExprNode {
+  type: "grouping"
+  kind: "grouping_sets" | "cube" | "rollup"
+  sets: ExpressionNode[][]
 }
 
 /**

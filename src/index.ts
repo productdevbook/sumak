@@ -84,7 +84,16 @@ export { subqueryExpr, toJson, tuple } from "./builder/eb.ts"
 
 // ─── Escape hatches — use only when no typed helper fits ───────────────────
 export { unsafeRawExpr, unsafeSqlFn } from "./builder/eb.ts"
-export { all, any, arrayLiteral, some, valuesClause } from "./builder/eb.ts"
+export {
+  all,
+  any,
+  arrayLiteral,
+  cube,
+  groupingSets,
+  rollup,
+  some,
+  valuesClause,
+} from "./builder/eb.ts"
 
 // ─── ON CONFLICT helpers ───────────────────────────────────────────────────
 // `excluded("name")` → `EXCLUDED."name"` — PG's pseudo-table reference

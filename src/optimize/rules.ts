@@ -280,6 +280,9 @@ function collectTableRefs(expr: ExpressionNode, refs: Set<string>): void {
       // column refs only in pathological authored SQL.
       if (expr.operand.type !== "subquery") collectTableRefs(expr.operand, refs)
       break
+    case "grouping":
+      for (const set of expr.sets) for (const e of set) collectTableRefs(e, refs)
+      break
     default: {
       const _exhaustive: never = expr
       void _exhaustive

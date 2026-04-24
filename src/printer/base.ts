@@ -38,10 +38,12 @@ import type {
 } from "../ast/nodes.ts"
 import type {
   FullTextSearchNode,
+  GroupingExprNode,
   MergeNode,
   MergeWhenMatched,
   MergeWhenNotMatched,
 } from "../ast/nodes.ts"
+import { assertFeature } from "../dialect/features.ts"
 import { assertNever, UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
@@ -217,6 +219,7 @@ export class BasePrinter implements Printer {
       case "full_text_search":
       case "tuple":
       case "quantified":
+      case "grouping":
         return this.printExpression(node)
       default:
         return assertNever(node, "BasePrinter.printNode")
@@ -532,9 +535,44 @@ export class BasePrinter implements Printer {
         return this.printTuple(node)
       case "quantified":
         return this.printQuantified(node)
+      case "grouping":
+        return this.printGrouping(node)
       default:
         return assertNever(node, "BasePrinter.printExpression")
     }
+  }
+
+  /**
+   * `GROUPING SETS (...)`, `CUBE(...)`, `ROLLUP(...)`. PG / MSSQL
+   * accept all three; SQLite has CUBE / ROLLUP only (3.46+);
+   * MySQL overrides this in its printer to emit the `WITH ROLLUP`
+   * suffix form. Sets inside `GROUPING SETS` are parenthesised
+   * tuples; CUBE and ROLLUP flatten to a single comma-separated
+   * list. The builder guarantees at least one group and at least
+   * one element per group for CUBE / ROLLUP; the empty tuple is
+   * legal only inside `GROUPING SETS` as a "grand total".
+   */
+  protected printGrouping(node: GroupingExprNode): string {
+    assertFeature(
+      this.dialect,
+      node.kind === "grouping_sets"
+        ? "GROUPING_SETS"
+        : node.kind === "cube"
+          ? "GROUPING_CUBE"
+          : "GROUPING_ROLLUP",
+    )
+    const keyword =
+      node.kind === "grouping_sets" ? "GROUPING SETS" : node.kind === "cube" ? "CUBE" : "ROLLUP"
+    if (node.kind === "grouping_sets") {
+      const sets = node.sets
+        .map((s) => `(${s.map((e) => this.printExpression(e)).join(", ")})`)
+        .join(", ")
+      return `${keyword} (${sets})`
+    }
+    // CUBE / ROLLUP take a single tuple. If the caller gave multiple
+    // groups we flatten them — standard SQL only allows one list.
+    const flat = node.sets.flat().map((e) => this.printExpression(e))
+    return `${keyword} (${flat.join(", ")})`
   }
 
   /**

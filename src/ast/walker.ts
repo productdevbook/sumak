@@ -79,6 +79,7 @@ export class ASTWalker {
       case "full_text_search":
       case "tuple":
       case "quantified":
+      case "grouping":
         return this.visitExpression(node)
       default:
         return assertNever(node, "ASTWalker.visitNode")
@@ -424,6 +425,12 @@ export class ASTWalker {
         // tree sees.
         const operand = this.visitExpression(expr.operand) as typeof expr.operand
         return operand === expr.operand ? expr : { ...expr, operand }
+      }
+      case "grouping": {
+        const sets = mapPreserve(expr.sets, (set) =>
+          mapPreserve(set, (e) => this.visitExpression(e)),
+        )
+        return sets === expr.sets ? expr : { ...expr, sets }
       }
       default:
         return assertNever(expr, "ASTWalker.visitExpression")
