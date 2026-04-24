@@ -388,6 +388,14 @@ export const QueryFlags = {
    * is tracked even when allowed.
    */
   CrossTenantOptOut: 1 << 3,
+  /**
+   * The {@link caslAuthz} plugin already injected its CASL-derived
+   * WHERE into this node. Guards against double-application when the
+   * PluginManager recurses into inner SELECTs (CTEs, subqueries) and
+   * re-runs the chain — without this flag, nested SELECTs over the
+   * same table would accumulate `AND casl_where` on every pass.
+   */
+  CaslAuthzApplied: 1 << 4,
 } as const
 export type QueryFlags = number
 

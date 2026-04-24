@@ -71,3 +71,6 @@ export function dataMasking(
 
 export { subjectType } from "./subject-type.ts"
 export type { SubjectTypeConfig } from "./subject-type.ts"
+
+export { caslAuthz } from "./casl.ts"
+export type { CaslAuthzConfig } from "./casl.ts"

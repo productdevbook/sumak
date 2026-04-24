@@ -3,15 +3,22 @@ import type { ResultContext, SumakPlugin } from "./types.ts"
 /**
  * Config for {@link subjectType} — maps a table name to the subject
  * type string that authorization / GraphQL / CASL code wants to see.
+ *
+ * Generic `DB` is optional. When the caller supplies it
+ * (`subjectType<DB>({ … })`) the `tables` keys are restricted to
+ * actual table names — a typo like `mesages` fails to compile.
+ * Without the type argument the config still works exactly like
+ * before (plain `Record<string, string>`), so existing call sites
+ * keep compiling.
  */
-export interface SubjectTypeConfig {
+export interface SubjectTypeConfig<DB = Record<string, unknown>> {
   /**
    * Table → subject-type map. `{ messages: "Message", users: "User" }`
    * produces `row.__typename = "Message"` for every row returned from
    * `db.selectFrom("messages")` (and `.returning()` on INSERT/UPDATE/
    * DELETE into the same table).
    */
-  readonly tables: Readonly<Record<string, string>>
+  readonly tables: Readonly<{ [K in keyof DB & string]?: string }>
   /**
    * Field name to write. Defaults to `__typename` — matches GraphQL
    * convention and CASL's recommended subject-detection property.
@@ -51,9 +58,11 @@ export interface SubjectTypeConfig {
  * SQL and never sees rows). Driverless callers who hand-execute SQL
  * must run `db.transformResult(rows, ctx)` themselves.
  */
-export function subjectType(config: SubjectTypeConfig): SumakPlugin {
+export function subjectType<DB = Record<string, unknown>>(
+  config: SubjectTypeConfig<DB>,
+): SumakPlugin {
   const field = config.field ?? "__typename"
-  const tables = config.tables
+  const tables = config.tables as Readonly<Record<string, string | undefined>>
   return {
     name: "subjectType",
     transformResult(rows, ctx) {

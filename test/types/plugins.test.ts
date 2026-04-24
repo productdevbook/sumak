@@ -29,6 +29,20 @@ describe("Plugin factories — return type is SumakPlugin", () => {
       subjectType({ tables: { users: "User", posts: "Post" } }),
     ).toMatchTypeOf<SumakPlugin>()
   })
+
+  it("subjectType<DB>() — typo in `tables` fails compile", () => {
+    type DB = {
+      users: { id: number; name: string }
+      posts: { id: number; title: string }
+    }
+    // Happy path — the explicit DB type allows keys that exist.
+    expectTypeOf(
+      subjectType<DB>({ tables: { users: "User", posts: "Post" } }),
+    ).toMatchTypeOf<SumakPlugin>()
+
+    // @ts-expect-error — "mesages" is not a key of DB, should fail.
+    subjectType<DB>({ tables: { mesages: "Message" } })
+  })
 })
 
 describe("ResultContext — surfaced shape", () => {

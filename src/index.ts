@@ -168,6 +168,7 @@ export type {
 export {
   audit,
   camelCase,
+  caslAuthz,
   dataMasking,
   multiTenant,
   optimisticLock,
@@ -176,8 +177,24 @@ export {
   subjectType,
   withSchema,
 } from "./plugin/factories.ts"
-export type { SubjectTypeConfig } from "./plugin/factories.ts"
+export type { CaslAuthzConfig, SubjectTypeConfig } from "./plugin/factories.ts"
 export type { ResultContext, SumakPlugin } from "./plugin/types.ts"
+
+// ─── CASL integration — opt-in utility path (no plugin required) ───────────
+// Re-exports so `import { caslToSumakWhere, ForbiddenByCaslError,
+// UnsupportedCaslOperatorError } from "sumak"` works alongside the
+// plugin. Converter and types are also here for advanced callers who
+// want to build their own authz plugin on top of the ucast→AST core.
+// No CASL import — the utility walks `ability.rulesFor(...)` + reads
+// `rule.ast` / `rule.inverted` itself, so sumak stays CASL-dep-free.
+export {
+  caslToSumakWhere,
+  ForbiddenByCaslError,
+  UnsupportedCaslOperatorError,
+} from "./casl/where.ts"
+export type { AbilityLike } from "./casl/where.ts"
+export { ucastToExpressionNode } from "./casl/ucast-to-ast.ts"
+export type { UcastCondition } from "./casl/ucast-to-ast.ts"
 
 // ─── Hooks ─────────────────────────────────────────────────────────────────
 export type { HookContext, HookName, SumakHooks } from "./plugin/hooks.ts"

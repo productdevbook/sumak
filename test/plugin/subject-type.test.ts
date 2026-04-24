@@ -88,6 +88,65 @@ describe("subjectType plugin (issue #90 / CASL)", () => {
     expect((rows[0] as unknown as { __typename: string }).__typename).toBe("Message")
   })
 
+  it("fires on UPDATE ... RETURNING", async () => {
+    const db = sumak({
+      dialect: pgDialect(),
+      driver: canned([{ id: 1, body: "hi" }]),
+      plugins: [subjectType({ tables: { messages: "Message" } })],
+      tables: TABLES,
+    })
+
+    const rows = await db
+      .update("messages")
+      .set({ body: "hi" })
+      .where(({ id }) => id.eq(1))
+      .returningAll()
+      .many()
+    expect((rows[0] as unknown as { __typename: string }).__typename).toBe("Message")
+  })
+
+  it("fires on DELETE ... RETURNING", async () => {
+    const db = sumak({
+      dialect: pgDialect(),
+      driver: canned([
+        { id: 1, body: "a" },
+        { id: 2, body: "b" },
+      ]),
+      plugins: [subjectType({ tables: { messages: "Message" } })],
+      tables: TABLES,
+    })
+
+    const rows = await db
+      .deleteFrom("messages")
+      .where(({ id }) => id.gt(0))
+      .returningAll()
+      .many()
+    expect(rows).toHaveLength(2)
+    for (const r of rows) {
+      expect((r as unknown as { __typename: string }).__typename).toBe("Message")
+    }
+  })
+
+  it("fires on UPDATE ... RETURNING with specific columns", async () => {
+    const db = sumak({
+      dialect: pgDialect(),
+      driver: canned([{ id: 1 }]),
+      plugins: [subjectType({ tables: { messages: "Message" } })],
+      tables: TABLES,
+    })
+
+    const rows = await db
+      .update("messages")
+      .set({ body: "x" })
+      .where(({ id }) => id.eq(1))
+      .returning("id")
+      .many()
+    // __typename is stamped at the DML target level regardless of which
+    // columns come back — the rule is "row came from messages", not
+    // "the full row was returned".
+    expect((rows[0] as unknown as { __typename: string }).__typename).toBe("Message")
+  })
+
   it("does not overwrite an existing __typename on the row", async () => {
     const db = sumak({
       dialect: pgDialect(),

@@ -1497,12 +1497,131 @@ Customise the field name with `field: "_subject"`. The plugin never
 overwrites a field already present on the row. Fires on `.many()` /
 `.one()` / `.first()` — driverless `toSQL()` flows return unchanged SQL.
 
+### caslAuthz (CASL rules → AST WHERE injection)
+
+Turn a CASL `Ability` into SQL. The plugin rewrites every
+`SELECT` / `UPDATE` / `DELETE` on a mapped table to `AND` in the
+CASL-derived predicate, the same way `@casl/prisma`'s `accessibleBy`
+rewrites Prisma queries — but we inject straight into sumak's AST,
+so EXPLAIN, `onQuery`, rewrite rules, and normalized statement
+caches all see the filtered query.
+
+```ts
+import { AbilityBuilder, createMongoAbility } from "@casl/ability"
+import { sumak, pgDialect, caslAuthz } from "sumak"
+
+const { can, cannot, build } = new AbilityBuilder(createMongoAbility)
+can("read", "Post", { authorId: currentUserId })
+can("read", "Post", { published: true })
+cannot("read", "Post", { status: "archived" })
+can("update", "Post", { authorId: currentUserId })
+const ability = build()
+
+const db = sumak({
+  dialect: pgDialect(),
+  tables: {
+    posts: {
+      /* ... */
+    },
+  },
+  plugins: [
+    caslAuthz({
+      ability,
+      subjects: { posts: "Post" }, // keyof DB → CASL subject string
+    }),
+  ],
+})
+
+db.selectFrom("posts").select("id", "title").toSQL()
+// SELECT "id", "title" FROM "posts"
+// WHERE (("authorId" = $1 OR "published" = $2) AND NOT ("status" = $3))
+
+db.update("posts")
+  .set({ title: "x" })
+  .where(({ id }) => id.eq(7))
+  .toSQL()
+// UPDATE "posts" SET "title" = $1
+// WHERE ("id" = $2) AND ("authorId" = $3)
+```
+
+No CASL import is needed on the sumak side — the plugin depends on the
+structural `ability.rulesFor(...)` contract (stable across `@casl/ability`
+5.x and 6.x), so sumak stays CASL-peer-dep-free.
+
+**Forbidden (no matching rule).** By default the plugin throws
+`ForbiddenByCaslError` at compile time — fail-loud matches the
+`@casl/prisma` default. For Postgres-RLS-style silent zero rows use
+`onForbidden: "empty"`, which injects `WHERE FALSE` instead:
+
+```ts
+caslAuthz({
+  ability,
+  subjects: { posts: "Post" },
+  onForbidden: "empty", // SELECT still runs, returns zero rows
+})
+```
+
+**Custom action names.** Remap sumak verbs to your ability actions:
+
+```ts
+caslAuthz({
+  ability,
+  subjects: { posts: "Post" },
+  actions: { select: "view", update: "edit", delete: "remove" },
+})
+```
+
+**Scope (v1).**
+
+- Fires on `SELECT`, `UPDATE`, `DELETE` (plus `RETURNING` rows).
+- **INSERT is not touched**: CASL conditions can reference columns the
+  caller didn't set (server defaults, triggers), producing false
+  positives and false negatives. Check inserts application-side with
+  `ability.can("create", subject(...))` or use `multiTenant` for
+  tenant-column injection.
+- **Field-level permit/forbid** (`permittedFieldsOf` → prune SELECT
+  columns / UPDATE SET keys) is not in v1 — it needs schema awareness
+  the plugin layer doesn't carry today. On the roadmap.
+- **Supported ucast operators:** `eq`, `ne`, `in`, `nin`, `gt`, `gte`,
+  `lt`, `lte`, `and`, `or`, `not`. Rules using `regex`, `exists`,
+  `elemMatch`, `all`, or `size` throw `UnsupportedCaslOperatorError`
+  at compile time rather than silently skipping.
+
+#### Without the plugin — utility path
+
+If you'd rather opt in per-query, `caslToSumakWhere` converts the
+current `Ability` into an `Expression<boolean>` you can drop straight
+into `.where(...)`:
+
+```ts
+import { caslToSumakWhere } from "sumak"
+
+const where = caslToSumakWhere({ ability, action: "read", subject: "Post" })
+const rows = await db
+  .selectFrom("posts")
+  .where(() => where)
+  .many()
+```
+
+Same converter under the hood, no plugin state, nothing to register —
+useful for ad-hoc admin queries or when you want an explicit
+authz-on/authz-off split.
+
+#### Ordering with `multiTenant`
+
+Register `caslAuthz` **before** `multiTenant`. The resulting SQL is
+`WHERE casl_where AND tenant_id = ?` — authz filters rows first,
+tenancy narrows further. Reversing the order still produces
+semantically equivalent SQL (AND commutes), but the intuitive
+layering is lost. The two plugins use independent idempotency flags
+so neither blocks the other on the recursive subquery pass.
+
 ### Combining plugins
 
 ```ts
 import {
   sumak, pgDialect,
-  withSchema, softDelete, audit, multiTenant, queryLimit, subjectType,
+  withSchema, softDelete, audit, multiTenant, queryLimit, subjectType, caslAuthz,
 } from "sumak"
 
 const db = sumak({
@@ -1511,6 +1630,7 @@ const db = sumak({
     withSchema("public"),
     softDelete({ tables: ["users"] }),
     audit({ tables: ["users", "posts"] }),
+    caslAuthz({ ability, subjects: { users: "User", posts: "Post" } }),
     multiTenant({ tables: ["users", "posts"], tenantId: () => currentTenantId }),
     subjectType({ tables: { users: "User", posts: "Post" } }),
     queryLimit({ maxRows: 5000 }),
