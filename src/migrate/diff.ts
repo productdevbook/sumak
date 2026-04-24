@@ -55,6 +55,33 @@ export interface DiffOptions {
    * idempotent "ensure the schema at least has these tables" migrations.
    */
   allowDestructive?: boolean | "ignore"
+
+  /**
+   * Explicit rename declarations. Without these, a column rename
+   * looks like DROP old + ADD new to the structural diff — which
+   * means data loss. Pass an entry per rename to turn the pair of
+   * actions into a single `ALTER TABLE … RENAME COLUMN`:
+   *
+   * ```ts
+   * diffSchemas(before, after, {
+   *   renames: {
+   *     columns: { "users.old_name": "users.new_name" },
+   *     tables:  { "posts": "articles" },
+   *   },
+   * })
+   * ```
+   *
+   * Format: `"<table>.<column>"` for columns, `"<old_table>"` for
+   * tables. Unknown keys (column not in before, target already in
+   * after) are ignored with a silent no-op — the caller's migration
+   * history survives schema drift between environments.
+   */
+  renames?: {
+    /** `{ "table.old_col": "table.new_col" }`. Table is implied by the old key. */
+    columns?: Record<string, string>
+    /** `{ "old_table": "new_table" }`. */
+    tables?: Record<string, string>
+  }
 }
 
 /**
@@ -81,7 +108,30 @@ export function diffSchemas(
   const beforeNorm = normalizeSchema(before)
   const afterNorm = normalizeSchema(after)
 
-  const beforeTables = new Set(Object.keys(beforeNorm))
+  // Resolve explicit table renames up-front. An entry like
+  // `{ tables: { posts: "articles" } }` takes the "posts" key in the
+  // before map and treats it as the "articles" key for the rest of
+  // the diff — plus emits an ALTER TABLE RENAME. Structural diffing
+  // then compares the post-rename shape so column changes against a
+  // renamed table still go through.
+  const tableRenames = opts.renames?.tables ?? {}
+  const renameTableNodes: DDLNode[] = []
+  const beforeAfterRename: Record<string, NormalizedTable> = {}
+  for (const [name, entry] of Object.entries(beforeNorm)) {
+    const renamed = tableRenames[name]
+    if (renamed && renamed !== name && afterNorm[renamed] && !afterNorm[name]) {
+      beforeAfterRename[renamed] = entry
+      renameTableNodes.push({
+        type: "alter_table",
+        table: tableRef(name),
+        actions: [{ kind: "rename_table", to: renamed }],
+      } satisfies AlterTableNode)
+    } else {
+      beforeAfterRename[name] = entry
+    }
+  }
+
+  const beforeTables = new Set(Object.keys(beforeAfterRename))
   const afterTables = new Set(Object.keys(afterNorm))
 
   const removed = [...beforeTables].filter((t) => !afterTables.has(t))
@@ -89,14 +139,14 @@ export function diffSchemas(
   const shared = [...afterTables].filter((t) => beforeTables.has(t))
 
   const destructive: DDLNode[] = []
-  const additive: DDLNode[] = []
+  const additive: DDLNode[] = [...renameTableNodes]
 
   // ── DROP INDEXES on removed tables ────────────────────────────
   // Indexes belong to tables; dropping an index before its owning
   // table keeps the DDL replayable (and makes the intent visible in
   // the plan). Shared-table index changes are handled below per-table.
   for (const t of removed) {
-    for (const idx of beforeNorm[t]!.indexes ?? []) {
+    for (const idx of beforeAfterRename[t]!.indexes ?? []) {
       destructive.push({
         type: "drop_index",
         name: idx.name,
@@ -129,8 +179,9 @@ export function diffSchemas(
   }
 
   // ── ALTER (per shared table) ──────────────────────────────────
+  const columnRenames = opts.renames?.columns ?? {}
   for (const t of shared) {
-    const tableDiff = diffTable(t, beforeNorm[t]!, afterNorm[t]!)
+    const tableDiff = diffTable(t, beforeAfterRename[t]!, afterNorm[t]!, columnRenames)
     for (const n of tableDiff.destructive) destructive.push(n)
     for (const n of tableDiff.additive) additive.push(n)
   }
@@ -189,29 +240,67 @@ interface TableDiff {
   additive: DDLNode[]
 }
 
-function diffTable(name: string, before: NormalizedTable, after: NormalizedTable): TableDiff {
+function diffTable(
+  name: string,
+  before: NormalizedTable,
+  after: NormalizedTable,
+  columnRenames: Record<string, string> = {},
+): TableDiff {
+  // Pull out renames that target this table. The keys are
+  // "table.col" — entries whose table prefix doesn't match get
+  // ignored. After applying, the resolved pair is treated as
+  // "existing column" for the structural diff (same name on both
+  // sides), so column-attribute changes (NOT NULL, default, etc.)
+  // still get ALTER actions even on the same migration that renames.
+  const renameActions: AlterTableAction[] = []
+  const renamedFrom = new Set<string>()
+  const renamedTo = new Map<string, string>() // after-name → before-name
+  for (const [key, target] of Object.entries(columnRenames)) {
+    const [fromTable, fromCol] = key.split(".", 2)
+    if (fromTable !== name || !fromCol) continue
+    if (!before.columns[fromCol]) continue // old column doesn't exist
+    if (!after.columns[target]) continue // new column doesn't exist
+    if (after.columns[fromCol]) continue // ambiguous — skip silently
+    renameActions.push({ kind: "rename_column", from: fromCol, to: target })
+    renamedFrom.add(fromCol)
+    renamedTo.set(target, fromCol)
+  }
+
   const beforeCols = new Set(Object.keys(before.columns))
   const afterCols = new Set(Object.keys(after.columns))
 
-  const added = [...afterCols].filter((c) => !beforeCols.has(c))
-  const removed = [...beforeCols].filter((c) => !afterCols.has(c))
-  const shared = [...afterCols].filter((c) => beforeCols.has(c))
+  const added = [...afterCols].filter((c) => !beforeCols.has(c) && !renamedTo.has(c))
+  const removed = [...beforeCols].filter((c) => !afterCols.has(c) && !renamedFrom.has(c))
+  const shared = [...afterCols].filter((c) => beforeCols.has(c) && !renamedTo.has(c))
 
   const destructiveActions: AlterTableAction[] = removed.map((c) => ({
     kind: "drop_column",
     column: c,
   }))
 
-  const additiveActions: AlterTableAction[] = []
+  const additiveActions: AlterTableAction[] = [...renameActions]
   for (const c of added) {
     additiveActions.push({
       kind: "add_column",
       column: columnDefinitionFromBuilder(c, after.columns[c]!),
     })
   }
+  // Shared columns (no rename involved): straight attribute diff.
   for (const c of shared) {
     additiveActions.push(
       ...alterActionsForColumn(c, before.columns[c]!._def, after.columns[c]!._def),
+    )
+  }
+  // Renamed columns: attribute diff uses the before-column's def
+  // and the after-column's def under the new name. Emit ALTER
+  // actions with the new column name (post-rename).
+  for (const [newName, oldName] of renamedTo) {
+    additiveActions.push(
+      ...alterActionsForColumn(
+        newName,
+        before.columns[oldName]!._def,
+        after.columns[newName]!._def,
+      ),
     )
   }
 
