@@ -219,6 +219,16 @@ export class Sumak<DB> {
   }
 
   /**
+   * The active SQL dialect (`"pg" | "mysql" | "sqlite" | "mssql"`).
+   * Exposed so tooling built on top of sumak (migration runner,
+   * introspector routing, CLI arg echo, etc.) can branch on the
+   * dialect without reaching into private fields.
+   */
+  dialectName(): SQLDialect {
+    return this._dialect.name
+  }
+
+  /**
    * Like {@link driver} but returns `undefined` instead of throwing.
    * Useful for code paths that optionally execute.
    */

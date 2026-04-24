@@ -39,6 +39,23 @@ export interface MigrationOptions extends DiffOptions {
    * configured, false otherwise.
    */
   transaction?: boolean
+
+  /**
+   * When true (default), serialize concurrent `applyMigration` calls
+   * via a session-scoped advisory lock so two deploys racing on the
+   * same database don't interleave DDL. Implementation per dialect:
+   *   - **pg**: `SELECT pg_advisory_lock(hashtext('sumak-migrate'))`
+   *     with `pg_advisory_unlock` in finally.
+   *   - **mysql**: `SELECT GET_LOCK('sumak-migrate', -1)` + RELEASE.
+   *   - **mssql**: `sp_getapplock @Resource = 'sumak-migrate'` + sp_releaseapplock.
+   *   - **sqlite**: no-op — SQLite's single-writer lock already
+   *     serialises writes at the engine level.
+   *
+   * Pass `false` to skip the lock (e.g. when the caller owns lock
+   * coordination itself — a CI system that gates deploys behind
+   * its own mutex).
+   */
+  lock?: boolean
 }
 
 /**
@@ -101,11 +118,84 @@ export async function runPlan<DB>(
     throw new MigrationRequiresDriverError()
   }
 
-  const useTransaction = opts.transaction ?? true
-  if (useTransaction && driver) {
-    return db.transaction(async (tx) => executeSteps(tx, plan.steps))
+  const useLock = opts.lock ?? true
+
+  const run = async (): Promise<ApplyResult> => {
+    const useTransaction = opts.transaction ?? true
+    if (useTransaction && driver) {
+      return db.transaction(async (tx) => executeSteps(tx, plan.steps))
+    }
+    return executeSteps(db, plan.steps)
   }
-  return executeSteps(db, plan.steps)
+
+  if (!useLock) return run()
+  return withMigrationLock(db, run)
+}
+
+/**
+ * Acquire a dialect-appropriate session advisory lock, run `fn`,
+ * release the lock in `finally`. Release on a locked-but-broken
+ * session is best-effort — if the lock release fails the session's
+ * termination will drop it anyway on all four dialects.
+ */
+async function withMigrationLock<DB, T>(db: Sumak<DB>, fn: () => Promise<T>): Promise<T> {
+  const dialect = db.dialectName()
+  const key = "sumak-migrate"
+  const acquire = acquireLockSql(dialect, key)
+  const release = releaseLockSql(dialect, key)
+  if (!acquire) return fn()
+
+  await db.executeCompiledNoRows({ sql: acquire, params: [] })
+  try {
+    return await fn()
+  } finally {
+    if (release) {
+      try {
+        await db.executeCompiledNoRows({ sql: release, params: [] })
+      } catch {
+        // Lock release is advisory; a broken session will drop it
+        // on disconnect. Swallow so the original error (if any)
+        // surfaces.
+      }
+    }
+  }
+}
+
+function acquireLockSql(dialect: string, key: string): string | undefined {
+  switch (dialect) {
+    case "pg":
+      return `SELECT pg_advisory_lock(hashtext(${escapeSqlString(key)}))`
+    case "mysql":
+      return `SELECT GET_LOCK(${escapeSqlString(key)}, -1)`
+    case "mssql":
+      return `BEGIN EXEC sp_getapplock @Resource = ${escapeSqlString(key)}, @LockMode = 'Exclusive', @LockOwner = 'Session' END`
+    case "sqlite":
+      // SQLite serialises writes at the engine level already — a
+      // second writer waits on a file-level lock. No app-level
+      // advisory primitive needed.
+      return undefined
+    default:
+      return undefined
+  }
+}
+
+function releaseLockSql(dialect: string, key: string): string | undefined {
+  switch (dialect) {
+    case "pg":
+      return `SELECT pg_advisory_unlock(hashtext(${escapeSqlString(key)}))`
+    case "mysql":
+      return `SELECT RELEASE_LOCK(${escapeSqlString(key)})`
+    case "mssql":
+      return `BEGIN EXEC sp_releaseapplock @Resource = ${escapeSqlString(key)}, @LockOwner = 'Session' END`
+    default:
+      return undefined
+  }
+}
+
+function escapeSqlString(s: string): string {
+  // Minimal single-quote escape — the key is a compile-time literal
+  // so this is defense in depth, not user-input sanitisation.
+  return `'${s.replace(/'/g, "''")}'`
 }
 
 async function executeSteps<DB>(

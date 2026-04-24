@@ -77,10 +77,15 @@ describe("applyMigration / runPlan", () => {
     expect(result.applied).toBe(1)
     expect(result.statements[0]).toMatch(/CREATE TABLE/)
 
-    // Inside a transaction by default — we expect a BEGIN, then the CREATE, then COMMIT.
+    // Inside a transaction by default. We expect — in order —
+    // the advisory-lock acquire, the BEGIN, the CREATE, the COMMIT,
+    // and the advisory-unlock. The test pins the pair order without
+    // being too strict about exact positions.
     const sqls = driver.calls.map((c) => c.sql.toUpperCase())
-    expect(sqls[0]).toContain("BEGIN")
-    expect(sqls.at(-1)).toContain("COMMIT")
+    expect(sqls[0]).toContain("PG_ADVISORY_LOCK")
+    expect(sqls.at(-1)).toContain("PG_ADVISORY_UNLOCK")
+    expect(sqls.some((s) => s.includes("BEGIN"))).toBe(true)
+    expect(sqls.some((s) => s.includes("COMMIT"))).toBe(true)
     expect(sqls).toContain(result.statements[0]!.toUpperCase())
   })
 
