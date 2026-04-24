@@ -22,14 +22,43 @@ export interface ColumnCheckDef {
   readonly node?: ExpressionNode
 }
 
+/**
+ * Generated column descriptor. When set, the column is emitted as
+ * `GENERATED ALWAYS AS (<expression>) [STORED]`. `stored: true` is
+ * PG-12+ (persisted to disk); omitting it yields VIRTUAL on MySQL /
+ * MSSQL and is a syntax error on SQLite (all SQLite generated
+ * columns have to be marked one or the other — the DDL printer
+ * already throws a helpful error in that case).
+ */
+export interface GeneratedDef {
+  readonly expression: ExpressionNode
+  readonly stored?: boolean
+}
+
 export interface ColumnDef {
   readonly dataType: string
   readonly isNotNull: boolean
   readonly hasDefault: boolean
+  /** Literal default value. Set when the caller wrote `.defaultTo(123)`. */
   readonly defaultValue?: unknown
+  /**
+   * Expression default AST. Set when the caller wrote
+   * `.defaultTo(sql\`CURRENT_TIMESTAMP\`)` or `.defaultTo(sql\`gen_random_uuid()\`)`.
+   * The migration diff engine prefers this over `defaultValue` when
+   * emitting a `DEFAULT` clause on `CREATE TABLE`.
+   */
+  readonly defaultExpression?: ExpressionNode
   readonly isPrimaryKey: boolean
   readonly isUnique: boolean
   readonly isGenerated: boolean
+  /**
+   * `GENERATED ALWAYS AS (<expr>) [STORED]` descriptor. When set, the
+   * column's value is computed from the expression and cannot be
+   * written via INSERT / UPDATE — enforced at the DB; sumak's typed
+   * builders treat it as a read-only column at the type layer when
+   * the schema DSL is used.
+   */
+  readonly generated?: GeneratedDef
   readonly check?: ColumnCheckDef
   readonly references?: {
     table: string
@@ -72,11 +101,72 @@ export class ColumnBuilder<S, I = S, U = I> {
     return new ColumnBuilder(this._def.dataType, { ...this._def, isNotNull: false })
   }
 
-  defaultTo(value: I): ColumnBuilder<S, I | undefined, U> {
+  /**
+   * Attach a default value or default-generating expression.
+   *
+   * Two call shapes:
+   *
+   * ```ts
+   * boolean().defaultTo(true)                        // literal
+   * timestamp().defaultTo(sql`CURRENT_TIMESTAMP`)    // expression
+   * uuid().defaultTo(sql`gen_random_uuid()`)         // PG expression
+   * ```
+   *
+   * When a sumak `Expression` is passed, the AST node is preserved
+   * on `ColumnDef.defaultExpression` and the DDL printer emits the
+   * expression verbatim in the `DEFAULT` clause (with dialect-aware
+   * quoting for any column refs). Literal values take the legacy
+   * path via `ColumnDef.defaultValue`. Expression defaults mark the
+   * column as optional on insert — the DB fills the value, the
+   * INSERT row can omit the column.
+   */
+  defaultTo(value: I | Expression<I>): ColumnBuilder<S, I | undefined, U> {
+    const isExpr =
+      value !== null &&
+      typeof value === "object" &&
+      "node" in (value as unknown as { node?: unknown })
+    if (isExpr) {
+      const node = (value as unknown as { node: ExpressionNode }).node
+      return new ColumnBuilder(this._def.dataType, {
+        ...this._def,
+        hasDefault: true,
+        defaultExpression: node,
+      })
+    }
     return new ColumnBuilder(this._def.dataType, {
       ...this._def,
       hasDefault: true,
-      defaultValue: value,
+      defaultValue: value as unknown,
+    })
+  }
+
+  /**
+   * Mark the column as `GENERATED ALWAYS AS (<expression>) [STORED]`.
+   * The expression is a sumak `Expression` that references other
+   * columns via `sql\`...\``. `stored: true` persists the computed
+   * value (PG 12+, MySQL, MSSQL); omitting it yields a virtual
+   * computed column on MySQL / MSSQL. SQLite rejects generated
+   * columns without an explicit mode — the DDL printer surfaces the
+   * engine's error rather than guessing.
+   *
+   * Generated columns are read-only at the DB level. The typed
+   * builder layer treats them as optional on insert / update — the
+   * DB rejects writes either way, so the type system just follows
+   * suit.
+   */
+  generatedAlwaysAs(
+    expression: Expression<S>,
+    options?: { stored?: boolean },
+  ): ColumnBuilder<S, I | undefined, U | undefined> {
+    const node = (expression as unknown as { node: ExpressionNode }).node
+    const generated: GeneratedDef =
+      options?.stored === undefined
+        ? { expression: node }
+        : { expression: node, stored: options.stored }
+    return new ColumnBuilder(this._def.dataType, {
+      ...this._def,
+      isGenerated: true,
+      generated,
     })
   }
 

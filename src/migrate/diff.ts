@@ -402,6 +402,31 @@ function columnDefinitionFromBuilder(
       params: def.check.params ? [...def.check.params] : [],
     }
   }
+  // Default value: prefer the expression form when both are set (the
+  // builder writes one OR the other, so "both set" doesn't actually
+  // happen — the check is defensive). Literals go through `literal`
+  // nodes so the printer quotes / escapes them the same way it does
+  // for value expressions elsewhere; `LiteralNode.value` is narrow
+  // (string | number | boolean | null) so anything else falls
+  // through to a parameterised expression default.
+  if (def.defaultExpression !== undefined) {
+    node.defaultTo = def.defaultExpression
+  } else if (def.hasDefault && def.defaultValue !== undefined) {
+    const v = def.defaultValue
+    if (v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+      node.defaultTo = { type: "literal", value: v }
+    }
+    // Other value shapes (Date, objects) aren't currently supported
+    // as column defaults — callers with those needs should pass an
+    // expression via `.defaultTo(sql`...`)`.
+  }
+  // Generated column: carry the expression node + stored flag through.
+  if (def.generated) {
+    node.generatedAs =
+      def.generated.stored === undefined
+        ? { expression: def.generated.expression }
+        : { expression: def.generated.expression, stored: def.generated.stored }
+  }
   return node
 }
 
