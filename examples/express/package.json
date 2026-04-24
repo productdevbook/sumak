@@ -9,8 +9,8 @@
     "migrate:plan": "sumak migrate plan"
   },
   "dependencies": {
-    "express": "^5.1.0",
-    "pg": "^8.13.1",
+    "express": "^5.2.1",
+    "pg": "^8.20.0",
     "sumak": "*"
   }
 }

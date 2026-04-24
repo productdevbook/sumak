@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "pg": "^8.13.1",
+    "pg": "^8.20.0",
     "sumak": "*"
   }
 }
