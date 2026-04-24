@@ -1,0 +1,16 @@
+{
+  "name": "sumak-example-express",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types --watch --env-file=.env src/server.ts",
+    "migrate": "sumak migrate up",
+    "migrate:plan": "sumak migrate plan"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.1",
+    "sumak": "*"
+  }
+}

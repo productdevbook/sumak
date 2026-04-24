@@ -1,0 +1,15 @@
+{
+  "name": "sumak-example-fastify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types --watch --env-file=.env src/server.ts",
+    "migrate": "sumak migrate up"
+  },
+  "dependencies": {
+    "fastify": "^5.1.0",
+    "pg": "^8.13.1",
+    "sumak": "*"
+  }
+}

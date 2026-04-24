@@ -1,0 +1,10 @@
+{
+  "name": "sumak-example-aws-lambda",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "pg": "^8.13.1",
+    "sumak": "*"
+  }
+}

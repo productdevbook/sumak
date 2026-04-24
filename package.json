@@ -28,13 +28,13 @@
     "url": "git+https://github.com/productdevbook/sumak.git"
   },
   "funding": "https://github.com/sponsors/productdevbook",
+  "bin": {
+    "sumak": "./bin/sumak.mjs"
+  },
   "files": [
     "dist",
     "bin"
   ],
-  "bin": {
-    "sumak": "./bin/sumak.mjs"
-  },
   "type": "module",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
