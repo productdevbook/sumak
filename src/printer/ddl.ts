@@ -390,7 +390,13 @@ export class DDLPrinter {
     const parts: string[] = ["DROP INDEX"]
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))
-    if (node.table) parts.push("ON", quoteIdentifier(node.table, this.dialect))
+    // `DROP INDEX <name> ON <table>` is MySQL / MSSQL syntax. PG and
+    // SQLite reject the `ON <table>` clause at parse time — the index
+    // name is globally unique there. We silently ignore `node.table`
+    // on those dialects so a dialect-agnostic diff plan replays.
+    if (node.table && (this.dialect === "mysql" || this.dialect === "mssql")) {
+      parts.push("ON", quoteIdentifier(node.table, this.dialect))
+    }
     if (node.cascade) {
       // `DROP INDEX ... CASCADE` is PG-only. SQLite allows no cascade;
       // MySQL / MSSQL both reject it at parse time.

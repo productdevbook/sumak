@@ -50,11 +50,37 @@ export interface TableConstraints {
 }
 
 /**
+ * A single column (ASC by default) or `{ column, direction }` in a
+ * table index definition. Mirrors {@link CreateIndexNode.columns}.
+ */
+export type IndexColumn = string | { readonly column: string; readonly direction?: "ASC" | "DESC" }
+
+/**
+ * Named index attached to a table. The index lives in the schema
+ * object (not on any individual column) so it round-trips through the
+ * migration diff with a stable name and the diff engine can match
+ * before/after.
+ *
+ * `unique` flips the index to `CREATE UNIQUE INDEX`. `using` picks a
+ * method (`btree`, `gin`, `hash`, …; PG only on most dialects). `where`
+ * is a partial index predicate and takes either raw SQL or a sumak
+ * Expression<boolean>, same as {@link CheckDef.expression}.
+ */
+export interface IndexDef {
+  readonly name: string
+  readonly columns: readonly IndexColumn[]
+  readonly unique?: boolean
+  readonly using?: string
+  readonly where?: Expression<boolean> | string
+}
+
+/**
  * Options accepted as the third argument of {@link defineTable}. Kept
- * open so follow-ups (indexes, triggers, …) can land additively.
+ * open so follow-ups (triggers, partitioning, …) can land additively.
  */
 export interface TableOptions {
   readonly constraints?: TableConstraints
+  readonly indexes?: readonly IndexDef[]
 }
 
 export interface TableDefinition<
@@ -67,6 +93,7 @@ export interface TableDefinition<
   readonly name: TName
   readonly columns: TColumns
   readonly constraints?: TableConstraints
+  readonly indexes?: readonly IndexDef[]
 }
 
 /**
@@ -96,10 +123,14 @@ export function defineTable<
   TName extends string,
   TColumns extends Record<string, ColumnBuilder<any, any, any>>,
 >(name: TName, columns: TColumns, options?: TableOptions): TableDefinition<TName, TColumns> {
-  const def: TableDefinition<TName, TColumns> = options?.constraints
-    ? { name, columns, constraints: options.constraints }
-    : { name, columns }
-  return Object.freeze(def)
+  const base: TableDefinition<TName, TColumns> = { name, columns }
+  const withConstraints = options?.constraints
+    ? { ...base, constraints: options.constraints }
+    : base
+  const withIndexes = options?.indexes
+    ? { ...withConstraints, indexes: options.indexes }
+    : withConstraints
+  return Object.freeze(withIndexes)
 }
 
 // ── Runtime helpers ───────────────────────────────────────────────────
@@ -115,6 +146,7 @@ export function defineTable<
 export interface NormalizedTable {
   readonly columns: Record<string, ColumnBuilder<any, any, any>>
   readonly constraints?: TableConstraints
+  readonly indexes?: readonly IndexDef[]
 }
 
 const TABLE_DEF_MARKERS = ["name", "columns"] as const
@@ -142,9 +174,11 @@ export function normalizeTableEntry(
   entry: Record<string, ColumnBuilder<any, any, any>> | TableDefinition,
 ): NormalizedTable {
   if (isTableDefinition(entry)) {
-    return entry.constraints
-      ? { columns: entry.columns, constraints: entry.constraints }
-      : { columns: entry.columns }
+    const out: NormalizedTable = { columns: entry.columns }
+    if (entry.constraints)
+      (out as { constraints?: TableConstraints }).constraints = entry.constraints
+    if (entry.indexes) (out as { indexes?: readonly IndexDef[] }).indexes = entry.indexes
+    return out
   }
   return { columns: entry }
 }

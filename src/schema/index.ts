@@ -46,6 +46,8 @@ export { defineTable } from "./table.ts"
 export type {
   CheckDef,
   ForeignKeyDef,
+  IndexColumn,
+  IndexDef,
   InferTable,
   PrimaryKeyDef,
   TableConstraints,

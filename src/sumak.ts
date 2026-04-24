@@ -938,9 +938,14 @@ function normalizeConstructorTables(
       isColumnsRecord(entry.columns)
     ) {
       const normalized = entry as NormalizedTable
-      out[name] = normalized.constraints
-        ? { columns: normalized.columns, constraints: normalized.constraints }
-        : { columns: normalized.columns }
+      const lowered: NormalizedTable = { columns: normalized.columns }
+      if (normalized.constraints) {
+        ;(lowered as { constraints?: unknown }).constraints = normalized.constraints
+      }
+      if (normalized.indexes) {
+        ;(lowered as { indexes?: unknown }).indexes = normalized.indexes
+      }
+      out[name] = lowered
     } else {
       out[name] = { columns: entry as Record<string, ColumnBuilder<any, any, any>> }
     }

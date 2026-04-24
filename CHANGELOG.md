@@ -16,6 +16,22 @@
   pglite: the CHECK fires at the engine on INSERT and the constraint
   name propagates to the error message.
 
+- **Named table indexes via `defineTable(..., { indexes: [...] })`.**
+  `IndexDef = { name, columns, unique?, using?, where? }`. Columns
+  accept a bare string (`"email"`) or the `{ column, direction }`
+  object form. Partial predicates (`where`) take raw SQL or a sumak
+  `Expression<boolean>`. The diff engine keys indexes by name,
+  canonically signs their body (columns + unique flag + method +
+  predicate), and emits `CREATE INDEX` / `DROP INDEX` — body changes
+  surface as DROP + CREATE of the same name. Index drops precede the
+  owning table's DROP so the plan replays on every dialect. The
+  `DROP INDEX` printer now omits the `ON <table>` clause on PG and
+  SQLite (which reject it) and keeps it on MySQL / MSSQL (which
+  require it).
+  pglite verifies: a UNIQUE index rejects duplicates, a partial
+  index records its `WHERE` in `pg_indexes`, and a follow-up
+  migration drops a previously-created index.
+
 - **Table-level constraints via `defineTable(name, columns, options)`.**
   The third argument accepts
   `constraints: { primaryKey?, uniques?, checks?, foreignKeys? }`

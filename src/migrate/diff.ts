@@ -2,17 +2,22 @@ import type {
   AlterTableAction,
   AlterTableNode,
   ColumnDefinitionNode,
+  CreateIndexNode,
   CreateTableNode,
   DDLNode,
+  DropIndexNode,
   DropTableNode,
   TableConstraintNode,
 } from "../ast/ddl-nodes.ts"
+import type { ExpressionNode } from "../ast/nodes.ts"
 import { tableRef } from "../ast/nodes.ts"
 import type { ColumnBuilder, ColumnDef } from "../schema/column.ts"
 import { isTableDefinition, normalizeKeyDef, resolveCheckExpression } from "../schema/table.ts"
 import type {
   CheckDef,
   ForeignKeyDef,
+  IndexColumn,
+  IndexDef,
   NormalizedTable,
   PrimaryKeyDef,
   TableConstraints,
@@ -86,6 +91,21 @@ export function diffSchemas(
   const destructive: DDLNode[] = []
   const additive: DDLNode[] = []
 
+  // ── DROP INDEXES on removed tables ────────────────────────────
+  // Indexes belong to tables; dropping an index before its owning
+  // table keeps the DDL replayable (and makes the intent visible in
+  // the plan). Shared-table index changes are handled below per-table.
+  for (const t of removed) {
+    for (const idx of beforeNorm[t]!.indexes ?? []) {
+      destructive.push({
+        type: "drop_index",
+        name: idx.name,
+        table: t,
+        ifExists: true,
+      } satisfies DropIndexNode)
+    }
+  }
+
   // ── DROP TABLES ───────────────────────────────────────────────
   for (const t of removed) {
     destructive.push({
@@ -99,6 +119,13 @@ export function diffSchemas(
   const createdInOrder = topoSortForCreation(added, afterNorm)
   for (const t of createdInOrder) {
     additive.push(createTableFromSchema(t, afterNorm[t]!))
+  }
+
+  // ── CREATE INDEXES on newly added tables ──────────────────────
+  for (const t of createdInOrder) {
+    for (const idx of afterNorm[t]!.indexes ?? []) {
+      additive.push(createIndexFromDef(t, idx))
+    }
   }
 
   // ── ALTER (per shared table) ──────────────────────────────────
@@ -210,6 +237,11 @@ function diffTable(name: string, before: NormalizedTable, after: NormalizedTable
     additiveActions.push({ kind: "add_constraint", constraint: c })
   }
 
+  // Index delta. Key indexes by name (they're required-named). Bodies
+  // are compared via canonical signature, so a column-set or `unique`
+  // flag change surfaces as DROP + CREATE of the same name.
+  const indexDelta = diffIndexes(name, before.indexes, after.indexes)
+
   const result: TableDiff = { destructive: [], additive: [] }
   if (destructiveActions.length > 0) {
     result.destructive.push({
@@ -218,6 +250,7 @@ function diffTable(name: string, before: NormalizedTable, after: NormalizedTable
       actions: destructiveActions,
     } satisfies AlterTableNode)
   }
+  for (const n of indexDelta.dropped) result.destructive.push(n)
   if (additiveActions.length > 0) {
     result.additive.push({
       type: "alter_table",
@@ -225,7 +258,88 @@ function diffTable(name: string, before: NormalizedTable, after: NormalizedTable
       actions: additiveActions,
     } satisfies AlterTableNode)
   }
+  for (const n of indexDelta.added) result.additive.push(n)
   return result
+}
+
+// ── Index diff / materialization ──────────────────────────────────────
+
+function diffIndexes(
+  table: string,
+  before: readonly IndexDef[] | undefined,
+  after: readonly IndexDef[] | undefined,
+): { dropped: DropIndexNode[]; added: CreateIndexNode[] } {
+  const beforeMap = new Map<string, IndexDef>()
+  for (const idx of before ?? []) beforeMap.set(idx.name, idx)
+  const afterMap = new Map<string, IndexDef>()
+  for (const idx of after ?? []) afterMap.set(idx.name, idx)
+
+  const dropped: DropIndexNode[] = []
+  const added: CreateIndexNode[] = []
+
+  for (const [name, idx] of beforeMap) {
+    const matched = afterMap.get(name)
+    if (!matched) {
+      dropped.push({ type: "drop_index", name, table, ifExists: true })
+      continue
+    }
+    if (signIndex(idx) !== signIndex(matched)) {
+      dropped.push({ type: "drop_index", name, table, ifExists: true })
+      added.push(createIndexFromDef(table, matched))
+    }
+  }
+  for (const [name, idx] of afterMap) {
+    if (!beforeMap.has(name)) {
+      added.push(createIndexFromDef(table, idx))
+    }
+  }
+  return { dropped, added }
+}
+
+/**
+ * Canonical signature for an {@link IndexDef}. Drives "did this index
+ * change" detection in the diff. The signature captures everything the
+ * DDL printer would observe: columns (with directions), unique flag,
+ * index method, and partial predicate body.
+ */
+function signIndex(idx: IndexDef): string {
+  const cols = idx.columns
+    .map((c) => {
+      if (typeof c === "string") return c
+      return c.direction === undefined ? c.column : `${c.column} ${c.direction}`
+    })
+    .join(",")
+  const unique = idx.unique ? "u" : ""
+  const using = idx.using ?? ""
+  const where =
+    idx.where === undefined
+      ? ""
+      : typeof idx.where === "string"
+        ? `w:${idx.where}`
+        : `w:${JSON.stringify((idx.where as unknown as { node: ExpressionNode }).node)}`
+  return `${cols}|${unique}|${using}|${where}`
+}
+
+function createIndexFromDef(table: string, idx: IndexDef): CreateIndexNode {
+  const columns = idx.columns.map<{ column: string; direction?: "ASC" | "DESC" }>((c) => {
+    if (typeof c === "string") return { column: c }
+    return c.direction === undefined
+      ? { column: c.column }
+      : { column: c.column, direction: c.direction }
+  })
+  const node: CreateIndexNode = {
+    type: "create_index",
+    name: idx.name,
+    table,
+    columns,
+  }
+  if (idx.unique) node.unique = true
+  if (idx.using !== undefined) node.using = idx.using
+  if (idx.where !== undefined) {
+    const resolved = resolveCheckExpression(idx.where)
+    node.where = resolved.node ?? { type: "raw", sql: resolved.sql, params: [] }
+  }
+  return node
 }
 
 function alterActionsForColumn(
@@ -413,19 +527,26 @@ function normalizeSchema(schema: SchemaDef): Record<string, NormalizedTable> {
   const out: Record<string, NormalizedTable> = {}
   for (const [name, entry] of Object.entries(schema)) {
     if (isTableDefinition(entry)) {
-      out[name] = entry.constraints
-        ? { columns: entry.columns, constraints: entry.constraints }
-        : { columns: entry.columns }
+      out[name] = buildNormalized(entry.columns, entry.constraints, entry.indexes)
       continue
     }
     if (isNormalizedTable(entry)) {
-      out[name] = entry.constraints
-        ? { columns: entry.columns, constraints: entry.constraints }
-        : { columns: entry.columns }
+      out[name] = buildNormalized(entry.columns, entry.constraints, entry.indexes)
       continue
     }
     out[name] = { columns: entry }
   }
+  return out
+}
+
+function buildNormalized(
+  columns: Record<string, ColumnBuilder<any, any, any>>,
+  constraints: TableConstraints | undefined,
+  indexes: readonly IndexDef[] | undefined,
+): NormalizedTable {
+  const out: NormalizedTable = { columns }
+  if (constraints) (out as { constraints?: TableConstraints }).constraints = constraints
+  if (indexes) (out as { indexes?: readonly IndexDef[] }).indexes = indexes
   return out
 }
 
