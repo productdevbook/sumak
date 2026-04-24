@@ -140,6 +140,13 @@ export class ASTWalker {
     from: NonNullable<SelectNode["from"]>,
   ): NonNullable<SelectNode["from"]> {
     if (from.type === "subquery") return this.visitSubquery(from)
+    if (from.type === "values_clause") {
+      // Walk the per-row expressions so plugins / normalizers see
+      // them. Keep identity-preserving: if no element changed we
+      // return the original node.
+      const rows = mapPreserve(from.rows, (row) => mapPreserve(row, (e) => this.visitExpression(e)))
+      return rows === from.rows ? from : { ...from, rows }
+    }
     // table_ref and graph_table have no child expressions / selects in
     // the common path — subclasses override if they need to descend.
     return from

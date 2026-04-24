@@ -213,6 +213,21 @@ export interface TupleNode {
 }
 
 /**
+ * Inline `VALUES (...), (...)` clause used as a derived table in
+ * FROM: `FROM (VALUES (1, 'a'), (2, 'b')) AS t(id, name)`. Rows
+ * are tuples of expressions; all rows must have the same arity
+ * (builder enforces). `alias` + `columnAliases` name the derived
+ * table and its columns — required on every dialect we support.
+ */
+export interface ValuesClauseNode {
+  type: "values_clause"
+  /** Each row is a tuple of expressions; the row count must be ≥ 1. */
+  rows: ExpressionNode[][]
+  alias: string
+  columnAliases: string[]
+}
+
+/**
  * Quantified subquery / array comparison — `col <op> ANY(...)` or
  * `col <op> ALL(...)`. The operand is either a subquery (`ANY (SELECT
  * ... FROM ...)`) or an array expression (`ANY (ARRAY[1,2,3])` /
@@ -250,7 +265,7 @@ export interface TableRefNode {
 export interface JoinNode {
   type: "join"
   joinType: JoinType
-  table: TableRefNode | SubqueryNode
+  table: TableRefNode | SubqueryNode | ValuesClauseNode
   on?: ExpressionNode
   lateral?: boolean
 }
@@ -370,7 +385,7 @@ export interface SelectNode {
   distinct: boolean
   distinctOn?: ExpressionNode[]
   columns: ExpressionNode[]
-  from?: TableRefNode | SubqueryNode | import("./graph-nodes.ts").GraphTableNode
+  from?: TableRefNode | SubqueryNode | ValuesClauseNode | import("./graph-nodes.ts").GraphTableNode
   joins: JoinNode[]
   where?: ExpressionNode
   groupBy: ExpressionNode[]

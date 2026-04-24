@@ -10,6 +10,7 @@ import type {
   SubqueryNode,
   TableRefNode,
   TemporalClause,
+  ValuesClauseNode,
 } from "../ast/nodes.ts"
 import { createSelectNode } from "../ast/nodes.ts"
 import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
@@ -50,12 +51,15 @@ export class SelectBuilder {
     return new SelectBuilder({ ...this.node, distinct: true, distinctOn: nodes })
   }
 
-  from(table: string | TableRefNode | SubqueryNode, alias?: string): SelectBuilder {
+  from(
+    table: string | TableRefNode | SubqueryNode | ValuesClauseNode,
+    alias?: string,
+  ): SelectBuilder {
     if (typeof table === "string") {
       // Parse optional "schema.table" dotted form; single-part stays flat.
       return new SelectBuilder({ ...this.node, from: parseTableRef(table, alias) })
     }
-    if (alias && table.type !== "subquery") {
+    if (alias && table.type !== "subquery" && table.type !== "values_clause") {
       return new SelectBuilder({ ...this.node, from: { ...table, alias } })
     }
     return new SelectBuilder({ ...this.node, from: table })

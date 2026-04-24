@@ -441,6 +441,34 @@ export class Sumak<DB> {
   }
 
   /**
+   * Start a SELECT whose FROM is a `(VALUES (...)) AS t(cols)` derived
+   * table. The `valuesClause` helper builds the node and checks row
+   * arity; plug the result in here to get a typed builder whose output
+   * row keys off the column-alias list.
+   *
+   * ```ts
+   * const seed = valuesClause({
+   *   alias: "seed",
+   *   columns: ["id", "label"],
+   *   rows: [[val(1), val("one")], [val(2), val("two")]],
+   * })
+   * db.selectFromValues(seed).selectAll().many()
+   * // SELECT * FROM (VALUES (1, 'one'), (2, 'two')) AS "seed"("id", "label")
+   * ```
+   */
+  selectFromValues(
+    values: import("./ast/nodes.ts").ValuesClauseNode,
+  ): TypedSelectBuilder<DB, keyof DB & string, Record<string, unknown>> {
+    return new TypedSelectBuilder<DB, keyof DB & string, Record<string, unknown>>(
+      new SelectBuilder().from(values),
+      values.alias as any,
+      this._dialect.createPrinter(),
+      (n: ASTNode) => this.compile(n),
+      this as unknown as import("./driver/execute.ts").SumakExecutor,
+    )
+  }
+
+  /**
    * SELECT COUNT(*) FROM table — convenience shorthand.
    */
   selectCount<T extends keyof DB & string>(table: T): TypedSelectBuilder<DB, T, { count: number }> {

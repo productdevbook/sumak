@@ -24,6 +24,7 @@ import type {
   OrderByNode,
   SelectNode,
   TupleNode,
+  ValuesClauseNode,
   WindowFunctionNode,
 } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
@@ -971,6 +972,48 @@ export function all<T>(operand: Expression<T[]> | Expression<T>): Expression<T> 
  */
 export function some<T>(operand: Expression<T[]> | Expression<T>): Expression<T> {
   return buildQuantified<T>("SOME", operand)
+}
+
+/**
+ * Build a `(VALUES (...)) AS alias(col1, col2, …)` derived-table
+ * AST node. Every row must have the same number of elements as the
+ * column-alias list — enforced here so mis-shaped data lights up at
+ * build time, not at driver parse.
+ *
+ * ```ts
+ * const seed = valuesClause({
+ *   alias: "seed",
+ *   columns: ["id", "name"],
+ *   rows: [[val(1), val("Alice")], [val(2), val("Bob")]],
+ * })
+ * db.selectFrom(seed).selectAll()
+ * ```
+ */
+export function valuesClause(args: {
+  alias: string
+  columns: readonly string[]
+  rows: ReadonlyArray<ReadonlyArray<Expression<any>>>
+}): ValuesClauseNode {
+  if (args.rows.length === 0) {
+    throw new InvalidExpressionError("valuesClause({ rows }) requires at least one row.")
+  }
+  const arity = args.columns.length
+  if (arity === 0) {
+    throw new InvalidExpressionError("valuesClause({ columns }) requires at least one column.")
+  }
+  for (const [i, row] of args.rows.entries()) {
+    if (row.length !== arity) {
+      throw new InvalidExpressionError(
+        `valuesClause: row ${i} has ${row.length} values but columns list has ${arity}.`,
+      )
+    }
+  }
+  return {
+    type: "values_clause",
+    alias: args.alias,
+    columnAliases: [...args.columns],
+    rows: args.rows.map((row) => row.map((e) => (e as unknown as { node: ExpressionNode }).node)),
+  }
 }
 
 function buildQuantified<T>(

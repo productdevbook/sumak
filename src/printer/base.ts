@@ -33,6 +33,7 @@ import type {
   TupleNode,
   UnaryOpNode,
   UpdateNode,
+  ValuesClauseNode,
   WindowFunctionNode,
 } from "../ast/nodes.ts"
 import type {
@@ -249,6 +250,8 @@ export class BasePrinter implements Printer {
         parts.push(this.printSubquery(node.from))
       } else if (node.from.type === "graph_table") {
         parts.push(this.printGraphTable(node.from))
+      } else if (node.from.type === "values_clause") {
+        parts.push(this.printValuesClause(node.from))
       } else {
         parts.push(this.printTableRef(node.from))
       }
@@ -831,6 +834,8 @@ export class BasePrinter implements Printer {
 
     if (node.table.type === "subquery") {
       parts.push(this.printSubquery(node.table))
+    } else if (node.table.type === "values_clause") {
+      parts.push(this.printValuesClause(node.table))
     } else {
       parts.push(this.printTableRef(node.table))
     }
@@ -840,6 +845,21 @@ export class BasePrinter implements Printer {
     }
 
     return parts.join(" ")
+  }
+
+  /**
+   * Print `(VALUES (1, 'a'), (2, 'b')) AS t(id, name)`. Portable
+   * syntax — PG / MySQL 8 / SQLite / MSSQL all accept this exact
+   * form as a derived table in FROM / JOIN. Row count must be ≥ 1
+   * and row arity must match the column-alias count; the builder
+   * enforces both so the printer can trust them here.
+   */
+  protected printValuesClause(node: ValuesClauseNode): string {
+    const rows = node.rows
+      .map((row) => `(${row.map((e) => this.printExpression(e)).join(", ")})`)
+      .join(", ")
+    const aliasCols = node.columnAliases.map((c) => quoteIdentifier(c, this.dialect)).join(", ")
+    return `(VALUES ${rows}) AS ${quoteIdentifier(node.alias, this.dialect)} (${aliasCols})`
   }
 
   protected printOrderBy(node: OrderByNode): string {
