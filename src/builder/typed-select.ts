@@ -623,11 +623,11 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * Requires a driver — `sumak({ …, driver })`. Without one, throws
    * {@link import("../driver/execute.ts").MissingDriverError}.
    */
-  async many(): Promise<O[]> {
+  async many(options?: { signal?: AbortSignal }): Promise<O[]> {
     const exec = this._requireExecutor()
     const ast = this.build()
     const ctx = deriveResultContext(ast)
-    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
+    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
     return rows as unknown as O[]
   }
 
@@ -636,11 +636,11 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * `UnexpectedRowCountError` if zero or >1 rows come back. Use when
    * the query's shape (e.g. primary-key lookup) guarantees one row.
    */
-  async one(): Promise<O> {
+  async one(options?: { signal?: AbortSignal }): Promise<O> {
     const exec = this._requireExecutor()
     const ast = this.build()
     const ctx = deriveResultContext(ast)
-    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
+    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
     return row as unknown as O
   }
 
@@ -649,11 +649,11 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * are no rows. The query is not implicitly `LIMIT 1`-ed — use
    * `.limit(1)` if you want that.
    */
-  async first(): Promise<O | null> {
+  async first(options?: { signal?: AbortSignal }): Promise<O | null> {
     const exec = this._requireExecutor()
     const ast = this.build()
     const ctx = deriveResultContext(ast)
-    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
+    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
     return row as unknown as O | null
   }
 

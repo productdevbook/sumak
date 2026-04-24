@@ -46,10 +46,10 @@ export async function runInTransaction<T>(
   driver: Driver,
   dialect: SQLDialect,
   fn: (tx: Driver) => Promise<T>,
-  opts: TransactionOptions = {},
+  opts: TransactionOptions & { signal?: AbortSignal } = {},
 ): Promise<T> {
   if (driver.transaction) {
-    return driver.transaction(fn)
+    return driver.transaction(fn, opts.signal ? { signal: opts.signal } : undefined)
   }
   return manualTransaction(driver, dialect, fn, opts)
 }

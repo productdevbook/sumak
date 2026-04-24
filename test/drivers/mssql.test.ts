@@ -114,4 +114,50 @@ describe("mssqlDriver", () => {
     ).rejects.toThrow("boom")
     expect(pool.txEvents).toEqual(["BEGIN", "ROLLBACK"])
   })
+
+  it("AbortSignal — calls request.cancel() when the signal fires mid-flight", async () => {
+    // Build a request where the query never resolves so we can
+    // deterministically observe the abort path. `.cancel()` is the
+    // `mssql` package's wire-level attention — sumak wires the
+    // AbortSignal directly to it.
+    let resolveQuery: (v: unknown) => void = () => {}
+    let cancelled = 0
+    interface FakeRequest {
+      input(name: string, value: unknown): FakeRequest
+      query(sql: string): Promise<unknown>
+      cancel(): void
+    }
+    const makeRequest = (): FakeRequest => {
+      const req: FakeRequest = {
+        input() {
+          return req
+        },
+        query() {
+          return new Promise((res) => {
+            resolveQuery = res
+          })
+        },
+        cancel() {
+          cancelled++
+        },
+      }
+      return req
+    }
+    const pool = {
+      request: makeRequest,
+      transaction() {
+        // Not exercised in this test.
+        throw new Error("not used")
+      },
+    } as unknown as Parameters<typeof mssqlDriver>[0]
+    const driver = mssqlDriver(pool)
+    const ctrl = new AbortController()
+    const p = driver.query("SELECT 1", [], { signal: ctrl.signal })
+    ctrl.abort()
+    await expect(p).rejects.toMatchObject({ name: "AbortError" })
+    expect(cancelled).toBe(1)
+    // Leave the dangling promise resolvable so it doesn't hang the
+    // event loop — mssql would hand its request an error normally.
+    resolveQuery({ recordset: [], rowsAffected: [] })
+  })
 })

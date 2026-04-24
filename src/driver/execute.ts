@@ -2,7 +2,7 @@ import type { ASTNode } from "../ast/nodes.ts"
 import { SumakError } from "../errors.ts"
 import type { ResultContext } from "../plugin/types.ts"
 import type { CompiledQuery } from "../types.ts"
-import type { Driver, ExecuteResult, Row } from "./types.ts"
+import type { Driver, DriverCallOptions, ExecuteResult, Row } from "./types.ts"
 
 /**
  * Minimal surface a builder needs to execute. Lets builders call into
@@ -63,8 +63,9 @@ export async function runQuery(
   driver: Driver,
   query: CompiledQuery,
   transform: RowTransformer,
+  options?: DriverCallOptions,
 ): Promise<Row[]> {
-  const rows = await driver.query(query.sql, query.params)
+  const rows = await driver.query(query.sql, query.params, options)
   return transform(rows)
 }
 
@@ -77,8 +78,12 @@ export function resultTransformer(exec: SumakExecutor, ctx?: ResultContext): Row
  * Run a compiled query that is not expected to return rows (INSERT /
  * UPDATE / DELETE without RETURNING, DDL, TCL).
  */
-export async function runExecute(driver: Driver, query: CompiledQuery): Promise<ExecuteResult> {
-  return driver.execute(query.sql, query.params)
+export async function runExecute(
+  driver: Driver,
+  query: CompiledQuery,
+  options?: DriverCallOptions,
+): Promise<ExecuteResult> {
+  return driver.execute(query.sql, query.params, options)
 }
 
 /**
@@ -89,8 +94,9 @@ export async function runOne(
   driver: Driver,
   query: CompiledQuery,
   transform: RowTransformer,
+  options?: DriverCallOptions,
 ): Promise<Row> {
-  const rows = await runQuery(driver, query, transform)
+  const rows = await runQuery(driver, query, transform, options)
   if (rows.length !== 1) {
     throw new UnexpectedRowCountError("exactly one", rows.length)
   }
@@ -104,7 +110,8 @@ export async function runFirst(
   driver: Driver,
   query: CompiledQuery,
   transform: RowTransformer,
+  options?: DriverCallOptions,
 ): Promise<Row | null> {
-  const rows = await runQuery(driver, query, transform)
+  const rows = await runQuery(driver, query, transform, options)
   return rows[0] ?? null
 }

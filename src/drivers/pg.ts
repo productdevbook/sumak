@@ -1,4 +1,5 @@
-import type { Driver, ExecuteResult, Row } from "../driver/types.ts"
+import type { Driver, DriverCallOptions, ExecuteResult, Row } from "../driver/types.ts"
+import { withSignal } from "../driver/types.ts"
 
 /**
  * Shape of the bits of `pg.Pool` / `pg.Client` / `pg.PoolClient` that
@@ -67,18 +68,30 @@ export function pgDriver(pool: PgPool | PgQueryable, options: PgDriverOptions = 
     client: PgQueryable,
     sql: string,
     params: readonly unknown[],
+    opts: DriverCallOptions | undefined,
   ): Promise<{ rows: Row[]; rowCount: number }> => {
-    const r = await client.query(sql, params)
-    return { rows: r.rows, rowCount: r.rowCount ?? 0 }
+    // node-postgres doesn't expose per-request cancellation on its
+    // public API (cancellation requires a separate control connection
+    // to `pg_cancel_backend`). As a pragmatic default we race the
+    // query against the signal so the caller's promise rejects
+    // promptly; the underlying connection finishes whatever it's
+    // doing in the background. Callers that need true wire-level
+    // cancellation should pull the client out of the pool and issue
+    // `pg_cancel_backend` themselves.
+    const inflight = client.query(sql, params).then((r) => ({
+      rows: r.rows,
+      rowCount: r.rowCount ?? 0,
+    }))
+    return withSignal(opts?.signal, inflight)
   }
 
   const base: Driver = {
-    async query(sql, params) {
-      const { rows } = await run(pool, sql, params)
+    async query(sql, params, options) {
+      const { rows } = await run(pool, sql, params, options)
       return rows
     },
-    async execute(sql, params) {
-      const { rowCount } = await run(pool, sql, params)
+    async execute(sql, params, options) {
+      const { rowCount } = await run(pool, sql, params, options)
       return { affected: rowCount } satisfies ExecuteResult
     },
   }
@@ -89,25 +102,25 @@ export function pgDriver(pool: PgPool | PgQueryable, options: PgDriverOptions = 
 
   return {
     ...base,
-    async transaction<T>(fn: (tx: Driver) => Promise<T>): Promise<T> {
+    async transaction<T>(fn: (tx: Driver) => Promise<T>, options?: DriverCallOptions): Promise<T> {
       const client = await (pool as PgPool).connect()
       // Wrap the client as a scoped Driver that shares the same
       // connection for the life of the transaction. No nested
       // transaction support at this layer — callers who want
       // savepoints can use sumak's `tx.savepoint(...)` directly.
       const scoped: Driver = {
-        async query(sql, params) {
-          const { rows } = await run(client, sql, params)
+        async query(sql, params, opts) {
+          const { rows } = await run(client, sql, params, opts ?? options)
           return rows
         },
-        async execute(sql, params) {
-          const { rowCount } = await run(client, sql, params)
+        async execute(sql, params, opts) {
+          const { rowCount } = await run(client, sql, params, opts ?? options)
           return { affected: rowCount } satisfies ExecuteResult
         },
       }
       await client.query("BEGIN", [])
       try {
-        const result = await fn(scoped)
+        const result = await withSignal(options?.signal, fn(scoped))
         await client.query("COMMIT", [])
         return result
       } catch (err) {

@@ -62,9 +62,9 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
    * `RETURNING` — for RETURNING, call `.returning(...)` first then
    * `.many()` on the resulting builder.
    */
-  async exec(): Promise<ExecuteResult> {
+  async exec(options?: { signal?: AbortSignal }): Promise<ExecuteResult> {
     const exec = this._requireExecutor()
-    return runExecute(exec.driver(), this.toSQL())
+    return runExecute(exec.driver(), this.toSQL(), options)
   }
 
   private _requireExecutor(): SumakExecutor {
@@ -413,16 +413,16 @@ export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, R> {
   }
 
   /** Run the INSERT and return every row produced by `RETURNING`. */
-  async many(): Promise<R[]> {
+  async many(options?: { signal?: AbortSignal }): Promise<R[]> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
+    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
     return rows as unknown as R[]
   }
 
   /** Run the INSERT and return the single RETURNING row, or throw. */
-  async one(): Promise<R> {
-    const rows = await this.many()
+  async one(options?: { signal?: AbortSignal }): Promise<R> {
+    const rows = await this.many(options)
     if (rows.length !== 1) {
       throw new UnexpectedRowCountError("exactly one", rows.length)
     }
@@ -430,8 +430,8 @@ export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, R> {
   }
 
   /** Run the INSERT and return the first RETURNING row, or null. */
-  async first(): Promise<R | null> {
-    const rows = await this.many()
+  async first(options?: { signal?: AbortSignal }): Promise<R | null> {
+    const rows = await this.many(options)
     return rows[0] ?? null
   }
 

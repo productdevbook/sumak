@@ -14,11 +14,21 @@ import type { Driver } from "../../src/driver/types.ts"
  */
 export function pgliteDriver(pg: PGlite): Driver {
   return {
-    async query(sql, params) {
+    async query(sql, params, options) {
+      if (options?.signal?.aborted) {
+        const err = new Error("The operation was aborted.")
+        err.name = "AbortError"
+        throw err
+      }
       const r = await pg.query<Record<string, unknown>>(sql, [...params])
       return r.rows
     },
-    async execute(sql, params) {
+    async execute(sql, params, options) {
+      if (options?.signal?.aborted) {
+        const err = new Error("The operation was aborted.")
+        err.name = "AbortError"
+        throw err
+      }
       const r = await pg.query(sql, [...params])
       return { affected: r.affectedRows ?? 0 }
     },

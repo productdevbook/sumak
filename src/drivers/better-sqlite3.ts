@@ -1,4 +1,5 @@
-import type { Driver, ExecuteResult, Row } from "../driver/types.ts"
+import type { Driver, DriverCallOptions, ExecuteResult, Row } from "../driver/types.ts"
+import { AbortError } from "../driver/types.ts"
 
 /**
  * Minimal surface of `better-sqlite3`'s Database class that sumak uses.
@@ -51,6 +52,13 @@ export function betterSqlite3Driver(
 ): Driver {
   const captureTx = options.captureTransactions ?? true
 
+  // better-sqlite3 is synchronous; we can only honour a signal that's
+  // already aborted at call time (once we're inside `.all()` / `.run()`,
+  // the JS main thread is blocked until the native call returns).
+  const checkSignal = (opts?: DriverCallOptions): void => {
+    if (opts?.signal?.aborted) throw new AbortError()
+  }
+
   const runQuery = (sql: string, params: readonly unknown[]): Row[] => {
     const stmt = db.prepare(sql)
     return stmt.all(...params) as Row[]
@@ -66,10 +74,12 @@ export function betterSqlite3Driver(
   }
 
   const base: Driver = {
-    async query(sql, params) {
+    async query(sql, params, options) {
+      checkSignal(options)
       return runQuery(sql, params)
     },
-    async execute(sql, params) {
+    async execute(sql, params, options) {
+      checkSignal(options)
       return runExecute(sql, params)
     },
   }
@@ -78,7 +88,8 @@ export function betterSqlite3Driver(
 
   return {
     ...base,
-    async transaction<T>(fn: (tx: Driver) => Promise<T>): Promise<T> {
+    async transaction<T>(fn: (tx: Driver) => Promise<T>, options?: DriverCallOptions): Promise<T> {
+      checkSignal(options)
       // SQLite allows only one writer at a time; BEGIN IMMEDIATE takes
       // the write lock up front to avoid a mid-transaction
       // SQLITE_BUSY. Reads are fine under the same lock.

@@ -54,9 +54,9 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   }
 
   /** Run the UPDATE and return `{ affected }`. */
-  async exec(): Promise<ExecuteResult> {
+  async exec(options?: { signal?: AbortSignal }): Promise<ExecuteResult> {
     const exec = this._requireExecutor()
-    return runExecute(exec.driver(), this.toSQL())
+    return runExecute(exec.driver(), this.toSQL(), options)
   }
 
   private _requireExecutor(): SumakExecutor {
@@ -329,24 +329,24 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, R> {
   }
 
   /** Run the UPDATE and return every row produced by `RETURNING`. */
-  async many(): Promise<R[]> {
+  async many(options?: { signal?: AbortSignal }): Promise<R[]> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
+    const rows = await runQuery(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
     return rows as unknown as R[]
   }
 
-  async one(): Promise<R> {
+  async one(options?: { signal?: AbortSignal }): Promise<R> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
+    const row = await runOne(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
     return row as unknown as R
   }
 
-  async first(): Promise<R | null> {
+  async first(options?: { signal?: AbortSignal }): Promise<R | null> {
     const exec = this._requireExecutor()
     const ctx = deriveResultContext(this.build())
-    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx))
+    const row = await runFirst(exec.driver(), this.toSQL(), resultTransformer(exec, ctx), options)
     return row as unknown as R | null
   }
 

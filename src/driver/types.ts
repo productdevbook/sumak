@@ -48,18 +48,40 @@ export interface ExecuteResult {
  * the caller so tooling like retry wrappers and connection-pool
  * instrumentation keeps working.
  */
+/**
+ * Per-call options shared by {@link Driver.query} and
+ * {@link Driver.execute}. Kept open so follow-ups (per-query timeout,
+ * prepared-statement hints) can land additively without renaming.
+ */
+export interface DriverCallOptions {
+  /**
+   * Abort signal. When the signal fires mid-flight the driver should
+   * attempt to cancel the in-progress statement — the exact mechanism
+   * depends on the wire protocol (PG has a Cancel message; mysql2 has
+   * `connection.destroy()` as the last resort; better-sqlite3 is
+   * synchronous so the signal is checked pre-call only). Drivers that
+   * can't truly cancel should still reject with `AbortError` when the
+   * signal is already aborted at call time.
+   */
+  readonly signal?: AbortSignal
+}
+
 export interface Driver {
   /**
    * Run a statement and return every row. Used for SELECT, and for
    * INSERT/UPDATE/DELETE when `RETURNING` was requested.
    */
-  query(sql: string, params: readonly unknown[]): Promise<Row[]>
+  query(sql: string, params: readonly unknown[], options?: DriverCallOptions): Promise<Row[]>
 
   /**
    * Run a statement without fetching rows. Used for plain
    * INSERT/UPDATE/DELETE (no RETURNING), DDL, TCL.
    */
-  execute(sql: string, params: readonly unknown[]): Promise<ExecuteResult>
+  execute(
+    sql: string,
+    params: readonly unknown[],
+    options?: DriverCallOptions,
+  ): Promise<ExecuteResult>
 
   /**
    * Optional: begin a transaction and return a scoped `Driver` whose
@@ -71,8 +93,12 @@ export interface Driver {
    * The returned function receives a scoped driver and must resolve
    * with the caller's result; sumak calls COMMIT on resolve and
    * ROLLBACK on throw.
+   *
+   * If an `AbortSignal` fires while the transaction is open, sumak
+   * aborts the in-flight statement (driver-permitting) and calls
+   * ROLLBACK. The `fn` reject propagates to the caller.
    */
-  transaction?<T>(fn: (tx: Driver) => Promise<T>): Promise<T>
+  transaction?<T>(fn: (tx: Driver) => Promise<T>, options?: DriverCallOptions): Promise<T>
 
   /**
    * Optional: closes the driver's underlying connection / pool. sumak
@@ -80,6 +106,72 @@ export interface Driver {
    * lifecycle for user code that owns the driver.
    */
   close?(): Promise<void>
+}
+
+/**
+ * A thrown `DOMException` with `name: "AbortError"`. sumak surfaces
+ * this when a query is cancelled via the caller's AbortSignal. Drivers
+ * that have their own cancellation error type may reject with it
+ * instead; callers should match on `err.name === "AbortError"` for
+ * cross-driver portability.
+ */
+export function isAbortError(err: unknown): boolean {
+  return err instanceof Error && err.name === "AbortError"
+}
+
+/**
+ * Throw an `AbortError` matching the shape of WHATWG's `DOMException`
+ * with `name: "AbortError"`. Used by driver adapters to reject when
+ * the caller's signal is already aborted at call time.
+ */
+export class AbortError extends Error {
+  constructor(message = "The operation was aborted.") {
+    super(message)
+    this.name = "AbortError"
+  }
+}
+
+/**
+ * Wrap a driver's in-flight Promise so it rejects with
+ * {@link AbortError} the moment the caller's signal fires. If the
+ * signal is already aborted at call time, throws synchronously-ish
+ * (after one microtask). Drivers with native cancellation layers
+ * (mysql2's `conn.destroy()`, mssql's `request.cancel()`) should
+ * invoke those from `onAbort` so the server releases locks / open
+ * cursors; this helper is a last-resort watchdog that makes
+ * cancellation observable to the caller even when the driver has no
+ * native path.
+ */
+export async function withSignal<T>(
+  signal: AbortSignal | undefined,
+  task: Promise<T>,
+  onAbort?: () => void,
+): Promise<T> {
+  if (!signal) return task
+  if (signal.aborted) {
+    onAbort?.()
+    throw new AbortError()
+  }
+  return new Promise<T>((resolve, reject) => {
+    const handleAbort = (): void => {
+      try {
+        onAbort?.()
+      } finally {
+        reject(new AbortError())
+      }
+    }
+    signal.addEventListener("abort", handleAbort, { once: true })
+    task.then(
+      (value) => {
+        signal.removeEventListener("abort", handleAbort)
+        resolve(value)
+      },
+      (err: unknown) => {
+        signal.removeEventListener("abort", handleAbort)
+        reject(err)
+      },
+    )
+  })
 }
 
 /**

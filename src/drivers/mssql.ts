@@ -1,4 +1,5 @@
-import type { Driver, ExecuteResult, Row } from "../driver/types.ts"
+import type { Driver, DriverCallOptions, ExecuteResult, Row } from "../driver/types.ts"
+import { withSignal } from "../driver/types.ts"
 
 /**
  * Narrow slice of the `mssql` (tedious-based) package's ConnectionPool
@@ -21,6 +22,14 @@ export interface MssqlRequest {
     recordsets?: Record<string, unknown>[][]
     rowsAffected: number[]
   }>
+  /**
+   * Optional native cancellation — the `mssql` package's Request
+   * object exposes `.cancel()` which sends an attention token down
+   * the wire. sumak's adapter wires `AbortSignal` to it when the
+   * method exists so aborted queries really stop on the server
+   * rather than merely rejecting on the client side.
+   */
+  cancel?(): void
 }
 
 export interface MssqlTransaction {
@@ -72,29 +81,35 @@ export function mssqlDriver(pool: MssqlPool, options: MssqlDriverOptions = {}): 
     requestFactory: () => MssqlRequest,
     sql: string,
     params: readonly unknown[],
+    opts: DriverCallOptions | undefined,
   ): Promise<Row[]> => {
-    const r = await bindParams(requestFactory(), params).query(sql)
-    return (r.recordset ?? []) as Row[]
+    const request = bindParams(requestFactory(), params)
+    const task = request.query(sql).then((r) => (r.recordset ?? []) as Row[])
+    return withSignal(opts?.signal, task, () => request.cancel?.())
   }
 
   const runExecute = async (
     requestFactory: () => MssqlRequest,
     sql: string,
     params: readonly unknown[],
+    opts: DriverCallOptions | undefined,
   ): Promise<ExecuteResult> => {
-    const r = await bindParams(requestFactory(), params).query(sql)
-    // `rowsAffected` is an array (one entry per result set); for a
-    // single-statement request the first slot holds the total.
-    const affected = Array.isArray(r.rowsAffected) ? (r.rowsAffected[0] ?? 0) : 0
-    return { affected }
+    const request = bindParams(requestFactory(), params)
+    const task = request.query(sql).then((r) => {
+      // `rowsAffected` is an array (one entry per result set); for a
+      // single-statement request the first slot holds the total.
+      const affected = Array.isArray(r.rowsAffected) ? (r.rowsAffected[0] ?? 0) : 0
+      return { affected } satisfies ExecuteResult
+    })
+    return withSignal(opts?.signal, task, () => request.cancel?.())
   }
 
   const base: Driver = {
-    async query(sql, params) {
-      return runQuery(() => pool.request(), sql, params)
+    async query(sql, params, options) {
+      return runQuery(() => pool.request(), sql, params, options)
     },
-    async execute(sql, params) {
-      return runExecute(() => pool.request(), sql, params)
+    async execute(sql, params, options) {
+      return runExecute(() => pool.request(), sql, params, options)
     },
   }
 
@@ -102,19 +117,19 @@ export function mssqlDriver(pool: MssqlPool, options: MssqlDriverOptions = {}): 
 
   return {
     ...base,
-    async transaction<T>(fn: (tx: Driver) => Promise<T>): Promise<T> {
+    async transaction<T>(fn: (tx: Driver) => Promise<T>, options?: DriverCallOptions): Promise<T> {
       const tx = pool.transaction()
       await tx.begin()
       const scoped: Driver = {
-        async query(sql, params) {
-          return runQuery(() => tx.request(), sql, params)
+        async query(sql, params, opts) {
+          return runQuery(() => tx.request(), sql, params, opts ?? options)
         },
-        async execute(sql, params) {
-          return runExecute(() => tx.request(), sql, params)
+        async execute(sql, params, opts) {
+          return runExecute(() => tx.request(), sql, params, opts ?? options)
         },
       }
       try {
-        const result = await fn(scoped)
+        const result = await withSignal(options?.signal, fn(scoped))
         await tx.commit()
         return result
       } catch (err) {

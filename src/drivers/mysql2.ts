@@ -1,4 +1,5 @@
-import type { Driver, ExecuteResult, Row } from "../driver/types.ts"
+import type { Driver, DriverCallOptions, ExecuteResult, Row } from "../driver/types.ts"
+import { withSignal } from "../driver/types.ts"
 
 /**
  * Narrow slice of `mysql2`'s promise pool surface. The real package
@@ -65,27 +66,39 @@ export function mysql2Driver(
 ): Driver {
   const captureTx = options.captureTransactions ?? true
 
-  const runQuery = async (client: Mysql2Queryable, sql: string, params: readonly unknown[]) => {
-    const [rows] = await client.query(sql, params)
-    // mysql2 returns either a row array or an OK packet; the OK packet
-    // shape is `{ affectedRows, ... }` — definitely not a row list.
-    if (!Array.isArray(rows)) return [] as Row[]
-    return rows as Row[]
+  const runQuery = async (
+    client: Mysql2Queryable,
+    sql: string,
+    params: readonly unknown[],
+    opts: DriverCallOptions | undefined,
+  ): Promise<Row[]> => {
+    const task = client.query(sql, params).then(([rows]) => {
+      if (!Array.isArray(rows)) return [] as Row[]
+      return rows as Row[]
+    })
+    return withSignal(opts?.signal, task)
   }
 
-  const runExecute = async (client: Mysql2Queryable, sql: string, params: readonly unknown[]) => {
-    const [result] = await client.query(sql, params)
-    if (Array.isArray(result)) return { affected: result.length } satisfies ExecuteResult
-    const ok = result as Mysql2OkPacket
-    return { affected: ok.affectedRows ?? 0 } satisfies ExecuteResult
+  const runExecute = async (
+    client: Mysql2Queryable,
+    sql: string,
+    params: readonly unknown[],
+    opts: DriverCallOptions | undefined,
+  ): Promise<ExecuteResult> => {
+    const task = client.query(sql, params).then(([result]) => {
+      if (Array.isArray(result)) return { affected: result.length } satisfies ExecuteResult
+      const ok = result as Mysql2OkPacket
+      return { affected: ok.affectedRows ?? 0 } satisfies ExecuteResult
+    })
+    return withSignal(opts?.signal, task)
   }
 
   const base: Driver = {
-    async query(sql, params) {
-      return runQuery(pool, sql, params)
+    async query(sql, params, options) {
+      return runQuery(pool, sql, params, options)
     },
-    async execute(sql, params) {
-      return runExecute(pool, sql, params)
+    async execute(sql, params, options) {
+      return runExecute(pool, sql, params, options)
     },
   }
 
@@ -95,19 +108,19 @@ export function mysql2Driver(
 
   return {
     ...base,
-    async transaction<T>(fn: (tx: Driver) => Promise<T>): Promise<T> {
+    async transaction<T>(fn: (tx: Driver) => Promise<T>, options?: DriverCallOptions): Promise<T> {
       const conn = await (pool as Mysql2Pool).getConnection()
       const scoped: Driver = {
-        async query(sql, params) {
-          return runQuery(conn, sql, params)
+        async query(sql, params, opts) {
+          return runQuery(conn, sql, params, opts ?? options)
         },
-        async execute(sql, params) {
-          return runExecute(conn, sql, params)
+        async execute(sql, params, opts) {
+          return runExecute(conn, sql, params, opts ?? options)
         },
       }
       await conn.beginTransaction()
       try {
-        const result = await fn(scoped)
+        const result = await withSignal(options?.signal, fn(scoped))
         await conn.commit()
         return result
       } catch (err) {

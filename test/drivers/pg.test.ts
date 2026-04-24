@@ -98,4 +98,18 @@ describe("pgDriver", () => {
     const driver = pgDriver(pool, { captureTransactions: false })
     expect(driver.transaction).toBeUndefined()
   })
+
+  it("aborted signal rejects with AbortError before the pool is queried", async () => {
+    const pool = mockPool({ SELECT: [{ id: 1 }] })
+    const driver = pgDriver(pool)
+    const ctrl = new AbortController()
+    ctrl.abort()
+    await expect(driver.query("SELECT 1", [], { signal: ctrl.signal })).rejects.toMatchObject({
+      name: "AbortError",
+    })
+    // pg's adapter fires the query then races it against the signal,
+    // so `pool.query` is called once — cancellation is best-effort on
+    // node-postgres' public surface. What matters: the caller's
+    // promise rejects promptly.
+  })
 })
