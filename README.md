@@ -52,6 +52,9 @@
 - [Executing Queries (Driver)](#executing-queries-driver)
 - [Migrations](#migrations)
 - [Introspection](#introspection)
+- [CLI](#cli)
+- [Benchmarks](#benchmarks)
+- [Examples](#examples)
 - [Architecture](#architecture)
 
 ---
@@ -1849,19 +1852,111 @@ care which engine produced it.
 
 - Table + column names.
 - Data types (mapped back to sumak column factories).
-- `notNull` / `nullable`, `primaryKey`, `unique`, foreign keys with
-  `ON DELETE` / `ON UPDATE` actions.
-- SERIAL / AUTOINCREMENT / IDENTITY detection (via each dialect's tell:
-  `nextval(…)` default on PG, `auto_increment` on MySQL, `is_identity`
-  on MSSQL, pragma info on SQLite).
+- `notNull` / `nullable`, single- and multi-column `primaryKey`,
+  `unique`, foreign keys (including composite) with `ON DELETE` /
+  `ON UPDATE` actions.
+- CHECK constraint bodies — parsed from `pg_get_constraintdef` on
+  PG, `information_schema.check_constraints` on MySQL ≥ 8.0.16,
+  `sys.check_constraints` on MSSQL, and `sqlite_master.sql` on
+  SQLite.
+- Named indexes — non-PK / non-UNIQUE indexes round-trip with their
+  column order, `UNIQUE` flag, `USING` method (PG / MySQL), and
+  partial `WHERE` predicate preserved.
+- SERIAL / AUTOINCREMENT / IDENTITY detection (via each dialect's
+  tell: `nextval(…)` default on PG, `auto_increment` on MySQL,
+  `is_identity` on MSSQL, pragma info on SQLite).
 
 ### What's not yet recovered
 
 - Custom `DEFAULT` expressions (the raw SQL is captured in
-  `defaultExpression` but the generator can't round-trip it yet).
-- Composite primary keys, CHECK constraints — use manual migration
-  steps for these; introspection notes them but `generateSchemaCode`
-  doesn't emit them.
+  `defaultExpression` but `generateSchemaCode` emits it as a
+  `// TODO:` comment — mapping arbitrary server expressions back to
+  typed sumak builders isn't on this path yet).
+
+---
+
+## CLI
+
+A zero-dep `sumak` command handles migrations, introspection, and
+plan-only SQL generation. Drop a `sumak.config.ts` at the repo root:
+
+```ts
+// sumak.config.ts
+import { Pool } from "pg"
+import { defineConfig } from "sumak/cli"
+import { pgDriver } from "sumak/drivers/pg"
+
+import { tables } from "./src/schema.ts"
+
+export default defineConfig({
+  dialect: "pg",
+  driver: () => pgDriver(new Pool({ connectionString: process.env.DATABASE_URL })),
+  schema: () => ({ tables }),
+})
+```
+
+Then:
+
+```bash
+sumak migrate plan           # preview DDL without running it
+sumak migrate up             # apply pending DDL
+sumak introspect             # read DB → stdout TypeScript schema
+sumak introspect --out src/schema.generated.ts
+sumak generate --out ./migrations/001_init.sql
+```
+
+Flags: `--config <path>`, `--out <path>`, `--print`,
+`--allow-destructive` (permit DROPs), `--no-transaction`,
+`--no-lock` (skip advisory lock). The argv parser is ~40 lines of
+TypeScript — no `commander` / `yargs` / `tsx` runtime deps.
+
+---
+
+## Benchmarks
+
+`bench/compile.bench.ts` pits sumak's query compiler against
+**kysely** and **drizzle-orm** on seven canonical shapes. sumak
+wins six of the seven, typically by 1.1×–2.5× vs kysely and
+9×–39× vs drizzle. Full numbers + per-compile wall time in
+[`bench/README.md`](./bench/README.md).
+
+Run locally:
+
+```bash
+pnpm vitest bench --run bench/compile.bench.ts
+```
+
+A regression guard (`PERF_GUARD=1 pnpm vitest run bench/regression.test.ts`)
+holds a loose floor per scenario so accidental 2× slowdowns show
+up in CI; see [`bench/baseline.json`](./bench/baseline.json).
+
+Prisma is intentionally excluded — it's a code-gen + engine layer,
+not a pure query builder, so a compile-time comparison would be a
+category error.
+
+---
+
+## Examples
+
+Six runnable integration recipes in [`examples/`](./examples). All
+target **Node 24+**. Each directory has a `sumak.config.ts` wired
+to the CLI (`pnpm migrate`) and a README calling out the
+runtime-specific gotchas.
+
+| directory                              | stack                      |
+| -------------------------------------- | -------------------------- |
+| [`express/`](./examples/express)       | Express 5 + pg             |
+| [`fastify/`](./examples/fastify)       | Fastify 5 + pg             |
+| [`aws-lambda/`](./examples/aws-lambda) | AWS Lambda + pg            |
+| [`nextjs/`](./examples/nextjs)         | Next.js 16 App Router + pg |
+| [`nuxt/`](./examples/nuxt)             | Nuxt 4 + Nitro + pg        |
+| [`nitro/`](./examples/nitro)           | Nitro 3 standalone + pg    |
+
+Highlights: per-request tenant scopes via `multiTenant({ strict: true })`,
+streaming NDJSON responses backed by pg cursors, `AbortSignal`
+propagation from client disconnects down to driver cancellation,
+HMR-safe `Pool` reuse via Nitro's `close` hook, and Lambda timeout
+handling via `getRemainingTimeInMillis()`.
 
 ---
 
