@@ -16,6 +16,18 @@
   pglite: the CHECK fires at the engine on INSERT and the constraint
   name propagates to the error message.
 
+- **PG introspection recovers constraints and named indexes.**
+  `IntrospectedTable` grew optional `constraints` and `indexes`
+  fields. `introspectPg` now reads composite primary keys, named
+  composite UNIQUEs, CHECK constraints (body via
+  `pg_get_constraintdef`, outer `CHECK (...)` wrapper stripped for
+  authoring-equivalence), and composite foreign keys from the
+  catalog. Named indexes come from `pg_index` / `pg_class` with the
+  WHERE predicate (via `pg_get_expr`) and the index method (`am`);
+  PK- and UNIQUE-backing indexes are filtered out so re-emitting the
+  schema doesn't double up. MySQL / SQLite / MSSQL readers will
+  follow in a separate pass (task #31); the shape is ready for them.
+
 - **Named table indexes via `defineTable(..., { indexes: [...] })`.**
   `IndexDef = { name, columns, unique?, using?, where? }`. Columns
   accept a bare string (`"email"`) or the `{ column, direction }`

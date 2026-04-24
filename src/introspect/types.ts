@@ -28,10 +28,46 @@ export interface IntrospectedColumn {
   }
 }
 
+/**
+ * Table-level constraints the introspector was able to recover. Columns
+ * carry their own `isPrimaryKey` / `isUnique` flags for the common
+ * single-column shapes, but composite keys, named CHECKs, and named /
+ * composite FKs only make sense at table scope — they land here.
+ */
+export interface IntrospectedConstraints {
+  readonly primaryKey?: { readonly name?: string; readonly columns: readonly string[] }
+  readonly uniques?: ReadonlyArray<{ readonly name?: string; readonly columns: readonly string[] }>
+  readonly checks?: ReadonlyArray<{ readonly name?: string; readonly expression: string }>
+  readonly foreignKeys?: ReadonlyArray<{
+    readonly name?: string
+    readonly columns: readonly string[]
+    readonly references: { readonly table: string; readonly columns: readonly string[] }
+    readonly onDelete?: string
+    readonly onUpdate?: string
+  }>
+}
+
+/**
+ * Named index as read from the catalog. Primary-key and
+ * UNIQUE-constraint indexes are filtered out — they round-trip via
+ * {@link IntrospectedConstraints} instead, and re-emitting them here
+ * would create duplicates when diffed against the schema they came
+ * from.
+ */
+export interface IntrospectedIndex {
+  readonly name: string
+  readonly columns: readonly string[]
+  readonly unique: boolean
+  readonly using?: string
+  readonly where?: string
+}
+
 export interface IntrospectedTable {
   readonly name: string
   readonly schema?: string
   readonly columns: readonly IntrospectedColumn[]
+  readonly constraints?: IntrospectedConstraints
+  readonly indexes?: readonly IntrospectedIndex[]
 }
 
 export interface IntrospectedSchema {
