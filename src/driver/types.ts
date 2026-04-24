@@ -101,6 +101,22 @@ export interface Driver {
   transaction?<T>(fn: (tx: Driver) => Promise<T>, options?: DriverCallOptions): Promise<T>
 
   /**
+   * Optional: row-by-row streaming. When present, sumak's
+   * `.stream()` builder method delegates to this — the driver is
+   * responsible for pulling rows from the server in batches (pg's
+   * `pg-query-stream`, mysql2's `.stream()`, tedious's row events,
+   * better-sqlite3's `iterate()`). When absent, `.stream()` falls
+   * back to `query()` + a synthetic AsyncIterable that yields the
+   * full row set — correct, but loses the memory benefit.
+   *
+   * Cleanup on early `break`: the iterator's `.return()` is called
+   * by the `for await … of` protocol; drivers should release their
+   * server-side cursor at that point. Aborting via `options.signal`
+   * should also terminate the stream (same cleanup path).
+   */
+  stream?(sql: string, params: readonly unknown[], options?: DriverCallOptions): AsyncIterable<Row>
+
+  /**
    * Optional: closes the driver's underlying connection / pool. sumak
    * never calls this — it's here so `Driver` can describe the full
    * lifecycle for user code that owns the driver.

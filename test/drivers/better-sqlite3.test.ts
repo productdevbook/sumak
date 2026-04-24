@@ -31,6 +31,15 @@ function mockDb(opts: {
           }
           return { changes: 0, lastInsertRowid: 0 }
         },
+        *iterate(...params: unknown[]) {
+          log.push({ sql, method: "all", params })
+          for (const [prefix, rows] of Object.entries(opts.rowsByPrefix ?? {})) {
+            if (sql.startsWith(prefix)) {
+              for (const r of rows) yield r
+              return
+            }
+          }
+        },
       }
     },
     exec(sql: string) {
@@ -76,5 +85,17 @@ describe("betterSqlite3Driver", () => {
     ).rejects.toThrow("boom")
     const execSqls = db.log.filter((e) => e.method === "exec").map((e) => e.sql)
     expect(execSqls).toEqual(["BEGIN IMMEDIATE", "ROLLBACK"])
+  })
+
+  it("stream — delegates to prepare().iterate() and yields row by row", async () => {
+    const db = mockDb({
+      rowsByPrefix: { SELECT: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+    })
+    const driver = betterSqlite3Driver(db)
+    const seen: unknown[] = []
+    for await (const row of driver.stream!("SELECT * FROM t", [])) {
+      seen.push(row)
+    }
+    expect(seen).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }])
   })
 })

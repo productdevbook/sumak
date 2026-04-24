@@ -32,5 +32,25 @@ export function pgliteDriver(pg: PGlite): Driver {
       const r = await pg.query(sql, [...params])
       return { affected: r.affectedRows ?? 0 }
     },
+    // pglite runs in-process and has no server-side cursor; the
+    // "stream" here is just query()-into-async-iter. Still useful for
+    // testing the builder-side streaming contract — real adapters
+    // (pg-query-stream etc.) plug in the same shape.
+    async *stream(sql, params, options) {
+      if (options?.signal?.aborted) {
+        const err = new Error("The operation was aborted.")
+        err.name = "AbortError"
+        throw err
+      }
+      const r = await pg.query<Record<string, unknown>>(sql, [...params])
+      for (const row of r.rows) {
+        if (options?.signal?.aborted) {
+          const err = new Error("The operation was aborted.")
+          err.name = "AbortError"
+          throw err
+        }
+        yield row
+      }
+    },
   }
 }

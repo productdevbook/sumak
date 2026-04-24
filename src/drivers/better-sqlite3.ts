@@ -15,6 +15,14 @@ export interface BetterSqlite3Database {
 export interface BetterSqlite3Statement {
   all(...params: unknown[]): Record<string, unknown>[]
   run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint }
+  /**
+   * better-sqlite3's `.iterate(...params)` returns a synchronous
+   * iterator that pulls one row at a time from the native cursor.
+   * sumak's streaming adapter bridges this into an `AsyncIterable`
+   * so the `for await` protocol and the `Driver.stream()` contract
+   * both work.
+   */
+  iterate(...params: unknown[]): IterableIterator<Record<string, unknown>>
 }
 
 export interface BetterSqlite3DriverOptions {
@@ -81,6 +89,21 @@ export function betterSqlite3Driver(
     async execute(sql, params, options) {
       checkSignal(options)
       return runExecute(sql, params)
+    },
+    async *stream(sql, params, options) {
+      checkSignal(options)
+      // better-sqlite3's .iterate() is sync-pull: each .next() runs
+      // a synchronous call into the native binding, so the event
+      // loop can still breathe between batches from the consumer's
+      // `await`s but we don't prefetch. Aborted signal mid-stream
+      // surfaces as the next yield throwing AbortError — callers
+      // drop out of the `for await` and the iterator's finally
+      // closes the statement.
+      const stmt = db.prepare(sql)
+      for (const row of stmt.iterate(...params)) {
+        if (options?.signal?.aborted) throw new AbortError()
+        yield row as Row
+      }
     },
   }
 

@@ -11,7 +11,14 @@ import type {
 import { QueryFlags } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
-import { listenerFor, resultTransformer, runFirst, runOne, runQuery } from "../driver/execute.ts"
+import {
+  listenerFor,
+  resultTransformer,
+  runFirst,
+  runOne,
+  runQuery,
+  runStream,
+} from "../driver/execute.ts"
 import type { SumakExecutor } from "../driver/execute.ts"
 import type { Row } from "../driver/types.ts"
 import { deriveResultContext } from "../plugin/result-context.ts"
@@ -695,6 +702,40 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       listenerFor(exec),
     )
     return row as unknown as O | null
+  }
+
+  /**
+   * Stream rows row-by-row with an `AsyncIterable`. Use `for await`
+   * to consume and `break` to cancel mid-way — the driver's
+   * cursor is released when the iterator closes (either via a
+   * thrown error, an aborted signal, or a consumer `break`).
+   *
+   * ```ts
+   * for await (const row of db.selectFrom("events").stream()) {
+   *   process(row)
+   * }
+   * ```
+   *
+   * Memory: delegates to `Driver.stream()` when the adapter
+   * implements it; otherwise falls back to buffering the full
+   * result set and yielding from memory (correct but loses the
+   * memory benefit — the `pg-query-stream` / mysql2 streaming /
+   * tedious row-events / better-sqlite3 `.iterate()` paths all
+   * avoid that).
+   */
+  async *stream(options?: { signal?: AbortSignal }): AsyncIterable<O> {
+    const exec = this._requireExecutor()
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
+    for await (const row of runStream(
+      exec.driver(),
+      this.toSQL(),
+      resultTransformer(exec, ctx),
+      options,
+      listenerFor(exec),
+    )) {
+      yield row as unknown as O
+    }
   }
 
   private _requireExecutor(): SumakExecutor {

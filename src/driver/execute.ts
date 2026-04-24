@@ -241,6 +241,98 @@ export async function runFirst(
 }
 
 /**
+ * Run a compiled query as a row stream. Delegates to the driver's
+ * `stream()` when present; otherwise falls back to buffering via
+ * `query()` + yielding one-by-one from memory. The fallback is
+ * correct but loses the memory benefit — callers who care about
+ * memory on huge results should pair sumak with a driver that
+ * implements `stream()` natively.
+ *
+ * onQuery events: one start, one end (after the iterator drains),
+ * or one error (if the driver / transform throws). Early `break` in
+ * the consumer still fires the end event with the rows actually
+ * yielded so observers see accurate `rowCount`.
+ */
+export async function* runStream(
+  driver: Driver,
+  query: CompiledQuery,
+  transform: RowTransformer,
+  options?: DriverCallOptions,
+  listener?: OnQueryListener,
+): AsyncIterable<Row> {
+  const id = allocQueryEventId()
+  const start = perfNow()
+  emit(listener, {
+    phase: "start",
+    kind: "query",
+    sql: query.sql,
+    params: query.params,
+    id,
+  })
+
+  let yielded = 0
+  let errored = false
+  try {
+    if (driver.stream) {
+      // Native streaming: the driver handles cursor lifecycle. We
+      // pass rows through the row transform one by one so a
+      // subjectType / masking plugin sees every row regardless of
+      // whether it was buffered or streamed.
+      for await (const row of driver.stream(query.sql, query.params, options)) {
+        const [transformed] = transform([row])
+        yielded++
+        if (transformed) yield transformed
+      }
+    } else {
+      // Fallback: buffer the result set once, then yield in order.
+      // Not a true stream; documented on `.stream()` so callers
+      // know to pair sumak with a streaming-capable driver when
+      // memory matters.
+      const rows = await driver.query(query.sql, query.params, options)
+      const transformed = transform(rows)
+      for (const row of transformed) {
+        yielded++
+        yield row
+      }
+    }
+  } catch (error) {
+    errored = true
+    emit(listener, {
+      phase: "error",
+      kind: "query",
+      sql: query.sql,
+      params: query.params,
+      id,
+      durationMs: perfNow() - start,
+      error,
+    })
+    throw error
+  } finally {
+    // The finally fires for both natural completion and for early
+    // `break` from the consumer — in both cases we want an `end`
+    // event so observers see the actual rowCount. An explicit
+    // `throw` in the try takes the errored path and skips this.
+    if (!errored) {
+      emit(listener, {
+        phase: "end",
+        kind: "query",
+        sql: query.sql,
+        params: query.params,
+        id,
+        durationMs: perfNow() - start,
+        rowCount: yielded,
+      })
+    }
+  }
+}
+
+function perfNow(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now()
+}
+
+/**
  * Run a function around BEGIN / COMMIT / ROLLBACK events. The
  * transaction runner (see transaction.ts) hands this helper a `beginFn`
  * that actually emits the BEGIN statement, the body, and finally a
