@@ -328,6 +328,14 @@ export const QueryFlags = {
   MultiTenantApplied: 1 << 1,
   /** Plugin has already injected its optimistic-lock predicate + SET. */
   OptimisticLockApplied: 1 << 2,
+  /**
+   * Builder called `.crossTenant({ reason })` to opt this query out of
+   * multiTenant({ strict: true })'s JOIN allow-list check. The flag
+   * records caller intent; audit/observability hooks see
+   * `QueryFlags.CrossTenantOptOut` on the AST so cross-tenant traffic
+   * is tracked even when allowed.
+   */
+  CrossTenantOptOut: 1 << 3,
 } as const
 export type QueryFlags = number
 

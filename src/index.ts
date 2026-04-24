@@ -217,6 +217,7 @@ export type {
 // ─── Errors ────────────────────────────────────────────────────────────────
 export {
   assertNever,
+  CrossTenantJoinError,
   EmptyQueryError,
   InvalidExpressionError,
   SecurityError,

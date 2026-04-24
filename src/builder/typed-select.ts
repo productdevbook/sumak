@@ -8,6 +8,7 @@ import type {
   SubqueryNode,
   TemporalClause,
 } from "../ast/nodes.ts"
+import { QueryFlags } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import { listenerFor, resultTransformer, runFirst, runOne, runQuery } from "../driver/execute.ts"
@@ -151,6 +152,27 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    */
   onlyDeleted(): TypedSelectBuilder<DB, TB, O> {
     return this._chain(this._builder.withSoftDeleteMode("only"))
+  }
+
+  /**
+   * Explicit escape hatch for `multiTenant({ strict: true })`. Tells
+   * the plugin "I know this query JOINs a table that isn't in the
+   * tenant-aware list; let it through". The `reason` argument is
+   * not used in SQL generation — it's there so the call site
+   * documents *why* the bypass is legitimate (code review, audit
+   * log, future grep). `onQuery` observers can still see the
+   * `QueryFlags.CrossTenantOptOut` bit on the AST and flag it for
+   * monitoring.
+   *
+   * ```ts
+   * db.selectFrom("orders")
+   *   .leftJoin("currency_rates", "orders.currency = currency_rates.code")
+   *   .crossTenant({ reason: "currency_rates is global reference data" })
+   *   .many()
+   * ```
+   */
+  crossTenant(_opts: { reason: string }): TypedSelectBuilder<DB, TB, O> {
+    return this._chain(this._builder.withFlags(QueryFlags.CrossTenantOptOut))
   }
 
   /** DISTINCT */

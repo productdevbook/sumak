@@ -37,6 +37,30 @@ export class SecurityError extends SumakError {
 }
 
 /**
+ * Thrown by {@link multiTenant}({ strict: true }) when a query JOINs a
+ * table that isn't in the plugin's tenant-aware allow-list. Without
+ * strict mode this situation is silent — the JOINed table has no
+ * tenant filter, and cross-tenant rows can leak through. Strict mode
+ * refuses to compile the query; callers with a legitimate reason can
+ * use the `.crossTenant({ reason })` builder escape hatch.
+ */
+export class CrossTenantJoinError extends SecurityError {
+  readonly table: string
+  readonly joinedTable: string
+  constructor(args: { table: string; joinedTable: string }) {
+    super(
+      `multiTenant({ strict: true }): cannot JOIN ${args.table} with ${args.joinedTable} — ` +
+        `${args.joinedTable} is not in the tenant-aware tables list. This would leak rows ` +
+        `across tenants. Either add ${args.joinedTable} to the plugin's \`tables\` list, or ` +
+        `opt out explicitly with \`.crossTenant({ reason: "..." })\` on the builder.`,
+    )
+    this.name = "CrossTenantJoinError"
+    this.table = args.table
+    this.joinedTable = args.joinedTable
+  }
+}
+
+/**
  * Thrown when an AST traversal reaches a node type it doesn't handle.
  *
  * Paired with {@link assertNever} / `const _: never = node` patterns in
