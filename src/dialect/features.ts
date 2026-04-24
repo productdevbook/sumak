@@ -72,6 +72,17 @@ export const FEATURES = {
   // ── Arrays / JSON ─────────────────────────────────────────────────
   ARRAY_LITERALS: { label: "ARRAY[...]", dialects: ["pg"] },
   ARRAY_CONTAINS_OPS: { label: "array operators (@>, <@, &&)", dialects: ["pg"] },
+  /**
+   * `col <op> ANY/ALL (subquery)`. PG supports all six comparison
+   * ops; MySQL 8 supports the subquery-operand form; MSSQL and
+   * SQLite reject both.
+   */
+  QUANTIFIED_SUBQUERY: { label: "ANY/ALL subquery", dialects: ["pg", "mysql"] },
+  /**
+   * `col <op> ANY/ALL (ARRAY[...])` — array-operand form. PG only;
+   * MySQL accepts subquery form but not this one.
+   */
+  QUANTIFIED_ARRAY: { label: "ANY/ALL array operand", dialects: ["pg"] },
   JSON_ARROW: { label: "-> / ->> JSON operators", dialects: ["pg"] },
   JSON_PATH_ARROW: { label: "#> / #>> JSON path operators", dialects: ["pg"] },
   JSONB: { label: "JSONB", dialects: ["pg"] },

@@ -272,6 +272,14 @@ function collectTableRefs(expr: ExpressionNode, refs: Set<string>): void {
     case "raw":
     case "star":
       break
+    case "quantified":
+      // Recurse only into the non-subquery operands. A subquery
+      // operand scopes its own FROM/JOIN graph — same reasoning as
+      // the `subquery` / `exists` cases above. The other operand
+      // kinds (array_expr, param, raw) are cheap to walk and carry
+      // column refs only in pathological authored SQL.
+      if (expr.operand.type !== "subquery") collectTableRefs(expr.operand, refs)
+      break
     default: {
       const _exhaustive: never = expr
       void _exhaustive

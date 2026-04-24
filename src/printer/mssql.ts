@@ -1,4 +1,5 @@
 import type {
+  ArrayExprNode,
   BinaryOpNode,
   CTENode,
   DeleteNode,
@@ -8,6 +9,7 @@ import type {
   JsonAccessNode,
   LiteralNode,
   OrderByNode,
+  QuantifiedExprNode,
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -446,5 +448,19 @@ export class MssqlPrinter extends BasePrinter {
       )
     }
     return super.printFunctionCall(node)
+  }
+
+  /** MSSQL has no `ARRAY[...]` literal syntax. */
+  protected override printArrayExpr(_node: ArrayExprNode): string {
+    throw new UnsupportedDialectFeatureError(
+      "mssql",
+      "ARRAY[...] literal (MSSQL has no array literal — use OPENJSON / table values)",
+    )
+  }
+
+  /** MSSQL has no ANY/ALL quantified comparison. */
+  protected override printQuantified(_node: QuantifiedExprNode): string {
+    assertFeature("mssql", "QUANTIFIED_SUBQUERY")
+    return "" // unreachable — assertFeature throws
   }
 }

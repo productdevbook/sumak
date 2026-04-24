@@ -24,6 +24,7 @@ import type {
   OnConflictNode,
   OrderByNode,
   ParamNode,
+  QuantifiedExprNode,
   RawNode,
   SelectNode,
   StarNode,
@@ -214,6 +215,7 @@ export class BasePrinter implements Printer {
       case "aliased_expr":
       case "full_text_search":
       case "tuple":
+      case "quantified":
         return this.printExpression(node)
       default:
         return assertNever(node, "BasePrinter.printNode")
@@ -525,9 +527,31 @@ export class BasePrinter implements Printer {
         return this.printFullTextSearch(node)
       case "tuple":
         return this.printTuple(node)
+      case "quantified":
+        return this.printQuantified(node)
       default:
         return assertNever(node, "BasePrinter.printExpression")
     }
+  }
+
+  /**
+   * `<quantifier>(<operand>)`. Used in expressions like
+   * `col = ANY(ARRAY[1,2,3])` or `col > ALL (SELECT ...)`. The
+   * surrounding comparison operator is rendered by whatever binary
+   * op wraps this node; we only emit the `ANY(...)` / `ALL(...)`
+   * portion.
+   *
+   * Dialect gate: PG supports both subquery and array operands.
+   * MySQL 8 supports the subquery form only. MSSQL and SQLite reject
+   * both; feature-matrix enforcement lives in the dialect-specific
+   * printer overrides.
+   */
+  protected printQuantified(node: QuantifiedExprNode): string {
+    const inner = this.printExpression(node.operand as ExpressionNode)
+    // Subquery operands come wrapped in parens from `printSubquery`;
+    // array / param / raw operands need the parens here.
+    const body = node.operand.type === "subquery" ? inner : `(${inner})`
+    return `${node.quantifier} ${body}`
   }
 
   protected printColumnRef(node: ColumnRefNode): string {

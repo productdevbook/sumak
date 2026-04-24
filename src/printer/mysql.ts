@@ -8,6 +8,7 @@ import type {
   InsertNode,
   JoinNode,
   OrderByNode,
+  QuantifiedExprNode,
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -155,6 +156,20 @@ export class MysqlPrinter extends BasePrinter {
       "mysql",
       "ARRAY[...] literal (use JSON_ARRAY(...) or raw SQL for MySQL)",
     )
+  }
+
+  /**
+   * MySQL 8 allows `ANY/ALL (SELECT ...)` but not `ANY/ALL (ARRAY[...])`
+   * nor `ANY/ALL (?)` bound to an array param. The subquery form goes
+   * through verbatim; any other operand is rejected here so the
+   * error surfaces at compile time rather than as a mysql syntax
+   * error at runtime.
+   */
+  protected override printQuantified(node: QuantifiedExprNode): string {
+    if (node.operand.type !== "subquery") {
+      assertFeature("mysql", "QUANTIFIED_ARRAY")
+    }
+    return super.printQuantified(node)
   }
 
   /** MySQL does not implement ANSI `MERGE`; use INSERT ... ON DUPLICATE KEY UPDATE. */

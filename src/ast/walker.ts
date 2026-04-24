@@ -78,6 +78,7 @@ export class ASTWalker {
       case "aliased_expr":
       case "full_text_search":
       case "tuple":
+      case "quantified":
         return this.visitExpression(node)
       default:
         return assertNever(node, "ASTWalker.visitNode")
@@ -408,6 +409,14 @@ export class ASTWalker {
       case "tuple": {
         const elements = mapPreserve(expr.elements, (e) => this.visitExpression(e))
         return elements === expr.elements ? expr : { ...expr, elements }
+      }
+      case "quantified": {
+        // Operand is one of: subquery, array_expr, param, raw. Walk
+        // through `visitExpression` so inner column refs / params /
+        // subqueries pass through the same transforms the rest of the
+        // tree sees.
+        const operand = this.visitExpression(expr.operand) as typeof expr.operand
+        return operand === expr.operand ? expr : { ...expr, operand }
       }
       default:
         return assertNever(expr, "ASTWalker.visitExpression")

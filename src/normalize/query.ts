@@ -61,6 +61,7 @@ export function normalizeQuery(node: ASTNode, opts?: NormalizeOptions): ASTNode 
     case "aliased_expr":
     case "full_text_search":
     case "tuple":
+    case "quantified":
       return normalizeExpression(node as ExpressionNode, o)
     default:
       return assertNever(node, "normalizeQuery")

@@ -373,6 +373,8 @@ function exprFingerprint(expr: ExpressionNode): string {
       return `fts:${expr.mode ?? ""}:${expr.language ?? ""}:${expr.columns.map(exprFingerprint).join(",")}:${exprFingerprint(expr.query)}`
     case "window_function":
       return `win:${exprFingerprint(expr.fn)}:${expr.partitionBy.map(exprFingerprint).join(",")}:${expr.orderBy.map((o) => `${exprFingerprint(o.expr)}:${o.direction}`).join(",")}`
+    case "quantified":
+      return `q:${expr.quantifier}:${exprFingerprint(expr.operand)}`
     default:
       return assertNever(expr, "exprFingerprint")
   }
@@ -465,6 +467,11 @@ function recurse(
         partitionBy: expr.partitionBy.map(transform),
         orderBy: expr.orderBy.map((o) => ({ ...o, expr: transform(o.expr) })),
       }
+    case "quantified":
+      // Operand is one of subquery | array_expr | param | raw — walk
+      // it so the inner columns / params go through the same
+      // simplification passes every other expression sees.
+      return { ...expr, operand: transform(expr.operand) as typeof expr.operand }
     // Terminal / opaque nodes — no child expressions to walk.
     case "column_ref":
     case "literal":

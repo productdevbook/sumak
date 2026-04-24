@@ -44,6 +44,7 @@ export type ExpressionNode =
   | AliasedExprNode
   | FullTextSearchNode
   | TupleNode
+  | QuantifiedExprNode
 
 export interface ColumnRefNode {
   type: "column_ref"
@@ -209,6 +210,20 @@ export interface FullTextSearchNode {
 export interface TupleNode {
   type: "tuple"
   elements: ExpressionNode[]
+}
+
+/**
+ * Quantified subquery / array comparison — `col <op> ANY(...)` or
+ * `col <op> ALL(...)`. The operand is either a subquery (`ANY (SELECT
+ * ... FROM ...)`) or an array expression (`ANY (ARRAY[1,2,3])` /
+ * `ANY ($1)` where $1 is bound to a driver array). Supported on PG
+ * and, for array operand, on MySQL 8+; MSSQL / SQLite reject it at
+ * compile time via the feature matrix.
+ */
+export interface QuantifiedExprNode {
+  type: "quantified"
+  quantifier: "ANY" | "ALL" | "SOME"
+  operand: SubqueryNode | ArrayExprNode | ParamNode | RawNode | LiteralNode
 }
 
 export interface AliasedExprNode {

@@ -5,6 +5,7 @@ import type {
   FullTextSearchNode,
   InsertNode,
   JoinNode,
+  QuantifiedExprNode,
   SelectNode,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -85,6 +86,12 @@ export class SqlitePrinter extends BasePrinter {
       "sqlite",
       "ARRAY[...] literal (SQLite has no array literal — use JSON arrays or raw SQL)",
     )
+  }
+
+  /** SQLite has no ANY/ALL quantified comparison. */
+  protected override printQuantified(_node: QuantifiedExprNode): string {
+    assertFeature("sqlite", "QUANTIFIED_SUBQUERY")
+    return "" // unreachable — assertFeature throws
   }
 
   /** SQLite does not implement ANSI `MERGE`; use INSERT ... ON CONFLICT DO UPDATE. */

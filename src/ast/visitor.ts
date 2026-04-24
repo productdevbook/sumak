@@ -59,6 +59,7 @@ export function visitNode<R>(node: ASTNode, visitor: ASTVisitor<R>): R {
     case "aliased_expr":
     case "full_text_search":
     case "tuple":
+    case "quantified":
       return visitor.visitExpression(node)
     default:
       return assertNever(node, "visitNode")

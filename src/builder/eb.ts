@@ -922,6 +922,79 @@ export function arrayOverlaps(arr: Expression<any>, values: Expression<any>): Ex
   return wrap(binOp("&&", (arr as any).node, (values as any).node))
 }
 
+/**
+ * `ARRAY[e1, e2, …]` — PG-only array literal. The elements can be
+ * any `Expression`, which lets callers mix parameterised values
+ * (`val(1)`) with column refs and function calls. MySQL / SQLite /
+ * MSSQL reject this at compile time via `printArrayExpr` overrides.
+ *
+ * ```ts
+ * col.tags.eq(arrayLiteral([val("sql"), val("typescript")]))
+ * col.id.eq(any(arrayLiteral([val(1), val(2), val(3)])))
+ * ```
+ */
+export function arrayLiteral<T>(elements: Expression<T>[]): Expression<T[]> {
+  return wrap({
+    type: "array_expr",
+    elements: elements.map((e) => (e as unknown as { node: ExpressionNode }).node),
+  })
+}
+
+/**
+ * `ANY(<subquery | array>)` — quantified comparison. Used as the
+ * right-hand side of a comparison operator:
+ *
+ * ```ts
+ * col.id.eq(any(db.selectFrom("admins").select("user_id")))
+ * col.category.eq(any(arrayLiteral([val("a"), val("b")])))
+ * col.id.eq(any(val([1, 2, 3])))  // array param
+ * ```
+ *
+ * PG supports all forms. MySQL 8 supports the subquery form. MSSQL
+ * and SQLite reject both at compile time via the feature matrix.
+ */
+export function any<T>(operand: Expression<T[]> | Expression<T>): Expression<T> {
+  return buildQuantified<T>("ANY", operand)
+}
+
+/**
+ * `ALL(<subquery | array>)` — quantified comparison. Matches when
+ * the comparison holds for every row / element of the operand.
+ */
+export function all<T>(operand: Expression<T[]> | Expression<T>): Expression<T> {
+  return buildQuantified<T>("ALL", operand)
+}
+
+/**
+ * `SOME(...)` — PG's alias for `ANY`. Provided for parity with
+ * hand-written SQL; semantically identical.
+ */
+export function some<T>(operand: Expression<T[]> | Expression<T>): Expression<T> {
+  return buildQuantified<T>("SOME", operand)
+}
+
+function buildQuantified<T>(
+  quantifier: "ANY" | "ALL" | "SOME",
+  operand: Expression<T[]> | Expression<T>,
+): Expression<T> {
+  const node = (operand as unknown as { node: ExpressionNode }).node
+  // The AST constrains the operand to subquery | array_expr | param
+  // | raw. Accept anything expression-shaped here; the printer
+  // enforces the valid subset.
+  if (
+    node.type !== "subquery" &&
+    node.type !== "array_expr" &&
+    node.type !== "param" &&
+    node.type !== "literal" &&
+    node.type !== "raw"
+  ) {
+    throw new Error(
+      `${quantifier}(…) operand must be a subquery, array literal, or array param; got ${node.type}.`,
+    )
+  }
+  return wrap<T>({ type: "quantified", quantifier, operand: node })
+}
+
 /** FLOOR(expr) */
 export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
