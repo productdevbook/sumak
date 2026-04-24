@@ -1,5 +1,26 @@
 import type { ForeignKeyAction } from "../ast/ddl-nodes.ts"
+import type { ExpressionNode } from "../ast/nodes.ts"
+import type { Expression } from "../ast/typed-expression.ts"
 import { escapeStringLiteral } from "../utils/security.ts"
+
+/**
+ * Column-level CHECK constraint metadata. Captured on the builder and
+ * lowered to a {@link ColumnDefinitionNode.check} by the migration diff
+ * engine (or directly by DDL emitters that walk {@link ColumnDef}).
+ *
+ * The expression may be:
+ * - a raw SQL fragment (will flow through `unsafeRawExpr` — caller is
+ *   responsible for the content; CHECK expressions are defined at
+ *   schema-design time, not accepted from user input);
+ * - a sumak {@link Expression} produced via `sql\`...\`` or builder
+ *   helpers, in which case the pre-built AST node is reused verbatim.
+ */
+export interface ColumnCheckDef {
+  readonly name?: string
+  readonly sql: string
+  readonly params?: readonly unknown[]
+  readonly node?: ExpressionNode
+}
 
 export interface ColumnDef {
   readonly dataType: string
@@ -9,6 +30,7 @@ export interface ColumnDef {
   readonly isPrimaryKey: boolean
   readonly isUnique: boolean
   readonly isGenerated: boolean
+  readonly check?: ColumnCheckDef
   readonly references?: {
     table: string
     column: string
@@ -92,6 +114,42 @@ export class ColumnBuilder<S, I = S, U = I> {
       references: { ...this._def.references, onUpdate: action },
     })
   }
+
+  /**
+   * Attach a CHECK constraint to this column.
+   *
+   * Two shapes:
+   *
+   * ```ts
+   * integer().check(sql`age >= 0`)                  // Expression form
+   * integer().check("age >= 0", { name: "ck_age" }) // raw SQL + opt name
+   * ```
+   *
+   * The constraint is emitted inline in `CREATE TABLE` and materialized
+   * as an `ADD CONSTRAINT ... CHECK (...)` when diffed into an existing
+   * schema. Expression-form values are preserved as AST nodes so they
+   * retain parameters through the printer pipeline.
+   */
+  check(expr: Expression<boolean> | string, opts?: { name?: string }): ColumnBuilder<S, I, U> {
+    const check = normalizeCheck(expr, opts?.name)
+    return new ColumnBuilder(this._def.dataType, { ...this._def, check })
+  }
+}
+
+function normalizeCheck(
+  expr: Expression<boolean> | string,
+  name: string | undefined,
+): ColumnCheckDef {
+  if (typeof expr === "string") {
+    return name === undefined ? { sql: expr } : { name, sql: expr }
+  }
+  // Expression<boolean> — pull the AST node out so the printer resolves
+  // it with proper dialect quoting and parameter binding at print time.
+  const node = (expr as unknown as { node: ExpressionNode }).node
+  // We still keep a best-effort raw `sql` around for introspection-style
+  // round-tripping: empty string signals "use node only". The DDL emitter
+  // will prefer the node when present.
+  return name === undefined ? { sql: "", node } : { name, sql: "", node }
 }
 
 // Column factory functions

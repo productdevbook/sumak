@@ -236,6 +236,16 @@ function columnDefinitionFromBuilder(
   if (def.isPrimaryKey) node.primaryKey = true
   if (def.isUnique) node.unique = true
   if (def.references) node.references = { ...def.references }
+  if (def.check) {
+    // Prefer a pre-built Expression node if the caller used `sql\`...\``;
+    // fall back to raw SQL (authored, not user-supplied) when the builder
+    // was called with a string.
+    node.check = def.check.node ?? {
+      type: "raw",
+      sql: def.check.sql,
+      params: def.check.params ? [...def.check.params] : [],
+    }
+  }
   return node
 }
 

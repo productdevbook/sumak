@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Schema DSL
+
+- **`ColumnBuilder.check(expr, { name? })` — column-level CHECK
+  constraints.** Two shapes: `integer().check("age >= 0")` for raw SQL
+  (schema-author controlled; never user input) and `.check(sql\`age >=
+  0\`)` for an Expression that flows through the printer with proper
+  dialect quoting and parameter binding. Captured on `ColumnDef.check`
+  and lowered into `CREATE TABLE` by the migration diff engine.
+  Verified against pglite: a real CHECK fires at the engine on INSERT,
+  the constraint name propagates to the error message.
+
 ### Bug fixes (correctness)
 
 - **`Col.eq(null)` / `.neq(null)` auto-lower to `IS NULL` / `IS NOT NULL`.**
