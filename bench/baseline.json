@@ -1,0 +1,13 @@
+{
+  "$note": "Performance baseline for sumak's compile path. Numbers are ops-per-second on an Apple M-series local run and drift across machines — the regression guard only rejects when the current run is <0.5x the baseline, which is a margin wide enough that noise / slower CI hardware doesn't trigger false alarms while still catching genuine 2x slowdowns.",
+  "$pinned_on": "2026-04-24",
+  "scenarios": {
+    "select-all": { "sumakMinHz": 400000 },
+    "select-where-eq": { "sumakMinHz": 300000 },
+    "select-where-and": { "sumakMinHz": 400000 },
+    "join-2-tables": { "sumakMinHz": 150000 },
+    "insert-values": { "sumakMinHz": 180000 },
+    "update-where": { "sumakMinHz": 300000 },
+    "delete-where": { "sumakMinHz": 190000 }
+  }
+}
