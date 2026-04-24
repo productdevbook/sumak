@@ -82,6 +82,35 @@ export interface DiffOptions {
     /** `{ "old_table": "new_table" }`. */
     tables?: Record<string, string>
   }
+
+  /**
+   * Per-column `USING <expression>` clauses for type changes. PG
+   * rejects `ALTER COLUMN … SET DATA TYPE` when the old and new
+   * types don't have an implicit cast — the caller has to supply a
+   * `USING` expression:
+   *
+   * ```ts
+   * diffSchemas(before, after, {
+   *   typeMigrations: {
+   *     "users.age": { using: sql`age::int` },
+   *   },
+   * })
+   * ```
+   *
+   * Keys are `"<table>.<column>"` like `renames.columns`. The
+   * expression is a sumak `Expression<any>` (or raw AST
+   * `ExpressionNode` for advanced use). MSSQL / MySQL / SQLite
+   * silently drop the `USING` clause at print time — the syntax is
+   * PG-only.
+   */
+  typeMigrations?: Record<
+    string,
+    {
+      using:
+        | { node: import("../ast/nodes.ts").ExpressionNode }
+        | import("../ast/nodes.ts").ExpressionNode
+    }
+  >
 }
 
 /**
@@ -180,8 +209,26 @@ export function diffSchemas(
 
   // ── ALTER (per shared table) ──────────────────────────────────
   const columnRenames = opts.renames?.columns ?? {}
+  // Normalize typeMigrations entries to bare `ExpressionNode` — the
+  // caller may pass either a sumak `Expression<T>` (with a `.node`)
+  // or the node directly.
+  const typeMigrations: Record<string, ExpressionNode> = {}
+  for (const [key, entry] of Object.entries(opts.typeMigrations ?? {})) {
+    const using = entry.using
+    const node =
+      using && typeof using === "object" && "node" in (using as { node?: unknown })
+        ? (using as { node: ExpressionNode }).node
+        : (using as ExpressionNode)
+    typeMigrations[key] = node
+  }
   for (const t of shared) {
-    const tableDiff = diffTable(t, beforeAfterRename[t]!, afterNorm[t]!, columnRenames)
+    const tableDiff = diffTable(
+      t,
+      beforeAfterRename[t]!,
+      afterNorm[t]!,
+      columnRenames,
+      typeMigrations,
+    )
     for (const n of tableDiff.destructive) destructive.push(n)
     for (const n of tableDiff.additive) additive.push(n)
   }
@@ -245,6 +292,7 @@ function diffTable(
   before: NormalizedTable,
   after: NormalizedTable,
   columnRenames: Record<string, string> = {},
+  typeMigrations: Record<string, ExpressionNode> = {},
 ): TableDiff {
   // Pull out renames that target this table. The keys are
   // "table.col" — entries whose table prefix doesn't match get
@@ -286,9 +334,16 @@ function diffTable(
     })
   }
   // Shared columns (no rename involved): straight attribute diff.
+  // `typeMigrations` keys on `"<table>.<column>"`; look the entry up
+  // under the post-rename column name (which is also the shared name).
   for (const c of shared) {
     additiveActions.push(
-      ...alterActionsForColumn(c, before.columns[c]!._def, after.columns[c]!._def),
+      ...alterActionsForColumn(
+        c,
+        before.columns[c]!._def,
+        after.columns[c]!._def,
+        typeMigrations[`${name}.${c}`],
+      ),
     )
   }
   // Renamed columns: attribute diff uses the before-column's def
@@ -300,6 +355,7 @@ function diffTable(
         newName,
         before.columns[oldName]!._def,
         after.columns[newName]!._def,
+        typeMigrations[`${name}.${newName}`],
       ),
     )
   }
@@ -435,13 +491,16 @@ function alterActionsForColumn(
   name: string,
   before: ColumnDef,
   after: ColumnDef,
+  typeMigration?: ExpressionNode,
 ): AlterTableAction[] {
   const actions: AlterTableAction[] = []
   if (before.dataType !== after.dataType) {
     actions.push({
       kind: "alter_column",
       column: name,
-      set: { type: "set_data_type", dataType: after.dataType },
+      set: typeMigration
+        ? { type: "set_data_type", dataType: after.dataType, using: typeMigration }
+        : { type: "set_data_type", dataType: after.dataType },
     })
   }
   if (before.isNotNull !== after.isNotNull) {

@@ -298,6 +298,16 @@ export class DDLPrinter {
             case "set_data_type":
               validateDataType(action.set.dataType)
               sub.push("SET DATA TYPE", action.set.dataType)
+              if (action.set.using) {
+                // `USING <expr>` — PG-only. On other dialects we
+                // silently drop the clause (MSSQL / MySQL accept a
+                // bare ALTER COLUMN TYPE and either succeed with
+                // implicit cast or fail on bad data). Emitting
+                // `USING` on MSSQL would be a parse error.
+                if (this.dialect === "pg") {
+                  sub.push("USING", this.printExpr(action.set.using))
+                }
+              }
               break
           }
           clauses.push(sub.join(" "))

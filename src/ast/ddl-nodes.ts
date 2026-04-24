@@ -92,7 +92,19 @@ export type AlterColumnSet =
   | { type: "drop_not_null" }
   | { type: "set_default"; value: ExpressionNode }
   | { type: "drop_default" }
-  | { type: "set_data_type"; dataType: string }
+  | {
+      type: "set_data_type"
+      dataType: string
+      /**
+       * Optional `USING <expression>` clause for the type change.
+       * PG requires this when the old → new type isn't an implicit
+       * cast (e.g. `text` → `int` needs `USING col::int`). MSSQL
+       * and MySQL accept a best-effort convert without the clause
+       * but may fail on bad data; we emit the clause on PG and
+       * silently drop it elsewhere (since the syntax is PG-only).
+       */
+      using?: ExpressionNode
+    }
 
 export interface AlterTableNode {
   type: "alter_table"
