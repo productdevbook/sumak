@@ -90,13 +90,33 @@ src/
     sqlite.ts               # sqliteDialect() factory
     types.ts                # Dialect interface
   plugin/
-    types.ts                # SumakPlugin interface
-    plugin-manager.ts       # PluginManager — sequential plugin pipeline (internal)
-    factories.ts            # Factory fns — softDelete(), audit(), multiTenant(), … (v0.1 public API)
-    hooks.ts                # Hookable — lifecycle hooks (query:before/after, etc.)
+    types.ts                # SumakPlugin, ResultContext interfaces
+    plugin-manager.ts       # PluginManager — extends ASTWalker, sequential plugin pipeline (internal)
+    factories.ts            # Factory fns — softDelete(), audit(), multiTenant(), subjectType(), … (v0.1 public API)
+    hooks.ts                # Hookable — lifecycle hooks (query:before/after, result:transform, etc.)
+    result-context.ts       # deriveResultContext — source table + column→table map for result plugins
     with-schema.ts          # WithSchemaPlugin — auto schema prefix
     soft-delete.ts          # SoftDeletePlugin — auto WHERE deleted_at IS NULL
     camel-case.ts           # CamelCasePlugin — snake_case → camelCase results
+    subject-type.ts         # SubjectTypePlugin — stamps __typename on result rows (CASL / authz)
+    audit-timestamp.ts      # AuditTimestampPlugin — created_at / updated_at injection
+    multi-tenant.ts         # MultiTenantPlugin — tenant_id isolation across DML + MERGE
+    data-masking.ts         # DataMaskingPlugin — transformResult row redaction
+    optimistic-lock.ts      # OptimisticLockPlugin — version column guard
+    query-limit.ts          # QueryLimitPlugin — hard row cap
+  driver/
+    types.ts                # Driver interface (query/execute/transaction/close), Row, ExecuteResult
+    execute.ts              # runQuery/runOne/runFirst/runExecute — wires builders to driver
+    transaction.ts          # runInTransaction — driver delegation + TCL fallback
+  migrate/
+    diff.ts                 # diffSchemas — DDL steps from before/after, topologically sorted
+    runner.ts               # planMigration / applyMigration / runPlan — with transaction wrapping
+  introspect/
+    types.ts                # IntrospectedSchema / Table / Column
+    pg.ts / mysql.ts        # per-dialect catalog queries
+    sqlite.ts / mssql.ts
+    generate.ts             # generateSchemaCode — emits sumak TS from introspected schema
+    index.ts                # introspect(driver, dialect) dispatcher
   normalize/
     types.ts                # CNF type, NormalizeOptions
     expression.ts           # NbE: normalizeExpression, toCNF, fromCNF
@@ -112,20 +132,28 @@ src/
     param.ts                # Parameter formatting per dialect
 test/
   sumak.test.ts              # Integration: sumak() clean API, plugins, hooks
-  ast/                      # 4 files: nodes, visitor, transformer, typed-expression
-  builder/                  # 11 files: select, insert, update, delete, expression, compiled, json-optics + typed variants
-  normalize/                # 2 files: expression, query
-  optimize/                 # 2 files: rules, optimizer
-  printer/                  # 7 files: base, pg, mysql, sqlite, formatter, document, new-nodes
-  dialect/                  # 3 files: pg, mysql, sqlite
-  plugin/                   # 4 files: plugin-manager, with-schema, soft-delete, camel-case, hooks
-  schema/                   # 3 files: column, table, type-utils
-  utils/                    # 2 files: identifier, param
+  ast/                      # node, visitor, transformer, walker, typed-expression
+  builder/                  # select, insert, update, delete, merge, expression, compiled, json-optics + typed variants
+  driver/                   # execute, transaction (unit tests with mock driver)
+  migrate/                  # diff, runner
+  introspect/               # pg/mysql/sqlite/mssql catalog readers + generate
+  integration/              # pglite-driver + roundtrip tests (plugins, introspect, CTEs, window fns)
+  normalize/                # expression, query
+  optimize/                 # rules, optimizer
+  printer/                  # base, pg, mysql, sqlite, mssql, formatter, document, new-nodes
+  dialect/                  # pg, mysql, sqlite, mssql, features
+  plugin/                   # plugin-manager, with-schema, soft-delete, camel-case, subject-type, hooks, …
+  schema/                   # column, table, type-utils
+  parity/                   # cross-dialect parity cases (assertParity helper)
+  fuzz/                     # fast-check AST fuzzer
+  security/                 # injection / escape-hatch audit
+  ddl/ graph/ ns/ helpers/  # additional coverage
+  audit{3..24}-regressions.test.ts  # post-release regression pins (to be folded into corpus; task #37)
 ```
 
 ## Public API (v0.1)
 
-~88 named value exports / ~146 total named exports (down from ~208 / ~313 in v0.0.x). Internals (low-level AST factories, visitor, document algebra, printer classes, DDL builder classes, normalize/optimize rule internals, legacy plugin classes, deprecated Col methods) are no longer re-exported.
+~88 named value exports / ~146 total named exports (down from ~208 / ~313 in v0.0.x). Internals (low-level AST factories, visitor, document algebra, printer classes, DDL builder classes, normalize/optimize rule internals, legacy plugin classes, deprecated Col methods) are no longer re-exported. v0.0.12 adds `Driver`, `diffSchemas`/`applyMigration`, `introspect`/`generateSchemaCode`, `subjectType` / `ResultContext`, and `FEATURES` / `assertFeature` to the public surface — strictly additive.
 
 ### Setup (single step)
 
@@ -241,4 +269,4 @@ pnpm release        # pnpm test && pnpm build && bumpp && npm publish && git pus
 - **No code without tests** — PR must include tests for all new/changed code
 - Run all: `pnpm test`
 - Run single: `pnpm vitest run test/<path>.test.ts`
-- **Current:** 97 test files, 829 tests, 0 lint errors, 0 tsgo errors
+- **Current:** 142 test files, 1356 tests, 0 lint errors, 0 tsgo errors
