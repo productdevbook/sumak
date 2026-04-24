@@ -59,6 +59,10 @@
       "types": "./dist/schema.d.mts",
       "default": "./dist/schema.mjs"
     },
+    "./otel": {
+      "types": "./dist/otel.d.mts",
+      "default": "./dist/otel.mjs"
+    },
     "./drivers/pg": {
       "types": "./dist/drivers/pg.d.mts",
       "default": "./dist/drivers/pg.mjs"
