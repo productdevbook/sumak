@@ -176,7 +176,7 @@ export class SoftDeleteBuilder<DB, TB extends keyof DB> extends SoftDeleteLikeBu
   protected _racePredicate(): ExpressionNode {
     return aliveCondition(this._cfg)
   }
-  protected _setClause() {
+  protected _setClause(): { column: string; value: ExpressionNode }[] {
     return [{ column: this._cfg.column, value: deletedValue(this._cfg) }]
   }
   protected _softDeleteMode(): "include" | undefined {
@@ -214,7 +214,7 @@ export class RestoreBuilder<DB, TB extends keyof DB> extends SoftDeleteLikeBuild
   protected _racePredicate(): ExpressionNode {
     return deletedCondition(this._cfg)
   }
-  protected _setClause() {
+  protected _setClause(): { column: string; value: ExpressionNode }[] {
     return [{ column: this._cfg.column, value: aliveValue(this._cfg) }]
   }
   protected _softDeleteMode(): "include" | undefined {
