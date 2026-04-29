@@ -1,6 +1,6 @@
 {
   "name": "sumak",
-  "version": "0.0.13",
+  "version": "0.0.14",
   "description": "Type-safe SQL query builder with powerful SQL printers. Zero dependencies, tree-shakeable. Pure TypeScript.",
   "keywords": [
     "database",
