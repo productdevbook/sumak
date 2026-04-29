@@ -14,11 +14,18 @@ import { concat, length, lower, substring, trim, upper } from "../builder/eb.ts"
  * str.length(col.name)
  * ```
  */
-export const str = {
+export const str: {
+  readonly upper: typeof upper
+  readonly lower: typeof lower
+  readonly concat: typeof concat
+  readonly substring: typeof substring
+  readonly trim: typeof trim
+  readonly length: typeof length
+} = {
   upper,
   lower,
   concat,
   substring,
   trim,
   length,
-} as const
+}

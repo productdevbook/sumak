@@ -15,11 +15,18 @@ import { add, div, mod, mul, neg, sub } from "../builder/eb.ts"
  * op.neg(col.balance)
  * ```
  */
-export const op = {
+export const op: {
+  readonly add: typeof add
+  readonly sub: typeof sub
+  readonly mul: typeof mul
+  readonly div: typeof div
+  readonly mod: typeof mod
+  readonly neg: typeof neg
+} = {
   add,
   sub,
   mul,
   div,
   mod,
   neg,
-} as const
+}

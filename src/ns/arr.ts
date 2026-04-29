@@ -20,7 +20,15 @@ import {
  * col.id.eq(arr.any(arr.literal([val(1), val(2)])))    // = ANY(...)
  * ```
  */
-export const arr = {
+export const arr: {
+  readonly contains: typeof arrayContains
+  readonly containedBy: typeof arrayContainedBy
+  readonly overlaps: typeof arrayOverlaps
+  readonly literal: typeof arrayLiteral
+  readonly any: typeof any
+  readonly all: typeof all
+  readonly some: typeof some
+} = {
   contains: arrayContains,
   containedBy: arrayContainedBy,
   overlaps: arrayOverlaps,
@@ -28,4 +36,4 @@ export const arr = {
   any,
   all,
   some,
-} as const
+}

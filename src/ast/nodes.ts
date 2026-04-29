@@ -375,11 +375,11 @@ export interface LockClause {
 export const QueryFlags = {
   None: 0,
   /** Plugin has already injected its soft-delete filter — don't double-apply. */
-  SoftDeleteApplied: 1 << 0,
+  SoftDeleteApplied: 1,
   /** Plugin has already injected its multi-tenant filter — don't double-apply. */
-  MultiTenantApplied: 1 << 1,
+  MultiTenantApplied: 2,
   /** Plugin has already injected its optimistic-lock predicate + SET. */
-  OptimisticLockApplied: 1 << 2,
+  OptimisticLockApplied: 4,
   /**
    * Builder called `.crossTenant({ reason })` to opt this query out of
    * multiTenant({ strict: true })'s JOIN allow-list check. The flag
@@ -387,7 +387,7 @@ export const QueryFlags = {
    * `QueryFlags.CrossTenantOptOut` on the AST so cross-tenant traffic
    * is tracked even when allowed.
    */
-  CrossTenantOptOut: 1 << 3,
+  CrossTenantOptOut: 8,
   /**
    * The {@link caslAuthz} plugin already injected its CASL-derived
    * WHERE into this node. Guards against double-application when the
@@ -395,7 +395,7 @@ export const QueryFlags = {
    * re-runs the chain — without this flag, nested SELECTs over the
    * same table would accumulate `AND casl_where` on every pass.
    */
-  CaslAuthzApplied: 1 << 4,
+  CaslAuthzApplied: 16,
 } as const
 export type QueryFlags = number
 

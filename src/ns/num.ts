@@ -14,11 +14,18 @@ import { abs, ceil, floor, greatest, least, round } from "../builder/eb.ts"
  * num.least(col.a, col.b)
  * ```
  */
-export const num = {
+export const num: {
+  readonly abs: typeof abs
+  readonly round: typeof round
+  readonly ceil: typeof ceil
+  readonly floor: typeof floor
+  readonly greatest: typeof greatest
+  readonly least: typeof least
+} = {
   abs,
   round,
   ceil,
   floor,
   greatest,
   least,
-} as const
+}

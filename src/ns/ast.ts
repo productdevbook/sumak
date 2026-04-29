@@ -49,16 +49,44 @@ import { ASTWalker, mapPreserve } from "../ast/walker.ts"
  * ast.visit(node, visitor)
  * ```
  */
-export const ast = {
-  // Node factories
+export const ast: {
+  readonly select: typeof createSelectNode
+  readonly insert: typeof createInsertNode
+  readonly update: typeof createUpdateNode
+  readonly delete: typeof createDeleteNode
+  readonly merge: typeof createMergeNode
+  readonly table: typeof tableRef
+  readonly col: typeof col
+  readonly colAs: typeof colAs
+  readonly lit: typeof lit
+  readonly star: typeof star
+  readonly param: typeof param
+  readonly raw: typeof raw
+  readonly subquery: typeof subquery
+  readonly fn: typeof fn
+  readonly binOp: typeof binOp
+  readonly unaryOp: typeof unaryOp
+  readonly eq: typeof eq
+  readonly neq: typeof neq
+  readonly gt: typeof gt
+  readonly gte: typeof gte
+  readonly lt: typeof lt
+  readonly lte: typeof lte
+  readonly like: typeof like
+  readonly between: typeof between
+  readonly inList: typeof inList
+  readonly isNull: typeof isNull
+  readonly visit: typeof visitNode
+  readonly Transformer: typeof ASTTransformer
+  readonly Walker: typeof ASTWalker
+  readonly mapPreserve: typeof mapPreserve
+} = {
   select: createSelectNode,
   insert: createInsertNode,
   update: createUpdateNode,
   delete: createDeleteNode,
   merge: createMergeNode,
   table: tableRef,
-
-  // Expression factories
   col,
   colAs,
   lit,
@@ -79,10 +107,8 @@ export const ast = {
   between,
   inList,
   isNull,
-
-  // Traversal
   visit: visitNode,
   Transformer: ASTTransformer,
   Walker: ASTWalker,
   mapPreserve,
-} as const
+}

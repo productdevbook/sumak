@@ -11,7 +11,16 @@ import { denseRank, filter, lag, lead, ntile, over, rank, rowNumber } from "../b
  * over(win.lag(col.price, 1), (w) => w.orderBy("date"))
  * ```
  */
-export const win = {
+export const win: {
+  readonly rowNumber: typeof rowNumber
+  readonly rank: typeof rank
+  readonly denseRank: typeof denseRank
+  readonly lag: typeof lag
+  readonly lead: typeof lead
+  readonly ntile: typeof ntile
+  readonly over: typeof over
+  readonly filter: typeof filter
+} = {
   rowNumber,
   rank,
   denseRank,
@@ -20,4 +29,4 @@ export const win = {
   ntile,
   over,
   filter,
-} as const
+}
