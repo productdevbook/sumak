@@ -469,4 +469,75 @@ export const scenarios: Scenario[] = [
         k.selectFrom("posts").selectAll().orderBy("published", "desc").limit(20).compile(),
       ),
   },
+  {
+    name: "cte-single",
+    sumak: () => {
+      const active = s
+        .selectFrom("users")
+        .select("id", "name")
+        .where(({ id }) => id.gt(0))
+        .build()
+      return s.selectFrom("users").with("active", active).selectAll().toSQL()
+    },
+    drizzle: () => {
+      const active = d.$with("active").as(d.select().from(dUsers).where(gt(dUsers.id, 0)))
+      return drizzleToResult(d.with(active).select().from(dUsers).toSQL())
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .with("active", (qb) => qb.selectFrom("users").select(["id", "name"]).where("id", ">", 0))
+          .selectFrom("users")
+          .selectAll()
+          .compile(),
+      ),
+  },
+  {
+    name: "cte-with-join",
+    // CTE plus a join — exercises the full WITH + JOIN compile path.
+    sumak: () => {
+      const recent = s
+        .selectFrom("posts")
+        .select("id", "authorId")
+        .where(({ published }) => published.gt(0))
+        .build()
+      return s
+        .selectFrom("users")
+        .with("recent_posts", recent)
+        .innerJoin("recent_posts" as never, ({ users, recent_posts }: never) =>
+          users.id.eq(recent_posts.authorId),
+        )
+        .select("users.id", "users.name")
+        .toSQL()
+    },
+    drizzle: () => {
+      const recent = d
+        .$with("recent_posts")
+        .as(
+          d
+            .select({ id: dPosts.id, authorId: dPosts.authorId })
+            .from(dPosts)
+            .where(gt(dPosts.published, 0)),
+        )
+      return drizzleToResult(
+        d
+          .with(recent)
+          .select({ id: dUsers.id, name: dUsers.name })
+          .from(dUsers)
+          .innerJoin(recent, eq(dUsers.id, recent.authorId))
+          .toSQL(),
+      )
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .with("recent_posts", (qb) =>
+            qb.selectFrom("posts").select(["id", "authorId"]).where("published", ">", 0),
+          )
+          .selectFrom("users")
+          .innerJoin("recent_posts" as never, "users.id" as never, "recent_posts.authorId" as never)
+          .select(["users.id", "users.name"])
+          .compile(),
+      ),
+  },
 ]
