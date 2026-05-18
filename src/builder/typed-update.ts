@@ -1,7 +1,7 @@
 import { param, star } from "../ast/expression.ts"
 import type { ASTNode, ExplainNode, ExpressionNode, SelectNode, UpdateNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
-import { isExpression, unwrap } from "../ast/typed-expression.ts"
+import { isExpression, unwrap, unwrapPredicate } from "../ast/typed-expression.ts"
 import {
   listenerFor,
   resultTransformer,
@@ -133,9 +133,9 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return this._with(this._builder.where(unwrap(result)))
+      return this._with(this._builder.where(unwrapPredicate(result, ".where(callback)")))
     }
-    return this._with(this._builder.where(unwrap(exprOrCallback)))
+    return this._with(this._builder.where(unwrapPredicate(exprOrCallback, ".where()")))
   }
 
   private get _table(): TB & string {

@@ -10,7 +10,7 @@ import type {
 } from "../../src/introspect/types.ts"
 import type { DestructiveMigrationError, DiffOptions, SchemaDef } from "../../src/migrate/diff.ts"
 import type { ApplyResult, MigrationPlan } from "../../src/migrate/runner.ts"
-import { integer, serial, text } from "../../src/schema/column.ts"
+import { serial, text } from "../../src/schema/column.ts"
 import { defineTable } from "../../src/schema/table.ts"
 
 // Migration / introspection / driver types aren't used via builders —

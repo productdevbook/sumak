@@ -10,7 +10,7 @@ import type {
 } from "../ast/nodes.ts"
 import { QueryFlags } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
-import { unwrap } from "../ast/typed-expression.ts"
+import { unwrap, unwrapPredicate } from "../ast/typed-expression.ts"
 import {
   listenerFor,
   resultTransformer,
@@ -20,7 +20,6 @@ import {
   runStream,
 } from "../driver/execute.ts"
 import type { SumakExecutor } from "../driver/execute.ts"
-import type { Row } from "../driver/types.ts"
 import { deriveResultContext } from "../plugin/result-context.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Nullable, SelectRow } from "../schema/types.ts"
@@ -210,9 +209,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return this._chain(this._builder.where(unwrap(result)))
+      return this._chain(this._builder.where(unwrapPredicate(result, ".where(callback)")))
     }
-    return this._chain(this._builder.where(unwrap(exprOrCallback)))
+    return this._chain(this._builder.where(unwrapPredicate(exprOrCallback, ".where()")))
   }
 
   /**
@@ -224,9 +223,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return this._chain(this._builder.orWhere(unwrap(result)))
+      return this._chain(this._builder.orWhere(unwrapPredicate(result, ".orWhere(callback)")))
     }
-    return this._chain(this._builder.orWhere(unwrap(exprOrCallback)))
+    return this._chain(this._builder.orWhere(unwrapPredicate(exprOrCallback, ".orWhere()")))
   }
 
   /**
@@ -277,9 +276,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (typeof exprOrCallback === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
       const result = exprOrCallback(cols)
-      return this._chain(this._builder.having(unwrap(result)))
+      return this._chain(this._builder.having(unwrapPredicate(result, ".having(callback)")))
     }
-    return this._chain(this._builder.having(unwrap(exprOrCallback)))
+    return this._chain(this._builder.having(unwrapPredicate(exprOrCallback, ".having()")))
   }
 
   /** ORDER BY — accepts column name or expression */

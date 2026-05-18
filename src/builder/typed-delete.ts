@@ -1,7 +1,7 @@
 import { star } from "../ast/expression.ts"
 import type { ASTNode, DeleteNode, ExplainNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
-import { unwrap } from "../ast/typed-expression.ts"
+import { unwrap, unwrapPredicate } from "../ast/typed-expression.ts"
 import {
   listenerFor,
   resultTransformer,
@@ -120,9 +120,9 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
       const table = this._builder.build().table.name as TB & string
       const cols = createColumnProxies<DB, TB>(table)
       const result = exprOrCallback(cols)
-      return this._with(this._builder.where(unwrap(result)))
+      return this._with(this._builder.where(unwrapPredicate(result, ".where(callback)")))
     }
-    return this._with(this._builder.where(unwrap(exprOrCallback)))
+    return this._with(this._builder.where(unwrapPredicate(exprOrCallback, ".where()")))
   }
 
   /** USING clause (PG: DELETE FROM t USING other WHERE ...) */

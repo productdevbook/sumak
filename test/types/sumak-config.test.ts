@@ -101,7 +101,7 @@ describe("sumak() — tables config inference", () => {
         if (event.phase === "start") {
           expectTypeOf(event.sql).toEqualTypeOf<string>()
           // @ts-expect-error — durationMs is only on end/error events.
-          event.durationMs
+          void event.durationMs
         } else if (event.phase === "end") {
           expectTypeOf(event.durationMs).toEqualTypeOf<number>()
           expectTypeOf(event.rowCount).toEqualTypeOf<number | undefined>()

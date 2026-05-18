@@ -16,7 +16,6 @@ import { isTableDefinition, normalizeKeyDef, resolveCheckExpression } from "../s
 import type {
   CheckDef,
   ForeignKeyDef,
-  IndexColumn,
   IndexDef,
   NormalizedTable,
   PrimaryKeyDef,

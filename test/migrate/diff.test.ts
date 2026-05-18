@@ -95,11 +95,7 @@ describe("diffSchemas", () => {
 
     it("allowDestructive: 'ignore' skips drops but applies additive changes", () => {
       const before = { old_table: { id: serial().primaryKey() } }
-      const after = {
-        old_table: { id: serial().primaryKey() },
-        new_table: { id: serial().primaryKey() },
-      }
-      // Add DROP to force destructive path
+      // Drop the old table while adding a new one — exercises the destructive path.
       const after2 = { new_table: { id: serial().primaryKey() } }
       const nodes = diffSchemas(before, after2, { allowDestructive: "ignore" })
       expect(nodes.every((n) => n.type !== "drop_table")).toBe(true)

@@ -78,6 +78,57 @@ export function unwrap<T>(e: Expression<T>): ExpressionNode {
   return e.node
 }
 
+/**
+ * Runtime guard used by typed-builder `.where()` / `.orWhere()` /
+ * `.having()`. Accepts a value that *should* be an `Expression<boolean>`
+ * — the result of either a callback invocation or a direct expression
+ * argument — and returns its AST node. Throws a TypeError with a hint
+ * when the value is a primitive (string / number / boolean / null /
+ * undefined) instead of an expression wrapper.
+ *
+ * Why this exists: TypeScript types are erased at runtime, so calling
+ * `.where("id", "=", 42)` (kysely-style) passes `"id"` as the first
+ * argument and silently drops the comparison. The underlying builder
+ * stored `undefined` as the predicate and the printer omitted the
+ * WHERE clause entirely — a silent bug that turns row-scoped DELETEs
+ * into table-wide DELETEs. This guard turns that into a loud failure.
+ *
+ * The check is intentionally looser than `isExpression()`: it accepts
+ * any object with a `.node` field that looks like an AST node, even
+ * when the expression brand symbol is missing. That keeps the sql``
+ * template (which returns plain `{ node }` objects) and hand-rolled
+ * AST nodes working without forcing every internal Expression to be
+ * branded.
+ */
+export function unwrapPredicate(value: unknown, method: string): ExpressionNode {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { node?: unknown }).node === "object" &&
+    (value as { node: unknown }).node !== null &&
+    typeof (value as { node: { type?: unknown } }).node.type === "string"
+  ) {
+    return (value as Expression<unknown>).node
+  }
+  const got =
+    typeof value === "string"
+      ? `string "${value.slice(0, 40)}"${value.length > 40 ? "…" : ""}`
+      : typeof value === "number" || typeof value === "boolean"
+        ? `${typeof value} (${String(value)})`
+        : value === null
+          ? "null"
+          : value === undefined
+            ? "undefined"
+            : typeof value
+  // Strip "()" or "(callback)" from method name so the example below
+  // reads `.where(({ col }) => …)`, not `.where(()({ col }) => …)`.
+  const bare = method.replace(/\([^)]*\)$/, "")
+  throw new TypeError(
+    `${method} expected an Expression<boolean> or a callback returning one. Got ${got}. ` +
+      `Use the callback form: ${bare}(({ col }) => col.eq(value))`,
+  )
+}
+
 /** Reference a column — type-safe version */
 export function typedCol<T>(column: string, table?: string): Expression<T> {
   return expr<T>(rawCol(column, table))

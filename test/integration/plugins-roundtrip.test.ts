@@ -2,7 +2,6 @@ import { PGlite } from "@electric-sql/pglite"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 import { pgDialect } from "../../src/dialect/pg.ts"
-import { applyMigration } from "../../src/migrate/runner.ts"
 import { audit } from "../../src/plugin/factories.ts"
 import { multiTenant } from "../../src/plugin/factories.ts"
 import { softDelete } from "../../src/plugin/factories.ts"
