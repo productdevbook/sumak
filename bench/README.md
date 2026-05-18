@@ -23,29 +23,33 @@ pnpm vitest run bench/_scenarios.test.ts
 
 It snapshots every scenario's compiled SQL across all three libraries and asserts that WHERE-bearing queries actually carry their parameters through. It exists because for >7 months the bench was running with a silent-no-op bug where sumak's typed builder accepted `.where("col", "=", val)` (kysely's three-arg form) at runtime, dropped the operator and value, and produced SQL **without a WHERE clause** — making every WHERE scenario unfairly favorable to sumak. The smoke test would have caught that the moment it landed.
 
-## Scenarios (19 total)
+## Scenarios (23 total)
 
-| name                    | shape                                                                |
-| ----------------------- | -------------------------------------------------------------------- |
-| select-all              | `SELECT * FROM users`                                                |
-| select-where-eq         | `SELECT id, name FROM users WHERE id = $1`                           |
-| select-where-and        | `SELECT * FROM posts WHERE author_id = $1 AND published > $2`        |
-| join-2-tables           | `SELECT … FROM posts JOIN users ON posts.author_id = users.id`       |
-| insert-values           | `INSERT INTO users (id, name, email, created_at) VALUES (...)`       |
-| update-where            | `UPDATE users SET name = $1 WHERE id = $2`                           |
-| delete-where            | `DELETE FROM users WHERE id = $1`                                    |
-| select-where-or         | `SELECT id, name FROM users WHERE id = $1 OR name = $2`              |
-| select-where-in-small   | `SELECT * FROM users WHERE id IN ($1..$5)`                           |
-| select-where-in-large   | `SELECT * FROM users WHERE id IN ($1..$100)`                         |
-| select-order-limit      | `SELECT * FROM users ORDER BY name ASC LIMIT 10 OFFSET 20`           |
-| select-aggregate        | `SELECT COUNT(*) AS total, MAX(id) AS hi, AVG(id) AS avg FROM users` |
-| select-group-having     | `SELECT author_id, COUNT(*) FROM posts GROUP BY author_id HAVING …`  |
-| select-distinct         | `SELECT DISTINCT name FROM users`                                    |
-| left-join-3-tables      | `SELECT … FROM comments LEFT JOIN posts LEFT JOIN users`             |
-| select-subquery-in      | `SELECT * FROM posts WHERE author_id IN (SELECT id FROM users …)`    |
-| insert-many-100         | `INSERT INTO users VALUES (…), (…) × 100`                            |
-| select-where-deep-and   | 5-clause AND chain on posts                                          |
-| select-order-desc-limit | `SELECT * FROM posts ORDER BY published DESC LIMIT 20`               |
+| name                    | shape                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| select-all              | `SELECT * FROM users`                                                          |
+| select-where-eq         | `SELECT id, name FROM users WHERE id = $1`                                     |
+| select-where-and        | `SELECT * FROM posts WHERE author_id = $1 AND published > $2`                  |
+| join-2-tables           | `SELECT … FROM posts JOIN users ON posts.author_id = users.id`                 |
+| insert-values           | `INSERT INTO users (id, name, email, created_at) VALUES (...)`                 |
+| update-where            | `UPDATE users SET name = $1 WHERE id = $2`                                     |
+| delete-where            | `DELETE FROM users WHERE id = $1`                                              |
+| select-where-or         | `SELECT id, name FROM users WHERE id = $1 OR name = $2`                        |
+| select-where-in-small   | `SELECT * FROM users WHERE id IN ($1..$5)`                                     |
+| select-where-in-large   | `SELECT * FROM users WHERE id IN ($1..$100)`                                   |
+| select-order-limit      | `SELECT * FROM users ORDER BY name ASC LIMIT 10 OFFSET 20`                     |
+| select-aggregate        | `SELECT COUNT(*) AS total, MAX(id) AS hi, AVG(id) AS avg FROM users`           |
+| select-group-having     | `SELECT author_id, COUNT(*) FROM posts GROUP BY author_id HAVING …`            |
+| select-distinct         | `SELECT DISTINCT name FROM users`                                              |
+| left-join-3-tables      | `SELECT … FROM comments LEFT JOIN posts LEFT JOIN users`                       |
+| select-subquery-in      | `SELECT * FROM posts WHERE author_id IN (SELECT id FROM users …)`              |
+| insert-many-100         | `INSERT INTO users VALUES (…), (…) × 100`                                      |
+| select-where-deep-and   | 5-clause AND chain on posts                                                    |
+| select-order-desc-limit | `SELECT * FROM posts ORDER BY published DESC LIMIT 20`                         |
+| cte-single              | `WITH active AS (SELECT id, name FROM users WHERE id > 0) SELECT * FROM users` |
+| cte-with-join           | CTE definition + INNER JOIN against the CTE                                    |
+| select-union            | `SELECT id, name FROM users UNION SELECT id, name FROM users`                  |
+| select-union-all        | same with `UNION ALL`                                                          |
 
 ## Results (post-`.where()` fix, 2026-05-18)
 
@@ -72,10 +76,14 @@ Compile throughput on an Apple M-series laptop, Node 24, vitest 4.1. Numbers dri
 | `insert-many-100`         |     11,774 |       8,011 |          608 |       **1.47×** |       **19.36×** |
 | `select-where-deep-and`   |     76,021 | **139,950** |       15,600 |           0.54× |        **4.87×** |
 | `select-order-desc-limit` |    373,047 |     298,050 |       30,700 |       **1.25×** |       **12.15×** |
+| `cte-single`              |    224,000 |     178,795 |       16,956 |       **1.25×** |       **13.21×** |
+| `cte-with-join`           |    147,157 |      97,078 |       14,047 |       **1.52×** |       **10.48×** |
+| `select-union`            |    320,438 |     208,701 |       27,115 |       **1.54×** |       **11.82×** |
+| `select-union-all`        |    308,801 |     206,165 |       27,813 |       **1.50×** |       **11.10×** |
 
-**Where sumak wins (11 of 19):** `select-all`, `join-2-tables`, `insert-values`, `select-where-or`, `select-order-limit`, `select-aggregate`, `select-group-having`, `select-distinct`, `left-join-3-tables`, `insert-many-100`, `select-order-desc-limit`.
+**Where sumak wins (≥ 15 of 23):** `select-all`, `select-where-eq`, `join-2-tables`, `insert-values`, `select-where-or`, `select-where-in-small`, `select-order-limit`, `select-aggregate`, `select-group-having`, `select-distinct`, `left-join-3-tables`, `select-subquery-in`, `insert-many-100`, `select-order-desc-limit`, `cte-single`, `cte-with-join`, `select-union`, `select-union-all`. (`select-where-eq` and `select-where-in-small` flipped to sumak-winning after the PR #104 identity-preserving `recurse` landed.)
 
-**Where kysely wins (8 of 19):** the simple WHERE-`=`, WHERE-`AND`, and large-IN scenarios. Kysely has a very tight WHERE compile path; sumak's `select-where-in-large` (100-value IN) gap closed from 3.66× to 1.27× after the `Col.in()` build path was rewritten and the normalize/optimize passes were taught to fast-path leaf-param IN lists. Further closing the gap likely requires a dedicated `ParamArrayNode` AST type so the visitor / fingerprint passes can skip per-value dispatch entirely.
+**Where kysely wins (5 of 23):** `select-where-and` (1.35×), `update-where` (1.09×), `delete-where` (1.28×), `select-where-in-large` (1.25×), `select-where-deep-and` (1.46×). All five involve binary WHERE-chain traversal; closing them to parity needs a flat n-ary `logical_op` AST node so the visitor / printer don't have to walk a left-leaning binary tree. Backlog item A2 — invasive, deferred past v0.0.15.
 
 Against **drizzle**, sumak is **4.87×–47× faster** across the board — drizzle's template-literal-heavy internal representation costs a lot per call.
 
