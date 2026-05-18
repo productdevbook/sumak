@@ -2020,3 +2020,20 @@ exports[`bench scenarios produce equivalent SQL > update-where > snapshot of gen
   },
 }
 `;
+
+exports[`bench scenarios produce equivalent SQL > window-row-number > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "id", "authorId", row_number() over (partition by "authorId" order by "id") from "posts"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "id", "authorId", row_number() over(partition by "authorId" order by "id") as "rn" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", "authorId", ROW_NUMBER() OVER (PARTITION BY "authorId" ORDER BY "id" ASC) AS "rn" FROM "posts"",
+  },
+}
+`;
