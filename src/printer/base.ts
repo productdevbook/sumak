@@ -614,6 +614,42 @@ export class BasePrinter implements Printer {
   }
 
   protected printBinaryOp(node: BinaryOpNode): string {
+    // For same-op AND/OR chains, walk the left spine iteratively
+    // instead of recursing through `printExpression` for each
+    // intermediate `binary_op`. The output is byte-for-byte identical
+    // to the recursive version — same parens shape, same param order
+    // — so snapshots don't move. The win is saving N-1 visitor-switch
+    // dispatches for an N-clause chain.
+    //
+    // **Param-order subtlety.** `printExpression` is impure — calling
+    // it on a node pushes that node's `param` children onto
+    // `this.params` in left-to-right traversal order, which fixes the
+    // `$N` numbering. We MUST print the deepest-left operand first
+    // (so its params get the lowest indices) and then the right
+    // operands in left-to-right order. Pushing print results into an
+    // array as we descend collects them right-to-left, which would
+    // assign params in reverse and produce SQL whose `$N` placeholders
+    // bind to the wrong values. Collect AST nodes during descent,
+    // print after.
+    if (node.op === "AND" || node.op === "OR") {
+      const op = node.op
+      const rightNodes: ExpressionNode[] = []
+      let cur: ExpressionNode = node
+      while (cur.type === "binary_op" && (cur as BinaryOpNode).op === op) {
+        rightNodes.push((cur as BinaryOpNode).right)
+        cur = (cur as BinaryOpNode).left
+      }
+      // `cur` is the deepest left operand. Print it first so its
+      // params get the lowest indices.
+      let result = this.printExpression(cur)
+      // Right operands were pushed right-to-left as we descended;
+      // iterate the array in reverse to print them left-to-right.
+      for (let i = rightNodes.length - 1; i >= 0; i--) {
+        const rightStr = this.printExpression(rightNodes[i]!)
+        result = `(${result} ${op} ${rightStr})`
+      }
+      return result
+    }
     return `(${this.printExpression(node.left)} ${node.op} ${this.printExpression(node.right)})`
   }
 
