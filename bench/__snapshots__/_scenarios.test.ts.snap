@@ -1387,6 +1387,23 @@ exports[`bench scenarios produce equivalent SQL > left-join-3-tables > snapshot 
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > scalar-subquery-in-select > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "id", "name", ((select count(*) from "posts")) from "users"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "id", "name", (select count(*) as "c" from "posts") as "totalPosts" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", "name", (SELECT COUNT(*) AS "c" FROM "posts") AS "totalPosts" FROM "users"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-aggregate > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
