@@ -27,10 +27,23 @@ import type { SumakPlugin } from "./types.ts"
  */
 export class PluginManager extends ASTWalker {
   private readonly plugins: readonly SumakPlugin[]
+  // Cached at construction so the no-plugin short-circuit in
+  // `transformNode` doesn't have to walk `plugins.some(...)` on
+  // every compile. The plugin list is frozen at construction, so
+  // this can never go stale.
+  private readonly hasTransformNode: boolean
 
   constructor(plugins: SumakPlugin[]) {
     super()
     this.plugins = Object.freeze([...plugins])
+    let hasTransformNode = false
+    for (const p of plugins) {
+      if (p.transformNode) {
+        hasTransformNode = true
+        break
+      }
+    }
+    this.hasTransformNode = hasTransformNode
   }
 
   /**
@@ -43,8 +56,10 @@ export class PluginManager extends ASTWalker {
   transformNode(node: ASTNode): ASTNode {
     // Short-circuit when no plugin implements `transformNode` — avoids
     // allocating a new AST on the hot no-plugins path and preserves
-    // object identity for callers that compare with `toBe`.
-    if (!this.plugins.some((p) => p.transformNode)) return node
+    // object identity for callers that compare with `toBe`. The flag
+    // is computed once at construction; pre-PR this was a `.some(...)`
+    // walk per call.
+    if (!this.hasTransformNode) return node
 
     // Dispatching through visitNode already applies the plugin chain at
     // every SelectNode / DML node it reaches (see the visit* overrides).
