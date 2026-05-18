@@ -5,6 +5,7 @@ import type {
   SelectNode,
   UnaryOpNode,
 } from "../ast/nodes.ts"
+import { mapPreserve } from "../ast/walker.ts"
 import { assertNever } from "../errors.ts"
 import type { CNF, NormalizeOptions } from "./types.ts"
 import { DEFAULT_NORMALIZE_OPTIONS } from "./types.ts"
@@ -23,31 +24,29 @@ import { DEFAULT_NORMALIZE_OPTIONS } from "./types.ts"
  * - Simplify negation: `NOT NOT x → x`, `NOT true → false`
  * - Normalize comparison direction: `1 = x → x = 1` (literal always on right)
  */
+// Run the simplify/fold/flatten/dedupe sweep until it stops
+// rewriting. Capped iteration count over `while (changed)` so a
+// future rewrite-rule bug that loops between two shapes can't take
+// user-facing compile down with it. Identity is checked via `===`;
+// each sub-pass + `recurse` now preserves identity on no-op cases,
+// so the typical query exits after one body iteration. Empirically
+// (`test/fuzz/properties.test.ts`) every shape the generator
+// produces settles in ≤ 2 sweeps.
+const NORMALIZE_FIXPOINT_PASSES = 6
+
 export function normalizeExpression(expr: ExpressionNode, opts?: NormalizeOptions): ExpressionNode {
   const o = { ...DEFAULT_NORMALIZE_OPTIONS, ...opts }
   let result = expr
 
-  // Single sweep. Each sub-pass returns either its input verbatim
-  // (for shapes it doesn't recognise) or a freshly-allocated subtree
-  // (for shapes it rewrote). The order is meaningful: negation must
-  // run before constant folding so `NOT true → false → flip`
-  // canonicalisation happens in the same pass.
-  if (o.simplifyNegation) result = simplifyNegation(result)
-  if (o.foldConstants) result = foldConstants(result)
-  if (o.simplifyTautologies) result = simplifyTautologies(result)
-  if (o.flattenLogical) result = flattenLogical(result)
-  if (o.deduplicatePredicates) result = deduplicatePredicates(result)
-
-  // Re-run tautology simplification after deduplication: the latter
-  // can leave behind `x AND x → x` shapes whose outer AND is now
-  // trivially true/false against an adjacent literal. This is the
-  // documented limit of the pipeline — full fixed-point convergence
-  // needs the sub-passes to preserve `===` identity on no-op cases,
-  // which `recurse` currently does not (every binary_op walk
-  // rebuilds the node). Tracked in the loop-state backlog; the
-  // fuzz property in `test/fuzz/properties.test.ts` pins the
-  // "converges in ≤ 3 passes" weaker invariant.
-  if (o.simplifyTautologies) result = simplifyTautologies(result)
+  for (let i = 0; i < NORMALIZE_FIXPOINT_PASSES; i++) {
+    const previous = result
+    if (o.simplifyNegation) result = simplifyNegation(result)
+    if (o.foldConstants) result = foldConstants(result)
+    if (o.simplifyTautologies) result = simplifyTautologies(result)
+    if (o.flattenLogical) result = flattenLogical(result)
+    if (o.deduplicatePredicates) result = deduplicatePredicates(result)
+    if (result === previous) break
+  }
 
   return result
 }
@@ -204,6 +203,9 @@ export function deduplicatePredicates(expr: ExpressionNode): ExpressionNode {
   }
 
   if (unique.length === 0) return { type: "literal", value: true }
+  // Nothing dedup'd — return input verbatim so a `result === previous`
+  // check upstream short-circuits the no-op case.
+  if (unique.length === parts.length) return expr
   return unique.reduce((acc: ExpressionNode, p) => ({
     type: "binary_op",
     op: "AND",
@@ -227,7 +229,7 @@ function simplifyTautologies(expr: ExpressionNode): ExpressionNode {
     if (isTrue(right)) return left
     // x AND false → false
     if (isFalse(left) || isFalse(right)) return { type: "literal", value: false }
-    return { ...e, left, right }
+    return left === e.left && right === e.right ? e : { ...e, left, right }
   }
 
   if (e.op === "OR") {
@@ -236,10 +238,10 @@ function simplifyTautologies(expr: ExpressionNode): ExpressionNode {
     // x OR false → x
     if (isFalse(left)) return right
     if (isFalse(right)) return left
-    return { ...e, left, right }
+    return left === e.left && right === e.right ? e : { ...e, left, right }
   }
 
-  return { ...e, left, right }
+  return left === e.left && right === e.right ? e : { ...e, left, right }
 }
 
 // ── Simplify negation ──
@@ -260,7 +262,7 @@ function simplifyNegation(expr: ExpressionNode): ExpressionNode {
       if (inner.type === "is_null") {
         return { ...inner, negated: !inner.negated }
       }
-      return { ...u, operand: inner }
+      return inner === u.operand ? u : { ...u, operand: inner }
     }
   }
   return recurse(expr, simplifyNegation)
@@ -298,7 +300,7 @@ function foldConstants(expr: ExpressionNode): ExpressionNode {
     return { type: "binary_op", op: flipComparison(e.op), left: right, right: left }
   }
 
-  return { ...e, left, right }
+  return left === e.left && right === e.right ? e : { ...e, left, right }
 }
 
 function foldNumeric(op: string, l: number, r: number): number | boolean | undefined {
@@ -469,20 +471,34 @@ function recurse(
   expr: ExpressionNode,
   transform: (e: ExpressionNode) => ExpressionNode,
 ): ExpressionNode {
+  // Identity preservation: every case returns `expr` verbatim when no
+  // child was rewritten. The fixpoint loop in `normalizeExpression`
+  // (and any caller that compares results with `===`) relies on this
+  // — without it, every sweep reallocates the entire subtree even
+  // when nothing changed, which is exactly what burned PR #102's
+  // perf regression.
   switch (expr.type) {
-    case "binary_op":
-      return { ...expr, left: transform(expr.left), right: transform(expr.right) }
-    case "unary_op":
-      return { ...expr, operand: transform(expr.operand) }
-    case "is_null":
-      return { ...expr, expr: transform(expr.expr) }
-    case "between":
-      return {
-        ...expr,
-        expr: transform(expr.expr),
-        low: transform(expr.low),
-        high: transform(expr.high),
-      }
+    case "binary_op": {
+      const left = transform(expr.left)
+      const right = transform(expr.right)
+      return left === expr.left && right === expr.right ? expr : { ...expr, left, right }
+    }
+    case "unary_op": {
+      const operand = transform(expr.operand)
+      return operand === expr.operand ? expr : { ...expr, operand }
+    }
+    case "is_null": {
+      const inner = transform(expr.expr)
+      return inner === expr.expr ? expr : { ...expr, expr: inner }
+    }
+    case "between": {
+      const e = transform(expr.expr)
+      const low = transform(expr.low)
+      const high = transform(expr.high)
+      return e === expr.expr && low === expr.low && high === expr.high
+        ? expr
+        : { ...expr, expr: e, low, high }
+    }
     case "in":
       if (Array.isArray(expr.values)) {
         const values = expr.values
@@ -504,55 +520,83 @@ function recurse(
         if (allParams) {
           return transformedExpr === expr.expr ? expr : { ...expr, expr: transformedExpr }
         }
-        return { ...expr, expr: transformedExpr, values: values.map(transform) }
+        const newValues = mapPreserve(values, transform)
+        return transformedExpr === expr.expr && newValues === values
+          ? expr
+          : { ...expr, expr: transformedExpr, values: newValues }
       }
-      return { ...expr, expr: transform(expr.expr) }
-    case "cast":
-      return { ...expr, expr: transform(expr.expr) }
-    case "function_call":
-      return {
-        ...expr,
-        args: expr.args.map(transform),
-        filter: expr.filter ? transform(expr.filter) : undefined,
+      // Subquery operand. Walking into a SelectNode here would require
+      // recursing through normalizeQuery, which the per-pass
+      // simplifiers don't do — keep them out and let the higher-level
+      // normalizeSelect handle the subquery's body.
+      {
+        const inner = transform(expr.expr)
+        return inner === expr.expr ? expr : { ...expr, expr: inner }
       }
-    case "case":
-      return {
-        ...expr,
-        operand: expr.operand ? transform(expr.operand) : undefined,
-        whens: expr.whens.map((w) => ({
-          condition: transform(w.condition),
-          result: transform(w.result),
-        })),
-        else_: expr.else_ ? transform(expr.else_) : undefined,
-      }
-    case "aliased_expr":
-      return { ...expr, expr: transform(expr.expr) }
-    case "json_access":
-      return { ...expr, expr: transform(expr.expr) }
-    case "tuple":
-      return { ...expr, elements: expr.elements.map(transform) }
-    case "array_expr":
-      return { ...expr, elements: expr.elements.map(transform) }
-    case "full_text_search":
-      return {
-        ...expr,
-        columns: expr.columns.map(transform),
-        query: transform(expr.query),
-      }
-    case "window_function":
-      return {
-        ...expr,
-        fn: transform(expr.fn) as typeof expr.fn,
-        partitionBy: expr.partitionBy.map(transform),
-        orderBy: expr.orderBy.map((o) => ({ ...o, expr: transform(o.expr) })),
-      }
-    case "quantified":
+    case "cast": {
+      const inner = transform(expr.expr)
+      return inner === expr.expr ? expr : { ...expr, expr: inner }
+    }
+    case "function_call": {
+      const args = mapPreserve(expr.args, transform)
+      const filter = expr.filter ? transform(expr.filter) : undefined
+      return args === expr.args && filter === expr.filter ? expr : { ...expr, args, filter }
+    }
+    case "case": {
+      const operand = expr.operand ? transform(expr.operand) : undefined
+      const whens = mapPreserve(expr.whens, (w) => {
+        const condition = transform(w.condition)
+        const result = transform(w.result)
+        return condition === w.condition && result === w.result ? w : { condition, result }
+      })
+      const else_ = expr.else_ ? transform(expr.else_) : undefined
+      return operand === expr.operand && whens === expr.whens && else_ === expr.else_
+        ? expr
+        : { ...expr, operand, whens, else_ }
+    }
+    case "aliased_expr": {
+      const inner = transform(expr.expr)
+      return inner === expr.expr ? expr : { ...expr, expr: inner }
+    }
+    case "json_access": {
+      const inner = transform(expr.expr)
+      return inner === expr.expr ? expr : { ...expr, expr: inner }
+    }
+    case "tuple": {
+      const elements = mapPreserve(expr.elements, transform)
+      return elements === expr.elements ? expr : { ...expr, elements }
+    }
+    case "array_expr": {
+      const elements = mapPreserve(expr.elements, transform)
+      return elements === expr.elements ? expr : { ...expr, elements }
+    }
+    case "full_text_search": {
+      const columns = mapPreserve(expr.columns, transform)
+      const query = transform(expr.query)
+      return columns === expr.columns && query === expr.query ? expr : { ...expr, columns, query }
+    }
+    case "window_function": {
+      const fn = transform(expr.fn) as typeof expr.fn
+      const partitionBy = mapPreserve(expr.partitionBy, transform)
+      const orderBy = mapPreserve(expr.orderBy, (o) => {
+        const e = transform(o.expr)
+        return e === o.expr ? o : { ...o, expr: e }
+      })
+      return fn === expr.fn && partitionBy === expr.partitionBy && orderBy === expr.orderBy
+        ? expr
+        : { ...expr, fn, partitionBy, orderBy }
+    }
+    case "quantified": {
       // Operand is one of subquery | array_expr | param | raw — walk
       // it so the inner columns / params go through the same
       // simplification passes every other expression sees.
-      return { ...expr, operand: transform(expr.operand) as typeof expr.operand }
-    case "grouping":
-      return { ...expr, sets: expr.sets.map((s) => s.map(transform)) }
+      const operand = transform(expr.operand) as typeof expr.operand
+      return operand === expr.operand ? expr : { ...expr, operand }
+    }
+    case "grouping": {
+      const sets = mapPreserve(expr.sets, (s) => mapPreserve(s, transform))
+      return sets === expr.sets ? expr : { ...expr, sets }
+    }
     // Terminal / opaque nodes — no child expressions to walk.
     case "column_ref":
     case "literal":

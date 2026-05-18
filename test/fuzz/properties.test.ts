@@ -108,73 +108,49 @@ const DIALECTS = [
   { name: "mssql", dialect: mssqlDialect() },
 ] as const
 
-describe("normalize eventually converges (expression)", () => {
-  // `normalizeExpression` does a single sub-pass sweep per call —
-  // strict single-call idempotence is not currently a contract (the
-  // sub-passes don't preserve `===` identity through `recurse`).
-  // The achievable invariant is that the pipeline reaches a fixed
-  // point within a small bounded number of repeat invocations.
-  it("normalizeExpression reaches a fixed point in ≤ 3 passes for random ASTs", () => {
+describe("normalize idempotence (expression)", () => {
+  // `normalizeExpression` runs its sub-pass sequence to fixed point
+  // internally (see the loop in `src/normalize/expression.ts`).
+  // After PR-this, every sub-pass + `recurse` preserves `===`
+  // identity on no-op cases, so the `result === previous` exit
+  // condition actually fires and the loop terminates early for
+  // already-normalized inputs. A second call must be a no-op.
+  it("normalizeExpression(normalize(x)) ≡ normalizeExpression(x) for random ASTs", () => {
     fc.assert(
       fc.property(exprArb, (expr) => {
-        let cur = expr
-        let converged = false
-        for (let i = 0; i < 3; i++) {
-          const next = normalizeExpression(cur)
-          if (JSON.stringify(next) === JSON.stringify(cur)) {
-            converged = true
-            break
-          }
-          cur = next
-        }
-        expect(converged, "did not converge in 3 passes").toBe(true)
+        const once = normalizeExpression(expr)
+        const twice = normalizeExpression(once)
+        expect(twice).toEqual(once)
       }),
       { numRuns: 300 },
     )
   })
 })
 
-describe("normalize eventually converges (query)", () => {
-  it("normalizeQuery reaches a fixed point in ≤ 3 passes for random SELECTs", () => {
+describe("normalize idempotence (query)", () => {
+  it("normalizeQuery(normalize(q)) ≡ normalizeQuery(q) for random SELECTs", () => {
     fc.assert(
       fc.property(selectArb, (sel) => {
-        let cur: SelectNode = sel
-        let converged = false
-        for (let i = 0; i < 3; i++) {
-          const next = normalizeQuery(cur) as SelectNode
-          if (JSON.stringify(next) === JSON.stringify(cur)) {
-            converged = true
-            break
-          }
-          cur = next
-        }
-        expect(converged, "did not converge in 3 passes").toBe(true)
+        const once = normalizeQuery(sel)
+        const twice = normalizeQuery(once)
+        expect(twice).toEqual(once)
       }),
       { numRuns: 200 },
     )
   })
 })
 
-describe("optimize fixpoint (eventual)", () => {
-  // The optimizer's rewrite-rule phase runs to fixed point internally,
-  // but the surrounding normalize step is single-sweep (see the note
-  // on `normalize eventually converges`). End-to-end `optimize` is
-  // therefore "fixed point eventually", not after a single call —
-  // re-running it should converge within a small bounded count.
-  it("optimize reaches a fixed point in ≤ 3 passes for random SELECTs", () => {
+describe("optimize idempotence", () => {
+  // The optimizer's rewrite-rule phase runs to fixed point and so
+  // does the surrounding normalize step (after PR-this), so the
+  // whole pipeline is now strictly idempotent — running it twice
+  // produces a structurally equal result.
+  it("optimize(optimize(q)) ≡ optimize(q) for random SELECTs", () => {
     fc.assert(
       fc.property(selectArb, (sel) => {
-        let cur: SelectNode = sel
-        let converged = false
-        for (let i = 0; i < 3; i++) {
-          const next = optimize(cur) as SelectNode
-          if (JSON.stringify(next) === JSON.stringify(cur)) {
-            converged = true
-            break
-          }
-          cur = next
-        }
-        expect(converged, "optimize did not converge in 3 passes").toBe(true)
+        const once = optimize(sel)
+        const twice = optimize(once)
+        expect(twice).toEqual(once)
       }),
       { numRuns: 200 },
     )
