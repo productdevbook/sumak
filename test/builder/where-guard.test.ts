@@ -115,6 +115,49 @@ describe("predicate guard — silent .where() bug", () => {
     })
   })
 
+  describe("callback returning undefined — diagnostic message", () => {
+    it("missing `return` in arrow body — error names the cause", () => {
+      const sel = db.selectFrom("users")
+      // The arrow body uses `{ ... }` braces but doesn't `return`, so
+      // the implicit return is `undefined`. This is THE most common
+      // way a callback drops a predicate — call it out directly
+      // rather than fall through to the generic "Got undefined".
+      expect(() =>
+        sel.where(((c: { id: { eq: (n: number) => unknown } }) => {
+          c.id.eq(1)
+        }) as never),
+      ).toThrow(/callback returned undefined/)
+    })
+
+    it("error tells the user about the `return` footgun", () => {
+      const sel = db.selectFrom("users")
+      try {
+        sel.where(((c: { id: { eq: (n: number) => unknown } }) => {
+          c.id.eq(1)
+        }) as never)
+        throw new Error("expected throw")
+      } catch (e) {
+        const msg = (e as Error).message
+        expect(msg).toMatch(/missing a `return`/)
+        expect(msg).toMatch(/Expected example/)
+      }
+    })
+
+    it("non-callback undefined keeps the generic message", () => {
+      const sel = db.selectFrom("users")
+      // @ts-expect-error — undefined is not a valid predicate
+      expect(() => sel.where(undefined)).toThrow(/Got undefined/)
+      try {
+        // @ts-expect-error — undefined is not a valid predicate
+        sel.where(undefined)
+      } catch (e) {
+        // The direct-undefined path does NOT mention "callback
+        // returned" because we know the user didn't pass a callback.
+        expect((e as Error).message).not.toMatch(/callback returned/)
+      }
+    })
+  })
+
   describe("typed-delete .where() — DELETE row-wipe regression test", () => {
     // The most dangerous variant of the original bug — a typo'd
     // single-string predicate on a DELETE would have silently wiped
