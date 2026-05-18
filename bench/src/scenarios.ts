@@ -601,6 +601,35 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "insert-returning",
+    // INSERT … RETURNING id, name — common shape for "create-and-return".
+    // PG-only standard but kysely + drizzle both support it on PG. The
+    // RETURNING clause adds AST nodes after the VALUES; the bench
+    // measures how cleanly each library handles that tail.
+    sumak: () =>
+      s
+        .insertInto("users")
+        .values({ id: 1, name: "ada", email: "ada@x.io", createdAt: new Date(0) })
+        .returning("id", "name")
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .insert(dUsers)
+          .values({ id: 1, name: "ada", email: "ada@x.io", createdAt: new Date(0) })
+          .returning({ id: dUsers.id, name: dUsers.name })
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .insertInto("users")
+          .values({ id: 1, name: "ada", email: "ada@x.io", createdAt: new Date(0) })
+          .returning(["id", "name"])
+          .compile(),
+      ),
+  },
+  {
     name: "window-row-number",
     sumak: () =>
       s
