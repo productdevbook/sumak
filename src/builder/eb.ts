@@ -472,7 +472,16 @@ export function count<T>(expr?: Col<T> | Expression<T>): Expression<number> {
   return wrap(rawFn("COUNT", [node]))
 }
 
-/** COUNT(DISTINCT expr) */
+/**
+ * `COUNT(DISTINCT expr)` — counts unique non-null values. Sub-linear
+ * cost on indexed columns; expensive on unindexed text. Returns 0
+ * (not NULL) for an empty set, unlike `SUM` / `AVG` / `MIN` / `MAX`.
+ *
+ * ```ts
+ * db.selectFrom("orders").select({ uniqueCustomers: countDistinct(typedCol("customer_id")) })
+ * // SELECT COUNT(DISTINCT "customer_id") AS "uniqueCustomers" FROM "orders"
+ * ```
+ */
 export function countDistinct(expr: Expression<any>): Expression<number> {
   const node: FunctionCallNode = {
     type: "function_call",
@@ -483,12 +492,27 @@ export function countDistinct(expr: Expression<any>): Expression<number> {
   return wrap(node)
 }
 
-/** SUM(expr) */
+/**
+ * `SUM(expr)` aggregate.
+ *
+ * Returns `NULL` (not `0`) when no rows match the WHERE clause — `SUM`
+ * over an empty set is `NULL` per SQL three-valued logic. Use
+ * `coalesce(sum(...), val(0))` if you want a numeric default.
+ *
+ * ```ts
+ * db.selectFrom("orders").select({ total: sum(typedCol<number>("amount")) })
+ * // SELECT SUM("amount") AS "total" FROM "orders"
+ * ```
+ */
 export function sum(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("SUM", [(expr as any).node]))
 }
 
-/** SUM(DISTINCT expr) */
+/**
+ * `SUM(DISTINCT expr)` — only adds each distinct value once. Useful
+ * when the same value can appear in multiple rows but should only
+ * contribute one to the total.
+ */
 export function sumDistinct(expr: Expression<number>): Expression<number> {
   const node: FunctionCallNode = {
     type: "function_call",
@@ -499,12 +523,19 @@ export function sumDistinct(expr: Expression<number>): Expression<number> {
   return wrap(node)
 }
 
-/** AVG(expr) */
+/**
+ * `AVG(expr)` aggregate.
+ *
+ * Returns `NULL` for an empty set. Numeric type promotion is dialect-
+ * specific: PG and SQLite return DOUBLE for integer columns; MySQL
+ * preserves DECIMAL precision. Use an explicit `cast()` if you need
+ * cross-dialect-stable output.
+ */
 export function avg(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("AVG", [(expr as any).node]))
 }
 
-/** AVG(DISTINCT expr) */
+/** `AVG(DISTINCT expr)` — only averages each distinct value once. */
 export function avgDistinct(expr: Expression<number>): Expression<number> {
   const node: FunctionCallNode = {
     type: "function_call",
@@ -515,12 +546,20 @@ export function avgDistinct(expr: Expression<number>): Expression<number> {
   return wrap(node)
 }
 
-/** MIN(expr) */
+/**
+ * `MIN(expr)` aggregate. Returns the smallest non-null value, or
+ * `NULL` for an empty set. Works on every comparable column type:
+ * numeric, text, timestamp, date.
+ */
 export function min<T>(expr: Expression<T>): Expression<T> {
   return wrap(rawFn("MIN", [(expr as any).node]))
 }
 
-/** MAX(expr) */
+/**
+ * `MAX(expr)` aggregate. Returns the largest non-null value, or
+ * `NULL` for an empty set. See `min()` for the comparable-column-type
+ * note.
+ */
 export function max<T>(expr: Expression<T>): Expression<T> {
   return wrap(rawFn("MAX", [(expr as any).node]))
 }
