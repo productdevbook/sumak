@@ -336,9 +336,25 @@ export type WhereCallback<DB, TB extends keyof DB> = (
  * ```
  */
 export function and(...exprs: Expression<boolean>[]): Expression<boolean> {
-  if (exprs.length === 0) return wrap(rawLit(true))
-  if (exprs.length === 1) return exprs[0]!
-  return exprs.reduce((acc, expr) => wrap(rawAnd((acc as any).node, (expr as any).node)))
+  const n = exprs.length
+  if (n === 0) return wrap(rawLit(true))
+  if (n === 1) return exprs[0]!
+  // Build the left-leaning AND tree with a plain loop. The previous
+  // `.reduce(... wrap(rawAnd(...)))` allocated a fresh branded
+  // Expression wrapper at every intermediate step — none of which
+  // were observable to the caller. At 5-clause arity this halves
+  // the per-call allocations: 1 final wrap + (n-1) binary_op nodes,
+  // vs (n-1) of each.
+  let node: ExpressionNode = (exprs[0] as Expression<boolean>).node
+  for (let i = 1; i < n; i++) {
+    node = {
+      type: "binary_op",
+      op: "AND",
+      left: node,
+      right: (exprs[i] as Expression<boolean>).node,
+    }
+  }
+  return wrap(node)
 }
 
 /**
@@ -346,9 +362,21 @@ export function and(...exprs: Expression<boolean>[]): Expression<boolean> {
  * Empty input returns `FALSE` (matches nothing), which is the safe default.
  */
 export function or(...exprs: Expression<boolean>[]): Expression<boolean> {
-  if (exprs.length === 0) return wrap(rawLit(false))
-  if (exprs.length === 1) return exprs[0]!
-  return exprs.reduce((acc, expr) => wrap(rawOr((acc as any).node, (expr as any).node)))
+  const n = exprs.length
+  if (n === 0) return wrap(rawLit(false))
+  if (n === 1) return exprs[0]!
+  // Same allocation-skipping pattern as `and()`. See that function's
+  // comment for the rationale.
+  let node: ExpressionNode = (exprs[0] as Expression<boolean>).node
+  for (let i = 1; i < n; i++) {
+    node = {
+      type: "binary_op",
+      op: "OR",
+      left: node,
+      right: (exprs[i] as Expression<boolean>).node,
+    }
+  }
+  return wrap(node)
 }
 
 /** Raw literal value as expression */
