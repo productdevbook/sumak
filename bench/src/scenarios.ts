@@ -31,6 +31,7 @@ import {
   or as sor,
   over as sover,
   rowNumber as srowNumber,
+  subqueryExpr as ssubqueryExpr,
 } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { sumak } from "../../src/sumak.ts"
@@ -603,6 +604,40 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "scalar-subquery-in-select",
+    // SELECT id, name, (SELECT COUNT(*) FROM posts) AS total_posts FROM users
+    // — non-correlated scalar subquery as a SELECT column. Common
+    // "include a top-level aggregate in every row" pattern.
+    sumak: () => {
+      const inner = s.selectFrom("posts").select({ c: scount() }).build()
+      return s
+        .selectFrom("users")
+        .select("id", "name")
+        .select({ totalPosts: ssubqueryExpr<number>(inner) })
+        .toSQL()
+    },
+    drizzle: () => {
+      const inner = d.select({ c: count() }).from(dPosts)
+      return drizzleToResult(
+        d
+          .select({ id: dUsers.id, name: dUsers.name, totalPosts: drizzleSql<number>`(${inner})` })
+          .from(dUsers)
+          .toSQL(),
+      )
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select((eb) => [
+            "id",
+            "name",
+            eb.selectFrom("posts").select(eb.fn.countAll().as("c")).as("totalPosts"),
+          ])
+          .compile(),
+      ),
+  },
+  {
     name: "select-exists-subquery",
     // SELECT … WHERE EXISTS (SELECT 1 FROM posts WHERE posts.author_id = users.id)
     // Correlated subquery — the inner query references the outer
