@@ -23,33 +23,51 @@ pnpm vitest run bench/_scenarios.test.ts
 
 It snapshots every scenario's compiled SQL across all three libraries and asserts that WHERE-bearing queries actually carry their parameters through. It exists because for >7 months the bench was running with a silent-no-op bug where sumak's typed builder accepted `.where("col", "=", val)` (kysely's three-arg form) at runtime, dropped the operator and value, and produced SQL **without a WHERE clause** — making every WHERE scenario unfairly favorable to sumak. The smoke test would have caught that the moment it landed.
 
-## Scenarios (23 total)
+## Scenarios (29 total)
 
-| name                    | shape                                                                          |
-| ----------------------- | ------------------------------------------------------------------------------ |
-| select-all              | `SELECT * FROM users`                                                          |
-| select-where-eq         | `SELECT id, name FROM users WHERE id = $1`                                     |
-| select-where-and        | `SELECT * FROM posts WHERE author_id = $1 AND published > $2`                  |
-| join-2-tables           | `SELECT … FROM posts JOIN users ON posts.author_id = users.id`                 |
-| insert-values           | `INSERT INTO users (id, name, email, created_at) VALUES (...)`                 |
-| update-where            | `UPDATE users SET name = $1 WHERE id = $2`                                     |
-| delete-where            | `DELETE FROM users WHERE id = $1`                                              |
-| select-where-or         | `SELECT id, name FROM users WHERE id = $1 OR name = $2`                        |
-| select-where-in-small   | `SELECT * FROM users WHERE id IN ($1..$5)`                                     |
-| select-where-in-large   | `SELECT * FROM users WHERE id IN ($1..$100)`                                   |
-| select-order-limit      | `SELECT * FROM users ORDER BY name ASC LIMIT 10 OFFSET 20`                     |
-| select-aggregate        | `SELECT COUNT(*) AS total, MAX(id) AS hi, AVG(id) AS avg FROM users`           |
-| select-group-having     | `SELECT author_id, COUNT(*) FROM posts GROUP BY author_id HAVING …`            |
-| select-distinct         | `SELECT DISTINCT name FROM users`                                              |
-| left-join-3-tables      | `SELECT … FROM comments LEFT JOIN posts LEFT JOIN users`                       |
-| select-subquery-in      | `SELECT * FROM posts WHERE author_id IN (SELECT id FROM users …)`              |
-| insert-many-100         | `INSERT INTO users VALUES (…), (…) × 100`                                      |
-| select-where-deep-and   | 5-clause AND chain on posts                                                    |
-| select-order-desc-limit | `SELECT * FROM posts ORDER BY published DESC LIMIT 20`                         |
-| cte-single              | `WITH active AS (SELECT id, name FROM users WHERE id > 0) SELECT * FROM users` |
-| cte-with-join           | CTE definition + INNER JOIN against the CTE                                    |
-| select-union            | `SELECT id, name FROM users UNION SELECT id, name FROM users`                  |
-| select-union-all        | same with `UNION ALL`                                                          |
+Cross-library compile-throughput benchmarks. The smoke test in
+`bench/_scenarios.test.ts` asserts every scenario's SQL is structurally
+equivalent across sumak / kysely / drizzle so the bench compares like-for-
+like work.
+
+| name                    | shape                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| select-all              | `SELECT * FROM users`                                                             |
+| select-where-eq         | `SELECT id, name FROM users WHERE id = $1`                                        |
+| select-where-and        | `SELECT * FROM posts WHERE author_id = $1 AND published > $2`                     |
+| join-2-tables           | `SELECT … FROM posts JOIN users ON posts.author_id = users.id`                    |
+| insert-values           | `INSERT INTO users (id, name, email, created_at) VALUES (...)`                    |
+| update-where            | `UPDATE users SET name = $1 WHERE id = $2`                                        |
+| delete-where            | `DELETE FROM users WHERE id = $1`                                                 |
+| select-where-or         | `SELECT id, name FROM users WHERE id = $1 OR name = $2`                           |
+| select-where-in-small   | `SELECT * FROM users WHERE id IN ($1..$5)`                                        |
+| select-where-in-large   | `SELECT * FROM users WHERE id IN ($1..$100)`                                      |
+| select-order-limit      | `SELECT * FROM users ORDER BY name ASC LIMIT 10 OFFSET 20`                        |
+| select-aggregate        | `SELECT COUNT(*) AS total, MAX(id) AS hi, AVG(id) AS avg FROM users`              |
+| select-group-having     | `SELECT author_id, COUNT(*) FROM posts GROUP BY author_id HAVING …`               |
+| select-distinct         | `SELECT DISTINCT name FROM users`                                                 |
+| left-join-3-tables      | `SELECT … FROM comments LEFT JOIN posts LEFT JOIN users`                          |
+| select-subquery-in      | `SELECT * FROM posts WHERE author_id IN (SELECT id FROM users …)`                 |
+| insert-many-100         | `INSERT INTO users VALUES (…), (…) × 100`                                         |
+| select-where-deep-and   | 5-clause AND chain on posts                                                       |
+| select-order-desc-limit | `SELECT * FROM posts ORDER BY published DESC LIMIT 20`                            |
+| cte-single              | `WITH active AS (SELECT id, name FROM users WHERE id > 0) SELECT * FROM users`    |
+| cte-with-join           | CTE definition + INNER JOIN against the CTE                                       |
+| select-union            | `SELECT id, name FROM users UNION SELECT id, name FROM users`                     |
+| select-union-all        | same with `UNION ALL`                                                             |
+| window-row-number       | `SELECT id, ROW_NUMBER() OVER (PARTITION BY author_id ORDER BY id) FROM posts`    |
+| upsert-do-update        | `INSERT … ON CONFLICT (email) DO UPDATE SET name = ?`                             |
+| insert-returning        | `INSERT … RETURNING id, name`                                                     |
+| select-case-when        | `SELECT id, CASE WHEN published > 0 THEN 'published' ELSE 'draft' END FROM posts` |
+| select-exists-subquery  | `SELECT … FROM users WHERE EXISTS (SELECT … FROM posts WHERE …)`                  |
+
+## Plugin overhead microbench
+
+`bench/plugin.bench.ts` measures the per-compile cost of each built-in
+plugin against a baseline (no plugins). softDelete and multiTenant add
+the most (~2.4× over baseline) because they rewrite the SELECT AST;
+camelCase and subjectType are nearly free because they only transform
+result rows. See PR #112 for the full table.
 
 ## Results (post-`.where()` fix, 2026-05-18)
 
