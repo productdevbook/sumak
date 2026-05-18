@@ -110,6 +110,42 @@ import — the real ways to produce a column expression are:
 Where the example uses a bare `col.X`, mentally replace it with one of
 the two idioms above.
 
+### Row Types (`InferSelectModel`, etc.)
+
+Three top-level helpers infer row shapes from a column map — useful for
+typing function arguments, API responses, and form payloads without
+hand-rolling matching interfaces. The names match drizzle's so users
+coming from there find the same API; the underlying mechanics are
+sumak's existing `Selectable<T>` / `Insertable<T>` / `Updateable<T>`.
+
+```ts
+import { InferSelectModel, InferInsertModel, InferUpdateModel } from "sumak"
+
+const tables = {
+  users: {
+    id: serial().primaryKey(),
+    name: text().notNull(),
+    active: boolean().defaultTo(true),
+    age: integer().nullable(),
+  },
+}
+
+type User = InferSelectModel<typeof tables.users>
+//   { id: number; name: string; active: boolean; age: number | null }
+
+type NewUser = InferInsertModel<typeof tables.users>
+//   { name: string; id?: number; active?: boolean | undefined; age?: number | null }
+
+type UserUpdate = InferUpdateModel<typeof tables.users>
+//   { id?: number; name?: string; active?: boolean; age?: number | null }
+```
+
+`InferSelectModel` keeps every column required and respects column
+nullability (`T | null`, never `T | undefined`). `InferInsertModel`
+makes generated / default / nullable columns optional.
+`InferUpdateModel` is the partial form — every column optional, matching
+sumak's `.update(...).set(...)` semantics.
+
 ---
 
 ## SELECT
@@ -240,7 +276,24 @@ db.deleteFrom("orders")
 
 ## WHERE Conditions
 
-Every `.where()` takes a callback with typed column proxies.
+`.where()` accepts three shapes:
+
+```ts
+// 1. Callback with typed column proxies (the original form)
+.where(({ age }) => age.eq(25))
+
+// 2. Three-arg kysely-style — same operator strings, same AST
+//    (added in v0.0.15)
+.where("age", "=", 25)
+.where("name", "ilike", "%alice%")
+.where("id", "in", [1, 2, 3])
+.where("deleted_at", "is", null)
+
+// 3. Raw Expression
+.where(typedEq(typedCol<number>("age"), typedParam(0, 25)))
+```
+
+Operators in the three-arg form: `=` `==` `!=` `<>` `<` `<=` `>` `>=` `like` `not like` `ilike` `not ilike` `in` `not in` `is` `is not`. The RHS type is narrowed per operator — `like` only accepts a string, `in` only an array, `is`/`is not` only `null`. The runtime guard turns the pre-v0.0.15 silent-drop case (`.where("col")` with a typo'd RHS) into a `TypeError` pointing at the callback form.
 
 ### Comparisons
 
