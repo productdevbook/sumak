@@ -493,6 +493,46 @@ export const scenarios: Scenario[] = [
       ),
   },
   {
+    name: "select-union",
+    sumak: () => {
+      const second = s.selectFrom("users").select("id", "name")
+      return s.selectFrom("users").select("id", "name").union(second).toSQL()
+    },
+    drizzle: () => {
+      const q1 = d.select({ id: dUsers.id, name: dUsers.name }).from(dUsers)
+      const q2 = d.select({ id: dUsers.id, name: dUsers.name }).from(dUsers)
+      return drizzleToResult(q1.union(q2).toSQL())
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select(["id", "name"])
+          .union(k.selectFrom("users").select(["id", "name"]))
+          .compile(),
+      ),
+  },
+  {
+    name: "select-union-all",
+    sumak: () => {
+      const second = s.selectFrom("users").select("id", "name")
+      return s.selectFrom("users").select("id", "name").unionAll(second).toSQL()
+    },
+    drizzle: () => {
+      const q1 = d.select({ id: dUsers.id, name: dUsers.name }).from(dUsers)
+      const q2 = d.select({ id: dUsers.id, name: dUsers.name }).from(dUsers)
+      return drizzleToResult(q1.unionAll(q2).toSQL())
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select(["id", "name"])
+          .unionAll(k.selectFrom("users").select(["id", "name"]))
+          .compile(),
+      ),
+  },
+  {
     name: "cte-with-join",
     // CTE plus a join — exercises the full WITH + JOIN compile path.
     sumak: () => {

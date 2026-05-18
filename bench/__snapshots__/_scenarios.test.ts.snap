@@ -1496,6 +1496,40 @@ exports[`bench scenarios produce equivalent SQL > select-subquery-in > snapshot 
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-union > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "(select "id", "name" from "users") union (select "id", "name" from "users")",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "id", "name" from "users" union select "id", "name" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", "name" FROM "users" UNION SELECT "id", "name" FROM "users"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-union-all > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "(select "id", "name" from "users") union all (select "id", "name" from "users")",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "id", "name" from "users" union all select "id", "name" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", "name" FROM "users" UNION ALL SELECT "id", "name" FROM "users"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-where-and > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
