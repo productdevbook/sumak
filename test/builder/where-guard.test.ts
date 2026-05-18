@@ -6,13 +6,20 @@ import { serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 
 /**
- * Runtime guard against the silent-no-op bug where calling
- * `.where("col", "=", val)` (kysely-style three-arg form) was passing
- * the string `"col"` as the predicate, having every following arg
- * discarded by JavaScript's loose call-site, and storing `undefined` in
- * the AST. The printer then emitted a SELECT/UPDATE/DELETE without a
- * WHERE clause — a row-scoped DELETE silently turning into a table
- * wipe. The guard turns that into a loud TypeError at compile time.
+ * The original silent-no-op bug: calling `.where("col", "=", val)`
+ * (kysely-style three-arg form) passed `"col"` as the predicate, JS
+ * dropped the operator and value, and the printer emitted SQL
+ * without a WHERE clause — a row-scoped DELETE silently turning
+ * into a table wipe.
+ *
+ * Two safeguards remain after PR #95 + this PR:
+ *
+ * 1. The three-arg form is now a real overload (handled by
+ *    `where-3-arg.ts`); calls like `.where("id", "=", 1)` produce
+ *    valid SQL.
+ * 2. Any other shape — bare string, number, undefined, etc. —
+ *    still throws through `unwrapPredicate` because the original
+ *    silent path (just `unwrap(arg).node` on whatever) is gone.
  */
 describe("predicate guard — silent .where() bug", () => {
   const db = sumak({
@@ -76,19 +83,23 @@ describe("predicate guard — silent .where() bug", () => {
     })
   })
 
-  describe("typed-select .where()", () => {
-    it("callback form works", () => {
-      const q = db
-        .selectFrom("users")
-        .where(({ id }) => id.eq(1))
-        .toSQL()
-      expect(q.sql).toMatch(/WHERE/)
+  describe("typed-select .where() — string-only / wrong-arity cases still throw", () => {
+    // The three-arg `.where("col", "=", val)` form IS supported now
+    // (see the kysely-style overload tests). But the original silent
+    // failures — one-arg string, two-arg string — must keep throwing.
+    // They're not valid kysely overloads either, so we don't lose
+    // anything by being strict.
+
+    it(".where('id') — single string arg throws (no silent WHERE drop)", () => {
+      const sel = db.selectFrom("users")
+      // @ts-expect-error — single string is not a valid predicate
+      expect(() => sel.where("id")).toThrow(/Expression<boolean>/)
     })
 
-    it("kysely-style 3-arg form throws instead of silently dropping WHERE", () => {
+    it(".where('id', '=') — two-arg form throws", () => {
       const sel = db.selectFrom("users")
-      // @ts-expect-error — kysely-style 3-arg WHERE is not part of sumak's typed API
-      expect(() => sel.where("id", "=", 1)).toThrow(/Expression<boolean>/)
+      // @ts-expect-error — two-arg form is incomplete
+      expect(() => sel.where("id", "=")).toThrow(/Expression<boolean>/)
     })
 
     it("passing undefined throws", () => {
@@ -96,43 +107,21 @@ describe("predicate guard — silent .where() bug", () => {
       // @ts-expect-error — undefined is not a valid predicate
       expect(() => sel.where(undefined)).toThrow(/Got undefined/)
     })
-  })
 
-  describe("typed-select .orWhere()", () => {
-    it("kysely-style 3-arg form throws", () => {
-      const sel = db.selectFrom("users").where(({ id }) => id.eq(1))
-      // @ts-expect-error — kysely-style 3-arg WHERE is not part of sumak's typed API
-      expect(() => sel.orWhere("name", "=", "ada")).toThrow(/Expression<boolean>/)
+    it("passing a bare number throws", () => {
+      const sel = db.selectFrom("users")
+      // @ts-expect-error — number is not a valid predicate
+      expect(() => sel.where(42)).toThrow(/Got number/)
     })
   })
 
-  describe("typed-select .having()", () => {
-    it("kysely-style 3-arg form throws", () => {
-      const sel = db.selectFrom("users").select("id").groupBy("id")
-      // @ts-expect-error — kysely-style 3-arg HAVING is not part of sumak's typed API
-      expect(() => sel.having("id", ">", 0)).toThrow(/Expression<boolean>/)
-    })
-  })
+  describe("typed-delete .where() — DELETE row-wipe regression test", () => {
+    // The most dangerous variant of the original bug — a typo'd
+    // single-string predicate on a DELETE would have silently wiped
+    // the table. If anyone ever loosens the guard, this test reminds
+    // them why it exists.
 
-  describe("typed-update .where()", () => {
-    it("callback form works", () => {
-      const q = db
-        .update("users")
-        .set({ name: "ada" })
-        .where(({ id }) => id.eq(1))
-        .toSQL()
-      expect(q.sql).toMatch(/WHERE/)
-    })
-
-    it("kysely-style 3-arg form throws", () => {
-      const upd = db.update("users").set({ name: "ada" })
-      // @ts-expect-error — kysely-style 3-arg WHERE is not part of sumak's typed API
-      expect(() => upd.where("id", "=", 1)).toThrow(/Expression<boolean>/)
-    })
-  })
-
-  describe("typed-delete .where()", () => {
-    it("callback form works", () => {
+    it("callback form works on DELETE", () => {
       const q = db
         .deleteFrom("users")
         .where(({ id }) => id.eq(1))
@@ -140,13 +129,10 @@ describe("predicate guard — silent .where() bug", () => {
       expect(q.sql).toMatch(/WHERE/)
     })
 
-    // The most dangerous case: a row-scoped DELETE silently becoming a
-    // table wipe. If anyone ever loosens this guard, this test will
-    // remind them why it exists.
-    it("kysely-style 3-arg DELETE throws — preventing a silent table wipe", () => {
+    it("DELETE with a single string arg throws — preventing table wipe", () => {
       const del = db.deleteFrom("users")
-      // @ts-expect-error — kysely-style 3-arg WHERE is not part of sumak's typed API
-      expect(() => del.where("id", "=", 1)).toThrow(/Expression<boolean>/)
+      // @ts-expect-error — single string is not a valid predicate
+      expect(() => del.where("id")).toThrow(/Expression<boolean>/)
     })
   })
 })

@@ -30,6 +30,8 @@ import type { ColumnProxies, WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
 import { SelectBuilder } from "./select.ts"
+import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
+import { isWhere3ArgCall, resolveWhere3Arg } from "./where-3-arg.ts"
 
 /**
  * Type-safe SELECT query builder.
@@ -192,40 +194,72 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   }
 
   /**
-   * WHERE — accepts callback with typed column proxies OR raw Expression.
+   * WHERE — three accepted shapes:
    *
    * ```ts
-   * // Callback style (recommended)
+   * // 1. Callback with typed column proxies (recommended)
    * .where(({ id, name }) => id.eq(42))
    * .where(({ age }) => age.between(18, 65))
    *
-   * // Raw Expression style
+   * // 2. Three-arg comparison form — same shape as kysely, useful
+   * //    when the predicate is simple enough that the callback is
+   * //    noise:
+   * .where("id", "=", 42)
+   * .where("name", "ilike", "%alice%")
+   * .where("id", "in", [1, 2, 3])
+   * .where("deleted_at", "is", null)
+   *
+   * // 3. Raw Expression
    * .where(typedEq(typedCol<number>("id"), typedParam(0, 42)))
    * ```
+   *
+   * Operators accepted in the three-arg form:
+   * `=`, `==`, `!=`, `<>`, `<`, `<=`, `>`, `>=`,
+   * `like`, `not like`, `ilike`, `not ilike`,
+   * `in`, `not in`, `is`, `is not`.
    */
-  where(
-    exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>,
-  ): TypedSelectBuilder<DB, TB, O> {
-    if (typeof exprOrCallback === "function") {
+  where<K extends keyof DB[TB] & string, Op extends ComparisonOp>(
+    col: K,
+    op: Op,
+    val: WhereValueForOp<Op, DB[TB][K]>,
+  ): TypedSelectBuilder<DB, TB, O>
+  where(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedSelectBuilder<DB, TB, O>
+  where(arg0: unknown, op?: ComparisonOp, val?: unknown): TypedSelectBuilder<DB, TB, O> {
+    if (isWhere3ArgCall([arg0, op, val])) {
+      const node = resolveWhere3Arg<DB, TB>(this._table, arg0 as string, op as ComparisonOp, val)
+      return this._chain(this._builder.where(node))
+    }
+    if (typeof arg0 === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
-      const result = exprOrCallback(cols)
+      const result = (arg0 as WhereCallback<DB, TB>)(cols)
       return this._chain(this._builder.where(unwrapPredicate(result, ".where(callback)")))
     }
-    return this._chain(this._builder.where(unwrapPredicate(exprOrCallback, ".where()")))
+    return this._chain(this._builder.where(unwrapPredicate(arg0, ".where()")))
   }
 
   /**
    * OR WHERE — ORs with existing WHERE clause instead of AND.
+   * Accepts the same three shapes as `.where()`.
    */
+  orWhere<K extends keyof DB[TB] & string, Op extends ComparisonOp>(
+    col: K,
+    op: Op,
+    val: WhereValueForOp<Op, DB[TB][K]>,
+  ): TypedSelectBuilder<DB, TB, O>
   orWhere(
     exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>,
-  ): TypedSelectBuilder<DB, TB, O> {
-    if (typeof exprOrCallback === "function") {
+  ): TypedSelectBuilder<DB, TB, O>
+  orWhere(arg0: unknown, op?: ComparisonOp, val?: unknown): TypedSelectBuilder<DB, TB, O> {
+    if (isWhere3ArgCall([arg0, op, val])) {
+      const node = resolveWhere3Arg<DB, TB>(this._table, arg0 as string, op as ComparisonOp, val)
+      return this._chain(this._builder.orWhere(node))
+    }
+    if (typeof arg0 === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
-      const result = exprOrCallback(cols)
+      const result = (arg0 as WhereCallback<DB, TB>)(cols)
       return this._chain(this._builder.orWhere(unwrapPredicate(result, ".orWhere(callback)")))
     }
-    return this._chain(this._builder.orWhere(unwrapPredicate(exprOrCallback, ".orWhere()")))
+    return this._chain(this._builder.orWhere(unwrapPredicate(arg0, ".orWhere()")))
   }
 
   /**
@@ -269,16 +303,32 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     return this._chain(this._builder.groupBy(...resolved))
   }
 
-  /** HAVING */
-  having(
-    exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>,
-  ): TypedSelectBuilder<DB, TB, O> {
-    if (typeof exprOrCallback === "function") {
+  /**
+   * HAVING — accepts the same three shapes as `.where()`:
+   *
+   * ```ts
+   * .having(({ total }) => total.gt(5))   // callback
+   * .having("total", ">", 5)                // three-arg
+   * .having(typedGt(...))                    // raw Expression
+   * ```
+   */
+  having<K extends keyof DB[TB] & string, Op extends ComparisonOp>(
+    col: K,
+    op: Op,
+    val: WhereValueForOp<Op, DB[TB][K]>,
+  ): TypedSelectBuilder<DB, TB, O>
+  having(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedSelectBuilder<DB, TB, O>
+  having(arg0: unknown, op?: ComparisonOp, val?: unknown): TypedSelectBuilder<DB, TB, O> {
+    if (isWhere3ArgCall([arg0, op, val])) {
+      const node = resolveWhere3Arg<DB, TB>(this._table, arg0 as string, op as ComparisonOp, val)
+      return this._chain(this._builder.having(node))
+    }
+    if (typeof arg0 === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
-      const result = exprOrCallback(cols)
+      const result = (arg0 as WhereCallback<DB, TB>)(cols)
       return this._chain(this._builder.having(unwrapPredicate(result, ".having(callback)")))
     }
-    return this._chain(this._builder.having(unwrapPredicate(exprOrCallback, ".having()")))
+    return this._chain(this._builder.having(unwrapPredicate(arg0, ".having()")))
   }
 
   /** ORDER BY — accepts column name or expression */
