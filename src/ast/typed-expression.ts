@@ -110,6 +110,25 @@ export function unwrapPredicate(value: unknown, method: string): ExpressionNode 
   ) {
     return (value as Expression<unknown>).node
   }
+  // Strip "()" or "(callback)" from method name so the example below
+  // reads `.where(({ col }) => …)`, not `.where(()({ col }) => …)`.
+  const bare = method.replace(/\([^)]*\)$/, "")
+  const isCallbackContext = method.endsWith("(callback)")
+
+  // Callback path + `undefined` is overwhelmingly "you forgot to
+  // `return` from the arrow body" (or called something like
+  // `id.between(1, 2)` that doesn't exist on `Col`). Give that
+  // explanation directly instead of reciting the generic shapes.
+  if (isCallbackContext && value === undefined) {
+    throw new TypeError(
+      `${method} — your callback returned undefined. ` +
+        "Most likely either (a) the arrow body is missing a `return` " +
+        "(e.g. `(c) => { c.id.eq(1) }` instead of `(c) => c.id.eq(1)`) " +
+        "or (b) you called a method on a column proxy that returns " +
+        "`void` (e.g. `id.set(1)` is not an Expression). " +
+        `Expected example: ${bare}(({ col }) => col.eq(value))`,
+    )
+  }
   const got =
     typeof value === "string"
       ? `string "${value.slice(0, 40)}"${value.length > 40 ? "…" : ""}`
@@ -120,9 +139,6 @@ export function unwrapPredicate(value: unknown, method: string): ExpressionNode 
           : value === undefined
             ? "undefined"
             : typeof value
-  // Strip "()" or "(callback)" from method name so the example below
-  // reads `.where(({ col }) => …)`, not `.where(()({ col }) => …)`.
-  const bare = method.replace(/\([^)]*\)$/, "")
   throw new TypeError(
     `${method} expected an Expression<boolean> or a callback returning one. Got ${got}. ` +
       `Use the callback form: ${bare}(({ col }) => col.eq(value))`,
