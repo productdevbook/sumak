@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { isAbortError } from "../../src/driver/types.ts"
-import { integer, serial, text } from "../../src/schema/column.ts"
+import { serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 import { pgliteDriver } from "../integration/pglite-driver.ts"
 

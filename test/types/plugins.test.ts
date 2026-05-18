@@ -63,9 +63,9 @@ describe("OnQueryListener + QueryEvent discriminated union", () => {
       if (event.phase === "start") {
         expectTypeOf(event).toEqualTypeOf<QueryStartEvent>()
         // @ts-expect-error — only on end events.
-        event.rowCount
+        void event.rowCount
         // @ts-expect-error — only on end/error events.
-        event.durationMs
+        void event.durationMs
       }
       // End branch: durationMs + optional rowCount / affected.
       if (event.phase === "end") {

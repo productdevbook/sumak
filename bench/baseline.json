@@ -1,13 +1,26 @@
 {
   "$note": "Performance baseline for sumak's compile path. Numbers are ops-per-second on an Apple M-series local run and drift across machines — the regression guard only rejects when the current run is <0.5x the baseline, which is a margin wide enough that noise / slower CI hardware doesn't trigger false alarms while still catching genuine 2x slowdowns.",
-  "$pinned_on": "2026-04-24",
+  "$pinned_on": "2026-05-18",
+  "$note_2026_05_18": "Re-baselined after fixing the silent .where() bug. Pre-fix numbers were unfairly high because the kysely-style 3-arg form was dropping the WHERE clause entirely — sumak was being benchmarked on queries doing strictly less work than the competition.",
   "scenarios": {
-    "select-all": { "sumakMinHz": 400000 },
-    "select-where-eq": { "sumakMinHz": 300000 },
-    "select-where-and": { "sumakMinHz": 400000 },
-    "join-2-tables": { "sumakMinHz": 150000 },
-    "insert-values": { "sumakMinHz": 180000 },
-    "update-where": { "sumakMinHz": 300000 },
-    "delete-where": { "sumakMinHz": 190000 }
+    "select-all": { "sumakMinHz": 350000 },
+    "select-where-eq": { "sumakMinHz": 130000 },
+    "select-where-and": { "sumakMinHz": 80000 },
+    "join-2-tables": { "sumakMinHz": 100000 },
+    "insert-values": { "sumakMinHz": 150000 },
+    "update-where": { "sumakMinHz": 140000 },
+    "delete-where": { "sumakMinHz": 160000 },
+    "select-where-or": { "sumakMinHz": 95000 },
+    "select-where-in-small": { "sumakMinHz": 110000 },
+    "select-where-in-large": { "sumakMinHz": 17000 },
+    "select-order-limit": { "sumakMinHz": 210000 },
+    "select-aggregate": { "sumakMinHz": 100000 },
+    "select-group-having": { "sumakMinHz": 90000 },
+    "select-distinct": { "sumakMinHz": 250000 },
+    "left-join-3-tables": { "sumakMinHz": 65000 },
+    "select-subquery-in": { "sumakMinHz": 90000 },
+    "insert-many-100": { "sumakMinHz": 6000 },
+    "select-where-deep-and": { "sumakMinHz": 38000 },
+    "select-order-desc-limit": { "sumakMinHz": 180000 }
   }
 }

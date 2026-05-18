@@ -10,7 +10,7 @@ import {
   OtelSpanStatusCode,
 } from "../../src/otel.ts"
 import type { OtelSpan, OtelTracer } from "../../src/otel.ts"
-import { integer, serial, text } from "../../src/schema/column.ts"
+import { serial, text } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 import { pgliteDriver } from "../integration/pglite-driver.ts"
 
@@ -32,7 +32,7 @@ function mockTracer() {
     startSpan(name, options) {
       const span: RecordedSpan = {
         name,
-        attributes: { ...(options?.attributes ?? {}) },
+        attributes: { ...options?.attributes },
         status: null,
         ended: false,
       }

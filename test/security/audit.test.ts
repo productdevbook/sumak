@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { col } from "../../src/ast/expression.ts"
 import { and, exists, unsafeRawExpr, unsafeSqlFn, val } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { integer, serial, text } from "../../src/schema/column.ts"

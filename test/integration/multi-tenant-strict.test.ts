@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { CrossTenantJoinError } from "../../src/errors.ts"
 import { multiTenant } from "../../src/plugin/factories.ts"
-import { integer, serial, text } from "../../src/schema/column.ts"
+import { integer, serial } from "../../src/schema/column.ts"
 import { sumak } from "../../src/sumak.ts"
 import { pgliteDriver } from "./pglite-driver.ts"
 
