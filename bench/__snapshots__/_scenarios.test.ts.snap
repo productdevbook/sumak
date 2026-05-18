@@ -1,5 +1,51 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`bench scenarios produce equivalent SQL > cte-single > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      0,
+    ],
+    "sql": "with "active" as (select "id", "name", "email", "createdAt" from "users" where "users"."id" > $1) select "id", "name", "email", "createdAt" from "users"",
+  },
+  "kysely": {
+    "params": [
+      0,
+    ],
+    "sql": "with "active" as (select "id", "name" from "users" where "id" > $1) select * from "users"",
+  },
+  "sumak": {
+    "params": [
+      0,
+    ],
+    "sql": "WITH "active" AS (SELECT "id", "name" FROM "users" WHERE ("id" > $1)) SELECT * FROM "users"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > cte-with-join > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      0,
+    ],
+    "sql": "with "recent_posts" as (select "id", "authorId" from "posts" where "posts"."published" > $1) select "users"."id", "users"."name" from "users" inner join "recent_posts" on "users"."id" = "recent_posts"."authorId"",
+  },
+  "kysely": {
+    "params": [
+      0,
+    ],
+    "sql": "with "recent_posts" as (select "id", "authorId" from "posts" where "published" > $1) select "users"."id", "users"."name" from "users" inner join "recent_posts" on "users"."id" = "recent_posts"."authorId"",
+  },
+  "sumak": {
+    "params": [
+      0,
+    ],
+    "sql": "WITH "recent_posts" AS (SELECT "id", "authorId" FROM "posts" WHERE ("published" > $1)) SELECT "users.id", "users.name" FROM "users" INNER JOIN "recent_posts" ON ("users"."id" = "recent_posts"."authorId")",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > delete-where > snapshot of generated SQL 1`] = `
 {
   "drizzle": {

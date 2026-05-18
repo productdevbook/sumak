@@ -21,6 +21,8 @@
     "select-subquery-in": { "sumakMinHz": 90000 },
     "insert-many-100": { "sumakMinHz": 6000 },
     "select-where-deep-and": { "sumakMinHz": 38000 },
-    "select-order-desc-limit": { "sumakMinHz": 180000 }
+    "select-order-desc-limit": { "sumakMinHz": 180000 },
+    "cte-single": { "sumakMinHz": 100000 },
+    "cte-with-join": { "sumakMinHz": 70000 }
   }
 }
