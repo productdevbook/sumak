@@ -108,53 +108,34 @@ const DIALECTS = [
   { name: "mssql", dialect: mssqlDialect() },
 ] as const
 
-describe("normalize eventually converges (expression)", () => {
-  // `normalizeExpression` runs simplifyNegation → foldConstants →
-  // simplifyTautologies → flattenLogical → deduplicatePredicates in a
-  // single sweep. Some inputs need more than one sweep before they
-  // settle — e.g. `simplifyNegation` can rewrite `NOT TRUE` into
-  // `FALSE`, which then trips `foldConstants`' "literal on the right"
-  // canonicalization the next pass over. Single-pass non-idempotence
-  // is a documented limitation (see the failing counterexample saved
-  // in `bench/competitor-notes.md` once that exists); this property
-  // pins the weaker but still-useful invariant that the pipeline
-  // converges within a bounded number of passes.
-  it("normalizeExpression reaches a fixed point in ≤ 5 passes for random ASTs", () => {
+describe("normalize idempotence (expression)", () => {
+  // `normalizeExpression` runs its sub-pass sequence to fixed point
+  // internally (see the `NORMALIZE_FIXPOINT_PASSES` loop in
+  // `src/normalize/expression.ts`), so a second call must be a no-op
+  // — `normalizeExpression(normalizeExpression(x))` ≡
+  // `normalizeExpression(x)` for all inputs. The original (single-
+  // sweep) implementation failed this within 81 random ASTs; the
+  // fuzz fence stays here so future refactors can't accidentally
+  // regress to single-sweep semantics.
+  it("normalizeExpression(normalize(x)) ≡ normalizeExpression(x) for random ASTs", () => {
     fc.assert(
       fc.property(exprArb, (expr) => {
-        let cur = expr
-        let converged = false
-        for (let i = 0; i < 5; i++) {
-          const next = normalizeExpression(cur)
-          if (JSON.stringify(next) === JSON.stringify(cur)) {
-            converged = true
-            break
-          }
-          cur = next
-        }
-        expect(converged, "did not converge in 5 passes").toBe(true)
+        const once = normalizeExpression(expr)
+        const twice = normalizeExpression(once)
+        expect(twice).toEqual(once)
       }),
       { numRuns: 300 },
     )
   })
 })
 
-describe("normalize eventually converges (query)", () => {
-  // Same property at the query level.
-  it("normalizeQuery reaches a fixed point in ≤ 5 passes for random SELECTs", () => {
+describe("normalize idempotence (query)", () => {
+  it("normalizeQuery(normalize(q)) ≡ normalizeQuery(q) for random SELECTs", () => {
     fc.assert(
       fc.property(selectArb, (sel) => {
-        let cur: SelectNode = sel
-        let converged = false
-        for (let i = 0; i < 5; i++) {
-          const next = normalizeQuery(cur) as SelectNode
-          if (JSON.stringify(next) === JSON.stringify(cur)) {
-            converged = true
-            break
-          }
-          cur = next
-        }
-        expect(converged, "did not converge in 5 passes").toBe(true)
+        const once = normalizeQuery(sel)
+        const twice = normalizeQuery(once)
+        expect(twice).toEqual(once)
       }),
       { numRuns: 200 },
     )
