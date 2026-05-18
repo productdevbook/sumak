@@ -1289,6 +1289,38 @@ exports[`bench scenarios produce equivalent SQL > insert-many-100 > snapshot of 
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > insert-returning > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      1,
+      "ada",
+      "ada@x.io",
+      "1970-01-01T00:00:00.000Z",
+    ],
+    "sql": "insert into "users" ("id", "name", "email", "createdAt") values ($1, $2, $3, $4) returning "id", "name"",
+  },
+  "kysely": {
+    "params": [
+      1,
+      "ada",
+      "ada@x.io",
+      1970-01-01T00:00:00.000Z,
+    ],
+    "sql": "insert into "users" ("id", "name", "email", "createdAt") values ($1, $2, $3, $4) returning "id", "name"",
+  },
+  "sumak": {
+    "params": [
+      1,
+      "ada",
+      "ada@x.io",
+      1970-01-01T00:00:00.000Z,
+    ],
+    "sql": "INSERT INTO "users" ("id", "name", "email", "createdAt") VALUES ($1, $2, $3, $4) RETURNING "id", "name"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > insert-values > snapshot of generated SQL 1`] = `
 {
   "drizzle": {

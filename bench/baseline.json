@@ -26,6 +26,7 @@
     "cte-with-join": { "sumakMinHz": 70000 },
     "select-union": { "sumakMinHz": 150000 },
     "select-union-all": { "sumakMinHz": 150000 },
-    "window-row-number": { "sumakMinHz": 75000 }
+    "window-row-number": { "sumakMinHz": 75000 },
+    "insert-returning": { "sumakMinHz": 130000 }
   }
 }
