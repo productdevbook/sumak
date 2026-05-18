@@ -290,3 +290,83 @@ describe("caslAuthz plugin — transparent WHERE injection", () => {
     expect(compiled.params.filter((p) => p === 1)).toHaveLength(1)
   })
 })
+
+describe("caslAuthz plugin — ability factory (per-request)", () => {
+  // The common production shape: one shared sumak instance across
+  // many concurrent requests, ability built per request and threaded
+  // through an `AsyncLocalStorage`-style context. The factory form
+  // exists so callers don't have to build a new sumak() per request
+  // (expensive — re-allocates plugin chain, dialect printer, etc.)
+  // or smuggle the ability through a Proxy.
+
+  it("accepts a factory function and re-evaluates it on every compile", () => {
+    let currentUser = 1
+    function buildAbility(userId: number) {
+      const { can, build } = new AbilityBuilder(createMongoAbility)
+      can("read", "Post", { authorId: userId })
+      return build()
+    }
+
+    const db = sumak({
+      dialect: pgDialect(),
+      tables: TABLES,
+      plugins: [
+        caslAuthz({
+          ability: () => buildAbility(currentUser),
+          subjects: { posts: "Post" },
+        }),
+      ],
+    })
+
+    // First compile — ability says authorId = 1.
+    const first = db.selectFrom("posts").select("id").toSQL()
+    expect(first.params).toContain(1)
+
+    // Swap the ambient user — the next compile must pick that up.
+    // If the factory was only called once at plugin construction,
+    // this assertion would fail because the WHERE would still pin
+    // authorId = 1.
+    currentUser = 99
+    const second = db.selectFrom("posts").select("id").toSQL()
+    expect(second.params).toContain(99)
+    expect(second.params).not.toContain(1)
+  })
+
+  it("factory throws propagate to the caller", () => {
+    // Application code that depends on an ability being in context
+    // would rather get a loud error than have its query silently
+    // emit the full unfiltered SQL. The factory's throw must bubble
+    // out of compile().
+    const db = sumak({
+      dialect: pgDialect(),
+      tables: TABLES,
+      plugins: [
+        caslAuthz({
+          ability: () => {
+            throw new Error("no ability in context")
+          },
+          subjects: { posts: "Post" },
+        }),
+      ],
+    })
+
+    expect(() => db.selectFrom("posts").select("id").toSQL()).toThrow(/no ability in context/)
+  })
+
+  it("static ability still works (backward compatible)", () => {
+    // The factory form is additive — existing call sites passing a
+    // built Ability instance keep working unchanged.
+    const { can, build } = new AbilityBuilder(createMongoAbility)
+    can("read", "Post", { authorId: 7 })
+    const ability = build()
+
+    const db = sumak({
+      dialect: pgDialect(),
+      tables: TABLES,
+      plugins: [caslAuthz({ ability, subjects: { posts: "Post" } })],
+    })
+
+    const compiled = db.selectFrom("posts").select("id").toSQL()
+    expect(compiled.params).toContain(7)
+  })
+})
