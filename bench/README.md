@@ -89,11 +89,11 @@ The fix is a runtime guard (`unwrapPredicate` in `src/ast/typed-expression.ts`) 
 
 Same numbers, inverted to nanoseconds per compile — useful for sanity-checking whether the compile path is ever going to show up on a trace.
 
-| scenario                |   sumak | kysely |   drizzle |
-| ----------------------- | ------: | -----: | --------: |
-| `select-all`            |  1.4 µs | 1.5 µs |   20.2 µs |
-| `select-where-eq`       |  3.7 µs | 3.4 µs |   22.5 µs |
-| `join-2-tables`         |  4.6 µs | 7.1 µs |   35.6 µs |
+| scenario                |   sumak |  kysely |  drizzle |
+| ----------------------- | ------: | ------: | -------: |
+| `select-all`            |  1.4 µs |  1.5 µs |  20.2 µs |
+| `select-where-eq`       |  3.7 µs |  3.4 µs |  22.5 µs |
+| `join-2-tables`         |  4.6 µs |  7.1 µs |  35.6 µs |
 | `select-where-in-large` | 16.4 µs | 12.9 µs | 869.4 µs |
 
 Even the slowest sumak scenario (`select-where-in-large`, ~28µs) compiles two orders of magnitude below a local Postgres round-trip (~1ms). Compile cost is not where your end-to-end latency lives — but it _is_ what shows up on a Lambda cold start.

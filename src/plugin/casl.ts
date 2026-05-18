@@ -64,12 +64,41 @@ import type { SumakPlugin } from "./types.ts"
  */
 export interface CaslAuthzConfig<DB = Record<string, unknown>> {
   /**
-   * CASL ability instance. Anything with a `rulesFor(action, subject)`
-   * method works — `PureAbility`, `MongoAbility`, `Ability`, and the
-   * various framework-specific ones (casl-prisma, casl-mongoose) all
-   * satisfy this shape.
+   * CASL ability — either a single instance, or a factory function
+   * called once per query compile to fetch the current request's
+   * ability.
+   *
+   * Passing a function is the recommended pattern when you reuse a
+   * single sumak instance across multiple requests (a pooled DB
+   * connection, a serverless handler that survives between
+   * invocations). The factory typically reads from an
+   * `AsyncLocalStorage` populated at the request boundary:
+   *
+   * ```ts
+   * const abilityCtx = new AsyncLocalStorage<AbilityLike>()
+   *
+   * const db = sumak({
+   *   plugins: [
+   *     caslAuthz({
+   *       ability: () => {
+   *         const a = abilityCtx.getStore()
+   *         if (!a) throw new Error("no ability in context — request middleware missing?")
+   *         return a
+   *       },
+   *       subjects: { posts: "Post" },
+   *     }),
+   *   ],
+   * })
+   *
+   * // request handler
+   * abilityCtx.run(buildAbility(req.user), () => handleRequest(req, db))
+   * ```
+   *
+   * Anything with a `rulesFor(action, subject)` method satisfies
+   * {@link AbilityLike} — `PureAbility`, `MongoAbility`, `Ability`,
+   * `@casl/prisma`, `@casl/mongoose`, etc. all work.
    */
-  readonly ability: AbilityLike
+  readonly ability: AbilityLike | (() => AbilityLike)
   /**
    * Table-name → CASL-subject-string map. Only tables listed here are
    * authz-filtered; everything else passes through untouched.
@@ -136,6 +165,16 @@ export function caslAuthz<DB = Record<string, unknown>>(config: CaslAuthzConfig<
   const deleteAction = config.actions?.delete ?? "delete"
   const onForbidden = config.onForbidden ?? "throw"
 
+  // Memoize the factory check so `typeof` doesn't run on every
+  // whereFor() call — the shape is fixed once the plugin is built.
+  // Resolves to the live ability instance each time on the factory
+  // path, or returns the captured value on the static path.
+  const abilityFactory = config.ability
+  const resolveAbility: () => AbilityLike =
+    typeof abilityFactory === "function"
+      ? (abilityFactory as () => AbilityLike)
+      : () => abilityFactory
+
   // Resolve the CASL-derived WHERE for a table + action. Returns
   // `undefined` when the table isn't in `subjects` (pass-through) or
   // when the rule tree collapses to TRUE (unconditional can — also
@@ -145,7 +184,7 @@ export function caslAuthz<DB = Record<string, unknown>>(config: CaslAuthzConfig<
   function whereFor(table: string, action: string): ExpressionNode | undefined {
     const subject = subjects[table]
     if (subject === undefined) return undefined
-    const node = buildWhereNode(config.ability, action, subject)
+    const node = buildWhereNode(resolveAbility(), action, subject)
     if (node === null) {
       if (onForbidden === "empty") {
         // WHERE FALSE — the executor runs a real query that returns
