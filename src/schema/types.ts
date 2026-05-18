@@ -65,6 +65,48 @@ export type Updateable<T> = {
   [K in keyof T]?: UpdateType<T[K]>
 }
 
+// ── Drizzle-style aliases ────────────────────────────────────────────
+//
+// Pure aliases for the three column-map row helpers above. The names
+// match drizzle's `InferSelectModel` / `InferInsertModel` /
+// `InferUpdateModel` so users coming from drizzle find the type they
+// expect; the underlying mechanics are identical to `Selectable` /
+// `Insertable` / `Updateable`. Aliases not re-implementations — there's
+// only one type per row shape.
+
+/**
+ * Infer a SELECT row type from a column map. Drizzle-compatible name.
+ *
+ * ```ts
+ * const tables = { users: { id: serial(), name: text().notNull() } }
+ * type User = InferSelectModel<typeof tables.users>
+ * // = { id: number, name: string }
+ * ```
+ */
+export type InferSelectModel<T> = Selectable<T>
+
+/**
+ * Infer an INSERT row type from a column map. Drizzle-compatible name.
+ * Generated / default / nullable columns become optional.
+ *
+ * ```ts
+ * type NewUser = InferInsertModel<typeof tables.users>
+ * // = { id?: number, name: string }
+ * ```
+ */
+export type InferInsertModel<T> = Insertable<T>
+
+/**
+ * Infer an UPDATE row type from a column map. Drizzle-compatible name.
+ * Every column becomes optional.
+ *
+ * ```ts
+ * type UserUpdate = InferUpdateModel<typeof tables.users>
+ * // = { id?: number, name?: string }
+ * ```
+ */
+export type InferUpdateModel<T> = Updateable<T>
+
 /**
  * A column is required on INSERT if its InsertType does NOT include undefined or never.
  */
