@@ -20,10 +20,11 @@ import {
   PostgresQueryCompiler,
 } from "kysely"
 
-import { typedCol } from "../../src/ast/typed-expression.ts"
+import { typedCol, typedGt, typedLit } from "../../src/ast/typed-expression.ts"
 import {
   and as sand,
   avg as savg,
+  case_ as scase,
   count as scount,
   max as smax,
   or as sor,
@@ -601,6 +602,50 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "select-case-when",
+    // CASE WHEN published > 0 THEN 'published' ELSE 'draft' END
+    // — common categorize-as-you-go pattern. Three branches builds
+    // the AST nodes that the printer's `printCase` walks; the bench
+    // measures the per-branch dispatch cost.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select("id")
+        .select({
+          status: scase()
+            .when(typedGt(typedCol<number>("published"), typedLit(0)), typedLit("published"))
+            .else_(typedLit("draft"))
+            .end(),
+        })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            id: dPosts.id,
+            status: drizzleSql<string>`CASE WHEN ${gt(dPosts.published, 0)} THEN 'published' ELSE 'draft' END`,
+          })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select((eb) => [
+            "id",
+            eb
+              .case()
+              .when("published", ">", 0)
+              .then(eb.val("published"))
+              .else(eb.val("draft"))
+              .end()
+              .as("status"),
+          ])
+          .compile(),
+      ),
+  },
+  {
     name: "upsert-do-update",
     // INSERT … ON CONFLICT (email) DO UPDATE SET name = excluded.name.
     // The canonical UPSERT shape — every PG / SQLite (3.24+) /
