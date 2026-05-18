@@ -1421,6 +1421,29 @@ exports[`bench scenarios produce equivalent SQL > select-all > snapshot of gener
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-case-when > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      0,
+    ],
+    "sql": "select "id", CASE WHEN "posts"."published" > $1 THEN 'published' ELSE 'draft' END from "posts"",
+  },
+  "kysely": {
+    "params": [
+      0,
+      "published",
+      "draft",
+    ],
+    "sql": "select "id", case when "published" > $1 then $2 else $3 end as "status" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", CASE WHEN ("published" > 0) THEN 'published' ELSE 'draft' END AS "status" FROM "posts"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-distinct > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
