@@ -2053,6 +2053,41 @@ exports[`bench scenarios produce equivalent SQL > update-where > snapshot of gen
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > upsert-do-update > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      1,
+      "ada",
+      "ada@x.io",
+      "1970-01-01T00:00:00.000Z",
+      "ada",
+    ],
+    "sql": "insert into "users" ("id", "name", "email", "createdAt") values ($1, $2, $3, $4) on conflict ("email") do update set "name" = $5",
+  },
+  "kysely": {
+    "params": [
+      1,
+      "ada",
+      "ada@x.io",
+      1970-01-01T00:00:00.000Z,
+      "ada",
+    ],
+    "sql": "insert into "users" ("id", "name", "email", "createdAt") values ($1, $2, $3, $4) on conflict ("email") do update set "name" = $5",
+  },
+  "sumak": {
+    "params": [
+      1,
+      "ada",
+      "ada@x.io",
+      1970-01-01T00:00:00.000Z,
+      "ada",
+    ],
+    "sql": "INSERT INTO "users" ("id", "name", "email", "createdAt") VALUES ($1, $2, $3, $4) ON CONFLICT ("email") DO UPDATE SET "name" = $5",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > window-row-number > snapshot of generated SQL 1`] = `
 {
   "drizzle": {

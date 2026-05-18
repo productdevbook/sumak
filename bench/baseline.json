@@ -27,6 +27,7 @@
     "select-union": { "sumakMinHz": 150000 },
     "select-union-all": { "sumakMinHz": 150000 },
     "window-row-number": { "sumakMinHz": 75000 },
-    "insert-returning": { "sumakMinHz": 130000 }
+    "insert-returning": { "sumakMinHz": 130000 },
+    "upsert-do-update": { "sumakMinHz": 100000 }
   }
 }

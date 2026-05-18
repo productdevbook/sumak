@@ -601,6 +601,38 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "upsert-do-update",
+    // INSERT … ON CONFLICT (email) DO UPDATE SET name = excluded.name.
+    // The canonical UPSERT shape — every PG / SQLite (3.24+) /
+    // MariaDB / MySQL 8.0.19+ (via INSERT … AS ... DUPLICATE KEY) app
+    // hits this on a daily basis. sumak builds an OnConflictNode with
+    // a target-column list + UPDATE SET map; kysely calls
+    // `onConflict(oc => oc.column("email").doUpdateSet(...))`;
+    // drizzle uses `onConflictDoUpdate({target, set})`.
+    sumak: () =>
+      s
+        .insertInto("users")
+        .values({ id: 1, name: "ada", email: "ada@x.io", createdAt: new Date(0) })
+        .onConflict({ columns: ["email"], do: { update: { name: "ada" } } })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .insert(dUsers)
+          .values({ id: 1, name: "ada", email: "ada@x.io", createdAt: new Date(0) })
+          .onConflictDoUpdate({ target: dUsers.email, set: { name: "ada" } })
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .insertInto("users")
+          .values({ id: 1, name: "ada", email: "ada@x.io", createdAt: new Date(0) })
+          .onConflict((oc) => oc.column("email").doUpdateSet({ name: "ada" }))
+          .compile(),
+      ),
+  },
+  {
     name: "insert-returning",
     // INSERT … RETURNING id, name — common shape for "create-and-return".
     // PG-only standard but kysely + drizzle both support it on PG. The
