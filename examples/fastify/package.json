@@ -10,7 +10,7 @@
   "dependencies": {
     "fastify": "^5.8.5",
     "pg": "^8.20.0",
-    "sumak": "*"
+    "sumak": "^0.0.14"
   },
   "engines": {
     "node": ">=24"

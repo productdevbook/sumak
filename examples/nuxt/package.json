@@ -11,9 +11,9 @@
     "migrate": "sumak migrate up"
   },
   "dependencies": {
-    "nuxt": "^4.4.2",
+    "nuxt": "^4.4.5",
     "pg": "^8.20.0",
-    "sumak": "*"
+    "sumak": "^0.0.14"
   },
   "engines": {
     "node": ">=24"

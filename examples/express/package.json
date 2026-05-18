@@ -11,7 +11,7 @@
   "dependencies": {
     "express": "^5.2.1",
     "pg": "^8.20.0",
-    "sumak": "*"
+    "sumak": "^0.0.14"
   },
   "engines": {
     "node": ">=24"
