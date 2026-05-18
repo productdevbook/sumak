@@ -22,6 +22,8 @@ import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
 import { UpdateBuilder } from "./update.ts"
+import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
+import { isWhere3ArgCall, resolveWhere3Arg } from "./where-3-arg.ts"
 
 /**
  * Type-safe UPDATE query builder.
@@ -129,13 +131,23 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
   /**
    * WHERE — callback or raw Expression.
    */
-  where(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedUpdateBuilder<DB, TB> {
-    if (typeof exprOrCallback === "function") {
+  where<K extends keyof DB[TB] & string, Op extends ComparisonOp>(
+    col: K,
+    op: Op,
+    val: WhereValueForOp<Op, DB[TB][K]>,
+  ): TypedUpdateBuilder<DB, TB>
+  where(exprOrCallback: Expression<boolean> | WhereCallback<DB, TB>): TypedUpdateBuilder<DB, TB>
+  where(arg0: unknown, op?: ComparisonOp, val?: unknown): TypedUpdateBuilder<DB, TB> {
+    if (isWhere3ArgCall([arg0, op, val])) {
+      const node = resolveWhere3Arg<DB, TB>(this._table, arg0 as string, op as ComparisonOp, val)
+      return this._with(this._builder.where(node))
+    }
+    if (typeof arg0 === "function") {
       const cols = createColumnProxies<DB, TB>(this._table)
-      const result = exprOrCallback(cols)
+      const result = (arg0 as WhereCallback<DB, TB>)(cols)
       return this._with(this._builder.where(unwrapPredicate(result, ".where(callback)")))
     }
-    return this._with(this._builder.where(unwrapPredicate(exprOrCallback, ".where()")))
+    return this._with(this._builder.where(unwrapPredicate(arg0, ".where()")))
   }
 
   private get _table(): TB & string {
