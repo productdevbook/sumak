@@ -1,4 +1,16 @@
-import { and, avg, count, desc, eq, gt, inArray, max, ne, or as drizzleOr } from "drizzle-orm"
+import {
+  and,
+  avg,
+  count,
+  desc,
+  eq,
+  gt,
+  inArray,
+  max,
+  ne,
+  or as drizzleOr,
+  sql as drizzleSql,
+} from "drizzle-orm"
 import { drizzle } from "drizzle-orm/pg-proxy"
 import {
   DummyDriver,
@@ -15,6 +27,8 @@ import {
   count as scount,
   max as smax,
   or as sor,
+  over as sover,
+  rowNumber as srowNumber,
 } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { sumak } from "../../src/sumak.ts"
@@ -577,6 +591,48 @@ export const scenarios: Scenario[] = [
           .selectFrom("users")
           .innerJoin("recent_posts" as never, "users.id" as never, "recent_posts.authorId" as never)
           .select(["users.id", "users.name"])
+          .compile(),
+      ),
+  },
+  {
+    // Window function: ROW_NUMBER() OVER (PARTITION BY authorId ORDER BY id).
+    // Common ranking pattern. sumak has a first-class window builder
+    // (`over(rowNumber(), ...)`); drizzle and kysely fall back to raw
+    // sql templates because their typed APIs don't cover the non-
+    // aggregate window functions like `row_number()`. The compile
+    // cost is what we're measuring, not API ergonomics.
+    name: "window-row-number",
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select("id", "authorId")
+        .select({
+          rn: sover(srowNumber(), (w) => w.partitionBy("authorId").orderBy("id")),
+        })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            id: dPosts.id,
+            authorId: dPosts.authorId,
+            rn: drizzleSql<number>`row_number() over (partition by ${dPosts.authorId} order by ${dPosts.id})`,
+          })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select((eb) => [
+            "id",
+            "authorId",
+            eb.fn
+              .agg<number>("row_number")
+              .over((ob) => ob.partitionBy("authorId" as never).orderBy("id" as never))
+              .as("rn"),
+          ])
           .compile(),
       ),
   },
