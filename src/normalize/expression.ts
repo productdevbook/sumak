@@ -110,27 +110,56 @@ function flattenByOp(expr: ExpressionNode, op: "AND" | "OR"): ExpressionNode[] {
 }
 
 /**
+ * True when `node` is a left-leaning chain of `op` binary_ops — every
+ * AND/OR sits in `.left` and the `.right` is a non-`op` leaf. Both
+ * `and()` / `or()` builders and chained `.where(...).where(...)`
+ * produce this canonical shape, so the check below short-circuits the
+ * common no-op path.
+ */
+function isLeftLeaningChain(node: ExpressionNode, op: "AND" | "OR"): boolean {
+  let cur = node
+  while (cur.type === "binary_op" && (cur as BinaryOpNode).op === op) {
+    const bo = cur as BinaryOpNode
+    if (bo.right.type === "binary_op" && (bo.right as BinaryOpNode).op === op) {
+      return false
+    }
+    cur = bo.left
+  }
+  return true
+}
+
+/**
  * Flatten nested AND/OR into a flat structure.
  * `(a AND (b AND c))` → `(a AND b AND c)` (left-associative chain)
+ *
+ * Identity preservation: when the input is already a left-leaning
+ * chain of `op` and no inner recursion rewrites a part, we return the
+ * original node verbatim. Downstream normalize passes use the
+ * `result === expr` shortcut to skip work; without identity
+ * preservation here, every pass would reallocate the full AND tree
+ * even when nothing changed.
  */
 export function flattenLogical(expr: ExpressionNode): ExpressionNode {
   if (expr.type !== "binary_op") return recurse(expr, flattenLogical)
 
   const e = expr as BinaryOpNode
-  if (e.op === "AND") {
-    const parts = flattenAnd(e).map(flattenLogical)
+  if (e.op === "AND" || e.op === "OR") {
+    const op = e.op
+    const parts = op === "AND" ? flattenAnd(e) : flattenOr(e)
+    let anyChanged = false
+    for (let i = 0; i < parts.length; i++) {
+      const np = flattenLogical(parts[i]!)
+      if (np !== parts[i]) {
+        anyChanged = true
+        parts[i] = np
+      }
+    }
+    if (!anyChanged && isLeftLeaningChain(e, op)) {
+      return e
+    }
     return parts.reduce((acc: ExpressionNode, p) => ({
       type: "binary_op",
-      op: "AND",
-      left: acc,
-      right: p,
-    }))
-  }
-  if (e.op === "OR") {
-    const parts = flattenOr(e).map(flattenLogical)
-    return parts.reduce((acc: ExpressionNode, p) => ({
-      type: "binary_op",
-      op: "OR",
+      op,
       left: acc,
       right: p,
     }))
