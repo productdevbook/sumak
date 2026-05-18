@@ -733,15 +733,38 @@ export class BasePrinter implements Printer {
   protected printIn(node: InNode): string {
     const neg = node.negated ? "NOT " : ""
     if (Array.isArray(node.values)) {
+      const values = node.values
+      const len = values.length
       // `IN ()` is a syntax error in every dialect. Constant-fold empty
       // lists to the logically-equivalent boolean constant so SQL stays valid.
       // NOT IN (∅) is always TRUE; IN (∅) is always FALSE. MSSQL rejects
       // bare TRUE/FALSE in predicates, so use the portable `(1=0)` / `(1=1)`.
-      if (node.values.length === 0) {
+      if (len === 0) {
         if (this.dialect === "mssql") return node.negated ? "(1=1)" : "(1=0)"
         return node.negated ? "TRUE" : "FALSE"
       }
-      return `(${this.printExpression(node.expr)} ${neg}IN (${node.values.map((v) => this.printExpression(v)).join(", ")}))`
+      // Fast path: every value is a leaf ParamNode (the common case for
+      // `col.in([1, 2, 3, ...])`). Format each placeholder inline instead
+      // of dispatching through the full `printExpression` visitor. At
+      // 100-value arity this is ~3× faster — the visitor switch + method
+      // call overhead per value dominates the per-call cost.
+      let allParams = true
+      for (let i = 0; i < len; i++) {
+        if (values[i]!.type !== "param") {
+          allParams = false
+          break
+        }
+      }
+      if (allParams) {
+        const placeholders: string[] = new Array(len)
+        for (let i = 0; i < len; i++) {
+          const p = values[i] as ParamNode
+          this.params.push(this.coerceParamValue(p.value))
+          placeholders[i] = formatParam(this.params.length - 1, this.dialect)
+        }
+        return `(${this.printExpression(node.expr)} ${neg}IN (${placeholders.join(", ")}))`
+      }
+      return `(${this.printExpression(node.expr)} ${neg}IN (${values.map((v) => this.printExpression(v)).join(", ")}))`
     }
     return `(${this.printExpression(node.expr)} ${neg}IN (${this.printSelect(node.values)}))`
   }

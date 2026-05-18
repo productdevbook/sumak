@@ -223,7 +223,20 @@ function collectTableRefs(expr: ExpressionNode, refs: Set<string>): void {
     case "in":
       collectTableRefs(expr.expr, refs)
       if (Array.isArray(expr.values)) {
-        for (const v of expr.values) collectTableRefs(v, refs)
+        // Skip per-value recursion when every value is a leaf ParamNode
+        // — params have no column_refs to collect, so the loop is pure
+        // overhead for the common `col.in([1,2,3,…])` shape.
+        const values = expr.values
+        let allParams = true
+        for (let i = 0; i < values.length; i++) {
+          if (values[i]!.type !== "param") {
+            allParams = false
+            break
+          }
+        }
+        if (!allParams) {
+          for (const v of values) collectTableRefs(v, refs)
+        }
       }
       break
     case "function_call":

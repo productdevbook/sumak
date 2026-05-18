@@ -176,12 +176,27 @@ export class Col<T> {
   in(values: T[] | SelectNode, opts?: { negate?: boolean }): Expression<boolean> {
     const negated = opts?.negate === true
     if (Array.isArray(values)) {
-      const hasNull = values.some((v) => v === null)
-      const nonNull = hasNull ? values.filter((v) => v !== null) : values
+      // Single linear pass: detect nulls and stage the non-null values
+      // in one go. The previous `.some(...) + .filter(...) + .map(...)`
+      // chain walked the array three times and allocated two
+      // intermediate arrays even when no nulls were present. At 100-value
+      // arity this dominated the IN-list build cost.
+      const len = values.length
+      let hasNull = false
+      const paramNodes: ExpressionNode[] = []
+      for (let i = 0; i < len; i++) {
+        const v = values[i]
+        if (v === null) {
+          hasNull = true
+          continue
+        }
+        // Inlined `autoParam(v)` — saves a function call per value.
+        paramNodes.push({ type: "param", index: 0, value: v })
+      }
       const inNode: ExpressionNode = {
         type: "in",
         expr: this._node,
-        values: nonNull.map((v) => autoParam(v)),
+        values: paramNodes,
         negated,
       }
       if (!hasNull) return wrap(inNode)

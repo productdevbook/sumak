@@ -342,7 +342,22 @@ function exprFingerprint(expr: ExpressionNode): string {
       return `between:${expr.negated}:${exprFingerprint(expr.expr)}:${exprFingerprint(expr.low)}:${exprFingerprint(expr.high)}`
     case "in":
       if (Array.isArray(expr.values)) {
-        return `in:${expr.negated}:${exprFingerprint(expr.expr)}:[${expr.values.map(exprFingerprint).join(",")}]`
+        const values = expr.values
+        // Fast-path fingerprint for the leaf-param case — every value is
+        // a parameterized placeholder, so the fingerprint of each value
+        // is structurally identical and we only need to capture arity.
+        // Saves ~100 fingerprint calls per IN(...) at 100-value arity.
+        let allParams = true
+        for (let i = 0; i < values.length; i++) {
+          if (values[i]!.type !== "param") {
+            allParams = false
+            break
+          }
+        }
+        if (allParams) {
+          return `in:${expr.negated}:${exprFingerprint(expr.expr)}:p${values.length}`
+        }
+        return `in:${expr.negated}:${exprFingerprint(expr.expr)}:[${values.map(exprFingerprint).join(",")}]`
       }
       return `in:${expr.negated}:${exprFingerprint(expr.expr)}:subq`
     case "function_call":
@@ -427,7 +442,26 @@ function recurse(
       }
     case "in":
       if (Array.isArray(expr.values)) {
-        return { ...expr, expr: transform(expr.expr), values: expr.values.map(transform) }
+        const values = expr.values
+        // Fast path: when every value is a leaf ParamNode (the shape
+        // produced by `col.in([1,2,3,…])`), none of the normalize
+        // passes can rewrite it — params have no children for
+        // simplifyNegation / foldConstants / etc. to recurse into.
+        // Skipping the `.map(transform)` for the 100-value case avoids
+        // ~500 wasted transform calls per query (5 normalize passes ×
+        // N values), the dominant cost for large IN-lists.
+        let allParams = true
+        for (let i = 0; i < values.length; i++) {
+          if (values[i]!.type !== "param") {
+            allParams = false
+            break
+          }
+        }
+        const transformedExpr = transform(expr.expr)
+        if (allParams) {
+          return transformedExpr === expr.expr ? expr : { ...expr, expr: transformedExpr }
+        }
+        return { ...expr, expr: transformedExpr, values: values.map(transform) }
       }
       return { ...expr, expr: transform(expr.expr) }
     case "cast":

@@ -61,8 +61,8 @@ Compile throughput on an Apple M-series laptop, Node 24, vitest 4.1. Numbers dri
 | `update-where`            |    279,549 | **324,720** |       44,504 |           0.86× |        **6.28×** |
 | `delete-where`            |    329,836 | **454,393** |       88,985 |           0.73× |        **3.71×** |
 | `select-where-or`         |    192,942 |     145,543 |       31,883 |       **1.33×** |        **6.05×** |
-| `select-where-in-small`   |    221,029 | **322,700** |       15,800 |           0.69× |       **14.01×** |
-| `select-where-in-large`   |     35,262 | **129,000** |          750 |           0.27× |       **47.01×** |
+| `select-where-in-small`   |    188,276 |     191,000 |       12,300 |           0.98× |       **15.34×** |
+| `select-where-in-large`   |     61,142 |  **77,400** |        1,150 |           0.79× |       **53.02×** |
 | `select-order-limit`      |    429,450 |     251,116 |       35,800 |       **1.71×** |       **11.99×** |
 | `select-aggregate`        |    211,892 |     157,000 |       40,400 |       **1.35×** |        **5.24×** |
 | `select-group-having`     |    179,372 |     141,200 |       33,700 |       **1.27×** |        **5.32×** |
@@ -75,7 +75,7 @@ Compile throughput on an Apple M-series laptop, Node 24, vitest 4.1. Numbers dri
 
 **Where sumak wins (11 of 19):** `select-all`, `join-2-tables`, `insert-values`, `select-where-or`, `select-order-limit`, `select-aggregate`, `select-group-having`, `select-distinct`, `left-join-3-tables`, `insert-many-100`, `select-order-desc-limit`.
 
-**Where kysely wins (8 of 19):** the simple WHERE-`=`, WHERE-`AND`, and IN-list scenarios. Kysely has a very tight WHERE/IN compile path, especially for IN lists — `select-where-in-large` (100-value IN) is 3.66× faster on kysely. Sumak's `.in()` allocates an AST node per value; tracked as a known WHERE-path optimization target.
+**Where kysely wins (8 of 19):** the simple WHERE-`=`, WHERE-`AND`, and large-IN scenarios. Kysely has a very tight WHERE compile path; sumak's `select-where-in-large` (100-value IN) gap closed from 3.66× to 1.27× after the `Col.in()` build path was rewritten and the normalize/optimize passes were taught to fast-path leaf-param IN lists. Further closing the gap likely requires a dedicated `ParamArrayNode` AST type so the visitor / fingerprint passes can skip per-value dispatch entirely.
 
 Against **drizzle**, sumak is **4.87×–47× faster** across the board — drizzle's template-literal-heavy internal representation costs a lot per call.
 
@@ -94,7 +94,7 @@ Same numbers, inverted to nanoseconds per compile — useful for sanity-checking
 | `select-all`            |  1.4 µs | 1.5 µs |   20.2 µs |
 | `select-where-eq`       |  3.7 µs | 3.4 µs |   22.5 µs |
 | `join-2-tables`         |  4.6 µs | 7.1 µs |   35.6 µs |
-| `select-where-in-large` | 28.4 µs | 7.8 µs | 1334.7 µs |
+| `select-where-in-large` | 16.4 µs | 12.9 µs | 869.4 µs |
 
 Even the slowest sumak scenario (`select-where-in-large`, ~28µs) compiles two orders of magnitude below a local Postgres round-trip (~1ms). Compile cost is not where your end-to-end latency lives — but it _is_ what shows up on a Lambda cold start.
 
