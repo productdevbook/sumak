@@ -29,6 +29,7 @@
     "window-row-number": { "sumakMinHz": 75000 },
     "insert-returning": { "sumakMinHz": 130000 },
     "upsert-do-update": { "sumakMinHz": 100000 },
-    "select-case-when": { "sumakMinHz": 110000 }
+    "select-case-when": { "sumakMinHz": 110000 },
+    "select-exists-subquery": { "sumakMinHz": 90000 }
   }
 }

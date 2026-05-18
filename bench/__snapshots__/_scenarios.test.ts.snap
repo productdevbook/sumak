@@ -1461,6 +1461,29 @@ exports[`bench scenarios produce equivalent SQL > select-distinct > snapshot of 
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-exists-subquery > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      0,
+    ],
+    "sql": "select "id", "name", "email", "createdAt" from "users" where EXISTS ((select "id", "authorId", "title", "body", "published" from "posts" where "posts"."authorId" > $1))",
+  },
+  "kysely": {
+    "params": [
+      0,
+    ],
+    "sql": "select * from "users" where exists (select * from "posts" where "authorId" > $1)",
+  },
+  "sumak": {
+    "params": [
+      0,
+    ],
+    "sql": "SELECT * FROM "users" WHERE (EXISTS (SELECT * FROM "posts" WHERE ("authorId" > $1)))",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-group-having > snapshot of generated SQL 1`] = `
 {
   "drizzle": {

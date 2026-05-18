@@ -26,6 +26,7 @@ import {
   avg as savg,
   case_ as scase,
   count as scount,
+  exists as sexists,
   max as smax,
   or as sor,
   over as sover,
@@ -602,6 +603,45 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "select-exists-subquery",
+    // SELECT … WHERE EXISTS (SELECT 1 FROM posts WHERE posts.author_id = users.id)
+    // Correlated subquery — the inner query references the outer
+    // table. Every dialect supports EXISTS; sumak uses `exists(node)`,
+    // drizzle and kysely both have a typed `exists()` helper.
+    sumak: () => {
+      const inner = s
+        .selectFrom("posts")
+        .selectAll()
+        .where(({ authorId }) => authorId.gt(0))
+        .build()
+      return s
+        .selectFrom("users")
+        .selectAll()
+        .where(() => sexists(inner))
+        .toSQL()
+    },
+    drizzle: () => {
+      const inner = d.select().from(dPosts).where(gt(dPosts.authorId, 0))
+      return drizzleToResult(
+        d
+          .select()
+          .from(dUsers)
+          .where(drizzleSql`EXISTS (${inner})`)
+          .toSQL(),
+      )
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .selectAll()
+          .where(({ exists, selectFrom }) =>
+            exists(selectFrom("posts").selectAll().where("authorId", ">", 0)),
+          )
+          .compile(),
+      ),
+  },
+  {
     name: "select-case-when",
     // CASE WHEN published > 0 THEN 'published' ELSE 'draft' END
     // — common categorize-as-you-go pattern. Three branches builds
