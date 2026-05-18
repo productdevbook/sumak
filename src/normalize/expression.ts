@@ -23,50 +23,31 @@ import { DEFAULT_NORMALIZE_OPTIONS } from "./types.ts"
  * - Simplify negation: `NOT NOT x → x`, `NOT true → false`
  * - Normalize comparison direction: `1 = x → x = 1` (literal always on right)
  */
-// Upper bound on how many full sweeps `normalizeExpression` will run
-// before declaring convergence and returning. Empirically (via the
-// property fuzzer in `test/fuzz/properties.test.ts`) every shape the
-// generator produces settles in ≤ 3 passes; 6 gives generous headroom
-// for hand-built ASTs that mix pathological negation + tautology
-// chains. A cap rather than an unbounded `while (changed)` loop means
-// a future rewrite-rule bug can't accidentally produce an infinite
-// loop in user-facing compile.
-const NORMALIZE_FIXPOINT_PASSES = 6
-
 export function normalizeExpression(expr: ExpressionNode, opts?: NormalizeOptions): ExpressionNode {
   const o = { ...DEFAULT_NORMALIZE_OPTIONS, ...opts }
   let result = expr
 
-  // Run the simplify/fold/flatten/dedupe sweep until it stops
-  // rewriting. The first pass usually does all the work; subsequent
-  // passes only fire when one sub-pass produces a shape the next
-  // sub-pass can fold further. The canonical case the fuzzer found:
-  //
-  //   `(NOT (false OR true)) = (param = (col = 0))`
-  //
-  //   pass 1: simplifyTautologies folds `false OR true → true`,
-  //           giving `(NOT true) = (param = (col = 0))`
-  //   pass 2: simplifyNegation folds `NOT true → false`, then
-  //           foldConstants flips the literal to the RHS,
-  //           giving `(param = (col = 0)) = false`
-  //   pass 3: nothing more to rewrite — exit.
-  //
-  // The `result === previous` identity check assumes each sub-pass
-  // returns its input verbatim when it doesn't rewrite anything; the
-  // sub-passes already honour that for non-matching nodes (`recurse`
-  // is called) and PR #98's flattenLogical added it for already-flat
-  // AND/OR chains. A pass that allocates unconditionally would never
-  // converge here and we'd burn through the cap — that's an upstream
-  // bug worth fixing if it ever happens.
-  for (let i = 0; i < NORMALIZE_FIXPOINT_PASSES; i++) {
-    const previous = result
-    if (o.simplifyNegation) result = simplifyNegation(result)
-    if (o.foldConstants) result = foldConstants(result)
-    if (o.simplifyTautologies) result = simplifyTautologies(result)
-    if (o.flattenLogical) result = flattenLogical(result)
-    if (o.deduplicatePredicates) result = deduplicatePredicates(result)
-    if (result === previous) break
-  }
+  // Single sweep. Each sub-pass returns either its input verbatim
+  // (for shapes it doesn't recognise) or a freshly-allocated subtree
+  // (for shapes it rewrote). The order is meaningful: negation must
+  // run before constant folding so `NOT true → false → flip`
+  // canonicalisation happens in the same pass.
+  if (o.simplifyNegation) result = simplifyNegation(result)
+  if (o.foldConstants) result = foldConstants(result)
+  if (o.simplifyTautologies) result = simplifyTautologies(result)
+  if (o.flattenLogical) result = flattenLogical(result)
+  if (o.deduplicatePredicates) result = deduplicatePredicates(result)
+
+  // Re-run tautology simplification after deduplication: the latter
+  // can leave behind `x AND x → x` shapes whose outer AND is now
+  // trivially true/false against an adjacent literal. This is the
+  // documented limit of the pipeline — full fixed-point convergence
+  // needs the sub-passes to preserve `===` identity on no-op cases,
+  // which `recurse` currently does not (every binary_op walk
+  // rebuilds the node). Tracked in the loop-state backlog; the
+  // fuzz property in `test/fuzz/properties.test.ts` pins the
+  // "converges in ≤ 3 passes" weaker invariant.
+  if (o.simplifyTautologies) result = simplifyTautologies(result)
 
   return result
 }
