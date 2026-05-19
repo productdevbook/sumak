@@ -408,7 +408,7 @@ function exprFingerprint(expr: ExpressionNode): string {
       }
       return `in:${expr.negated}:${exprFingerprint(expr.expr)}:subq`
     case "function_call":
-      return `fn:${expr.name}:${expr.distinct ?? false}:[${expr.args.map(exprFingerprint).join(",")}]`
+      return `fn:${expr.name}:${expr.distinct ?? false}:[${expr.args.map(exprFingerprint).join(",")}]:rt=${expr.returningType ?? ""}`
     case "cast":
       return `cast:${expr.dataType}:${exprFingerprint(expr.expr)}`
     case "case":

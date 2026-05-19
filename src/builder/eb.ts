@@ -763,6 +763,52 @@ export function isJson(
 }
 
 /**
+ * `JSON_VALUE(json_expr, '$.path' [RETURNING type])` — SQL:2016
+ * scalar JSON extraction. Differs from PG's `->>` operator in two
+ * ways:
+ *
+ * 1. Returns a SQL-typed scalar (default `text` / `varchar`) rather
+ *    than a JSON-typed value, so the result can be compared with
+ *    `=` to a plain string / number without an extra cast.
+ * 2. Accepts an optional `RETURNING <type>` clause that casts the
+ *    extracted value to the requested SQL type in-place. PG 17+ and
+ *    MySQL 8 support this; MSSQL does not (always returns
+ *    nvarchar(4000) — wrap with `cast()` instead).
+ *
+ * ```ts
+ * jsonValue(body, "$.name")
+ *   // JSON_VALUE("body", '$.name')
+ *
+ * jsonValue(body, "$.age", { returning: "int" })
+ *   // JSON_VALUE("body", '$.age' RETURNING int)
+ * ```
+ *
+ * Dialect support: PG 17+, MySQL 8, MSSQL. SQLite has no direct
+ * equivalent (`json_extract` differs on both path grammar and
+ * missing-vs-null semantics) and the printer refuses.
+ *
+ * The empty / error handlers (`NULL ON ERROR`, `DEFAULT 'x' ON
+ * ERROR`, etc.) are part of the SQL:2016 grammar but not surfaced
+ * here yet — write the raw clause via `unsafeRawExpr` if needed.
+ */
+export function jsonValue<T = unknown>(
+  jsonExpr: Expression<any> | Col<any>,
+  path: string,
+  opts?: { returning?: string },
+): Expression<T> {
+  const node = jsonExpr instanceof Col ? jsonExpr._node : (jsonExpr as Expression<any>).node
+  const fnNode: FunctionCallNode = {
+    type: "function_call",
+    name: "JSON_VALUE",
+    args: [node, rawLit(path)],
+  }
+  if (opts?.returning !== undefined) {
+    fnNode.returningType = opts.returning
+  }
+  return wrap<T>(fnNode)
+}
+
+/**
  * JSON access operator: expr->path, expr->>path, etc.
  *
  * ```ts

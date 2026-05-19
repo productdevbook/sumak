@@ -113,6 +113,7 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   "JSON_BUILD_OBJECT",
   "JSONB_BUILD_OBJECT",
   "JSON_BUILD_ARRAY",
+  "JSON_VALUE",
   "TO_JSON",
   "TO_JSONB",
   // Full-text
