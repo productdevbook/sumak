@@ -27,6 +27,42 @@ export function validateFunctionName(name: string): void {
 }
 
 /**
+ * Validates that a PostgreSQL extension name is safe — alphanumeric
+ * plus underscore and hyphen (the latter is needed for `uuid-ossp`).
+ * Without this guard `CREATE EXTENSION ${userInput}` would land
+ * verbatim in DDL, so a payload like `"x; DROP TABLE users; --"` is
+ * an immediate injection.
+ */
+const SAFE_EXTENSION_NAME_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/
+
+export function validateExtensionName(name: string): void {
+  if (!SAFE_EXTENSION_NAME_RE.test(name)) {
+    throw new SecurityError(
+      `Unsafe extension name: "${name}". Extension names must be alphanumeric identifiers (underscore + hyphen allowed).`,
+    )
+  }
+}
+
+/**
+ * Validates that an extension VERSION literal is safe. Real PG
+ * extension versions are dotted+hyphenated semver-ish strings
+ * (`"3.4.2"`, `"1.1-rc1"`) so the regex permits dots and hyphens in
+ * addition to alphanumerics + underscores. The string ends up inside
+ * a `'…'` SQL literal at print time, but we also gate the contents
+ * up front to keep `'; DROP TABLE …` from sneaking into the slot via
+ * an unbalanced quote.
+ */
+const SAFE_EXTENSION_VERSION_RE = /^[A-Za-z0-9._-]+$/
+
+export function validateExtensionVersion(version: string): void {
+  if (!SAFE_EXTENSION_VERSION_RE.test(version)) {
+    throw new SecurityError(
+      `Unsafe extension version: "${version}". Versions must be alphanumeric (dot, underscore, hyphen allowed).`,
+    )
+  }
+}
+
+/**
  * Validates that a CAST data type is safe.
  *
  * Allowed shapes:

@@ -378,6 +378,57 @@ The operator token is spliced verbatim into the emitted DDL, so sumak runs it th
 
 ---
 
+## Extensions (PostgreSQL)
+
+`CREATE EXTENSION` / `DROP EXTENSION` load and unload PostgreSQL contrib extensions — `pgcrypto`, `uuid-ossp`, `btree_gist`, `postgis`, `pg_trgm`, etc. Without a first-class builder the alternative is to splice raw SQL via `unsafeRawExpr`, which means writing your own validation against attacker-shaped names.
+
+Bare install — the most common shape inside a migration:
+
+```ts
+db.schema.createExtension("btree_gist").ifNotExists().build()
+// CREATE EXTENSION IF NOT EXISTS "btree_gist"
+```
+
+Full grammar surface: `WITH SCHEMA <schema>`, `VERSION '<v>'`, `CASCADE`:
+
+```ts
+db.schema
+  .createExtension("postgis")
+  .ifNotExists()
+  .schema("public")
+  .version("3.4.2")
+  .cascade()
+  .build()
+// CREATE EXTENSION IF NOT EXISTS "postgis" SCHEMA "public" VERSION '3.4.2' CASCADE
+```
+
+`uuid-ossp` works because the printer quotes the unquoted-identifier slot — without the quoting, PG would parse the hyphen as a subtraction operator. The extension-name validator allows `[A-Za-z_][A-Za-z0-9_-]*`, version literals accept dotted-and-hyphenated SemVer shapes (`[A-Za-z0-9._-]+`) — both reject whitespace, quotes, and semicolons so attacker input can't break out of the slot.
+
+Drop — single name or a comma-separated list, with optional `CASCADE` / `RESTRICT`:
+
+```ts
+db.schema.dropExtension("btree_gist").ifExists().build()
+// DROP EXTENSION IF EXISTS "btree_gist"
+
+db.schema.dropExtension(["uuid-ossp", "pgcrypto"]).cascade().build()
+// DROP EXTENSION "uuid-ossp", "pgcrypto" CASCADE
+```
+
+`CASCADE` and `RESTRICT` are mutually exclusive in PG; the builder treats "last call wins" — `.cascade().restrict()` flips back to `RESTRICT`. A hand-built AST that sets both flags fails at print time rather than emitting unexecutable SQL.
+
+**Use case: the EXCLUDE constraint above needs `btree_gist`.** The composite `EXCLUDE USING gist (room WITH =, during WITH &&)` shown earlier requires the extension to be loaded — there's no btree operator class for the `gist` access method without it. Pair the two in a single migration plan:
+
+```ts
+const plan = [
+  db.schema.createExtension("btree_gist").ifNotExists().build(),
+  // … then the defineTable(...) for "bookings" that needs it …
+]
+```
+
+**Dialect support.** PostgreSQL only. The other three dialects either ship extensions via different mechanisms (MySQL `INSTALL PLUGIN`, MSSQL CLR / linked server — neither is DDL) or have no SQL-level surface at all (SQLite uses the `sqlite3_load_extension` C API). `compileDDL` throws `UnsupportedDialectFeatureError` on every non-PG dialect rather than silently emit DDL the engine will reject.
+
+---
+
 ## Schema comments
 
 Schema-level prose lives in the database, not just the code. PostgreSQL and MySQL both expose comments on tables and columns; sumak surfaces both via the schema DSL and threads the value through `diffSchemas` so a comment edit shows up as a normal additive migration step.

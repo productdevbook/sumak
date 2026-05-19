@@ -310,11 +310,13 @@ export type {
   AlterSequenceNode,
   AnalyzeNode,
   CommentNode,
+  CreateExtensionNode,
   CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
   CreateViewNode,
   DDLNode,
+  DropExtensionNode,
   DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
@@ -350,6 +352,7 @@ export {
   DropPolicyBuilder,
   dropPolicy,
 } from "./builder/ddl/policy.ts"
+export { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/extension.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"
