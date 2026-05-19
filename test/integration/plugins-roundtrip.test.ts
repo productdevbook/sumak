@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { audit } from "../../src/plugin/factories.ts"
 import { multiTenant } from "../../src/plugin/factories.ts"
+import { normalizeStrings } from "../../src/plugin/factories.ts"
 import { softDelete } from "../../src/plugin/factories.ts"
 import { subjectType } from "../../src/plugin/factories.ts"
 import { integer, serial, text, timestamp } from "../../src/schema/index.ts"
@@ -180,6 +181,82 @@ describe("subjectType plugin against pglite", () => {
     for (const r of rows) {
       expect((r as unknown as { __typename: string }).__typename).toBe("Message")
     }
+  })
+})
+
+describe("normalizeStrings plugin against pglite", () => {
+  beforeAll(async () => {
+    await reset(`
+      DROP TABLE IF EXISTS ns_users CASCADE;
+      CREATE TABLE ns_users (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        name TEXT NOT NULL,
+        bio TEXT
+      );
+    `)
+  })
+
+  it("INSERT roundtrip: normalised values land in the DB", async () => {
+    const driver = pgliteDriver(pg)
+    const db = sumak({
+      dialect: pgDialect(),
+      driver,
+      plugins: [
+        normalizeStrings({
+          ns_users: {
+            email: ["trim", "lower"],
+            name: "trim",
+            bio: ["trim", "emptyToNull"],
+          },
+        }),
+      ],
+      tables: {
+        ns_users: {
+          id: serial().primaryKey(),
+          email: text().notNull(),
+          name: text().notNull(),
+          bio: text().nullable(),
+        },
+      },
+    })
+
+    const row = await db
+      .insertInto("ns_users")
+      .values({ email: "  Alice@Example.com  ", name: "Alice  ", bio: "  " })
+      .returningAll()
+      .one()
+    expect(row.email).toBe("alice@example.com")
+    expect(row.name).toBe("Alice")
+    expect(row.bio).toBeNull()
+  })
+
+  it("UPDATE roundtrip: normalised SET values overwrite the row", async () => {
+    const driver = pgliteDriver(pg)
+    const db = sumak({
+      dialect: pgDialect(),
+      driver,
+      plugins: [normalizeStrings({ ns_users: { email: ["trim", "lower"] } })],
+      tables: {
+        ns_users: {
+          id: serial().primaryKey(),
+          email: text().notNull(),
+          name: text().notNull(),
+          bio: text().nullable(),
+        },
+      },
+    })
+
+    // Seed a row directly (bypassing the plugin) and then update via
+    // sumak — the update path is what we want to exercise here.
+    await pg.exec(`INSERT INTO ns_users (email, name) VALUES ('seed@x.com', 'Seed');`)
+    const updated = await db
+      .update("ns_users")
+      .set({ email: "  Bob@EX.COM  " })
+      .where(({ name }) => name.eq("Seed"))
+      .returningAll()
+      .one()
+    expect(updated.email).toBe("bob@ex.com")
   })
 })
 

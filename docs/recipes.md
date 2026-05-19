@@ -704,6 +704,70 @@ db.selectFrom("users")
 
 ---
 
+## Normalize string columns on write
+
+`normalizeStrings` rewrites configured string columns before the INSERT / UPDATE / MERGE hits the wire. The rewrite runs on the value, not the SQL — the generated SQL stays clean (no `LOWER(?)` wrapping) and indexes on the column still apply.
+
+```ts
+import { normalizeStrings } from "sumak"
+
+const db = sumak({
+  dialect: pgDialect(),
+  tables: { users, posts },
+  plugins: [
+    normalizeStrings({
+      users: {
+        email: ["trim", "lower"], // chained: trim first, then lower
+        name: "trim", // single transform
+        bio: ["trim", "emptyToNull"], // collapse whitespace-only bio → NULL
+      },
+      posts: {
+        title: "trim",
+      },
+    }),
+  ],
+})
+
+db.insertInto("users")
+  .values({ email: "  Alice@Example.com  ", name: "Alice  ", bio: "  " })
+  .toSQL()
+// INSERT INTO "users" ("email", "name", "bio") VALUES ($1, $2, $3)
+// params: ["alice@example.com", "Alice", null]
+```
+
+### Built-in transforms
+
+| Tag                    | Behaviour                                                        |
+| ---------------------- | ---------------------------------------------------------------- |
+| `"lower"`              | `String.prototype.toLowerCase()`                                 |
+| `"upper"`              | `String.prototype.toUpperCase()`                                 |
+| `"trim"`               | `String.prototype.trim()`                                        |
+| `"trimStart"`          | `String.prototype.trimStart()`                                   |
+| `"trimEnd"`            | `String.prototype.trimEnd()`                                     |
+| `"emptyToNull"`        | `""` → `null` (everything else passes through)                   |
+| `"collapseWhitespace"` | Multiple consecutive whitespace chars collapse to a single space |
+
+### Custom transforms
+
+Pass any `(value: string) => string | null` for arbitrary rewrites:
+
+```ts
+normalizeStrings({
+  users: {
+    handle: (v) => "@" + v.replaceAll(" ", "_"),
+    nick: (v) => (v.startsWith("anon") ? null : v),
+  },
+})
+```
+
+Returning `null` short-circuits the rest of the chain — once the value is null, no further string transforms run. That makes chains like `[..., "emptyToNull", "lower"]` well-defined.
+
+### Scope
+
+The plugin only rewrites _literal_ string values supplied by the user (i.e. `ParamNode`s in the AST). Expressions, column references, and sub-selects in SET values flow through unchanged. SELECT / DELETE `WHERE` clauses are also untouched — write-side normalisation only.
+
+---
+
 ## CASL row-level authorization
 
 Define abilities, register the plugin, query as usual:
