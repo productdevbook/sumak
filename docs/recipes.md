@@ -124,6 +124,73 @@ db.selectFrom("posts")
 
 ---
 
+## Statistics and regression aggregates
+
+Univariate dispersion (`stddev`, `variance`, plus the explicit `_pop` / `_samp` variants) emits the SQL-standard names on PG, MySQL, and SQLite. **MSSQL is excluded** — T-SQL's native spellings are `STDEV` / `STDEVP` / `VAR` / `VARP` with no `STDDEV_*` / `VARIANCE_*` aliases, so the standard name is a parse error there; reach for `sqlFn("STDEV", expr)` / `sqlFn("VARP", expr)` directly if you need MSSQL coverage. Use them for dashboard variance bands or sanity checks on a numeric column:
+
+```ts
+import { avg, stddev, stddevPop, typedCol, variance } from "sumak"
+
+db.selectFrom("requests")
+  .select("region")
+  .select({
+    p50: avg(typedCol<number>("latency_ms")),
+    jitter: stddev(typedCol<number>("latency_ms")),
+    spreadPop: stddevPop(typedCol<number>("latency_ms")),
+    spreadSq: variance(typedCol<number>("latency_ms")),
+  })
+  .groupBy("region")
+  .toSQL()
+
+// SELECT "region",
+//   AVG("latency_ms") AS "p50",
+//   STDDEV("latency_ms") AS "jitter",
+//   STDDEV_POP("latency_ms") AS "spreadPop",
+//   VARIANCE("latency_ms") AS "spreadSq"
+// FROM "requests" GROUP BY "region"
+```
+
+Bivariate / linear-regression aggregates (`corr`, `covarPop`, `covarSamp`, `regrSlope`, `regrIntercept`, `regrR2`) are SQL standard but only **PG** implements them natively. MSSQL, MySQL, and SQLite have no built-in equivalents (hand-rolling with `SUM`/`AVG` and the variance/covariance identities is the workaround); the printer refuses on all three with `UnsupportedDialectFeatureError`.
+
+Use them for quick correlation matrices, ad-spend ROI slopes, or ANOVA-style feature ranking without round-tripping through application code:
+
+```ts
+import { corr, covarPop, regrR2, regrSlope, typedCol } from "sumak"
+
+const ctr = typedCol<number>("ctr")
+const spend = typedCol<number>("spend")
+
+db.selectFrom("ads")
+  .select("campaign")
+  .select({
+    r: corr(ctr, spend),
+    slope: regrSlope(ctr, spend),
+    r2: regrR2(ctr, spend),
+    cov: covarPop(ctr, spend),
+  })
+  .groupBy("campaign")
+  .toSQL()
+
+// SELECT "campaign",
+//   CORR("ctr", "spend") AS "r",
+//   REGR_SLOPE("ctr", "spend") AS "slope",
+//   REGR_R2("ctr", "spend") AS "r2",
+//   COVAR_POP("ctr", "spend") AS "cov"
+// FROM "ads" GROUP BY "campaign"
+```
+
+Argument order is `(y, x)` — the dependent variable first, per the SQL standard. Swapping has no effect on the magnitude of `corr`, but it flips the meaning of `regrSlope` / `regrIntercept` (now you're regressing x on y instead of y on x). Keep the convention straight or your dashboards will lie.
+
+For ML feature engineering, combine `corr` with `coalesce(..., val(0))` to convert an empty-set NULL into a numeric default the downstream pipeline can pivot on:
+
+```ts
+import { coalesce, corr, val } from "sumak"
+
+db.selectFrom("features").select({ corrSafe: coalesce(corr(typedCol("y"), typedCol("x")), val(0)) })
+```
+
+---
+
 ## Soft delete on the read path
 
 Register the `softDelete` plugin once:

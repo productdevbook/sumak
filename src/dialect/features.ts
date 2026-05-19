@@ -101,6 +101,42 @@ export const FEATURES = {
     label: "ordered-set aggregates (WITHIN GROUP)",
     dialects: ["pg", "mysql", "mssql"],
   },
+  /**
+   * Univariate statistical aggregates under the **standard names**
+   * `STDDEV`, `STDDEV_POP`, `STDDEV_SAMP`. PG, MySQL, and SQLite (3.41+
+   * via the math extension) accept these spellings. MSSQL is excluded
+   * — its native T-SQL spellings are `STDEV` (sample) and `STDEVP`
+   * (population) with no `STDDEV_*` aliases at all; a literal `STDDEV`
+   * is a parse error. If you need MSSQL std-dev today, use
+   * `sqlFn("STDEV", expr)` / `sqlFn("STDEVP", expr)`.
+   */
+  STDDEV_FN: {
+    label: "STDDEV / STDDEV_POP / STDDEV_SAMP",
+    dialects: ["pg", "mysql", "sqlite"],
+  },
+  /**
+   * See {@link STDDEV_FN}. Same MSSQL caveat applies — T-SQL has
+   * `VAR` / `VARP` (no `VARIANCE_*` aliases), so MSSQL is excluded
+   * from this flag; reach for `sqlFn("VAR", expr)` / `sqlFn("VARP",
+   * expr)` instead.
+   */
+  VARIANCE_FN: {
+    label: "VARIANCE / VAR_POP / VAR_SAMP",
+    dialects: ["pg", "mysql", "sqlite"],
+  },
+  /**
+   * Bivariate linear-regression aggregates — `CORR`, `COVAR_POP`,
+   * `COVAR_SAMP`, `REGR_SLOPE`, `REGR_INTERCEPT`, `REGR_R2`. PG
+   * implements the full set under the standard names. **MSSQL has
+   * none of these as built-ins** — hand-rolling via `SUM` / `AVG`
+   * with the variance/covariance identities is the only path on
+   * T-SQL. MySQL and SQLite likewise lack them. The printer refuses
+   * on every non-PG dialect rather than emit SQL the engine rejects.
+   */
+  LINEAR_REGRESSION_AGG: {
+    label: "linear-regression aggregates (CORR / COVAR_* / REGR_*)",
+    dialects: ["pg"],
+  },
 
   // ── Arrays / JSON ─────────────────────────────────────────────────
   ARRAY_LITERALS: { label: "ARRAY[...]", dialects: ["pg"] },

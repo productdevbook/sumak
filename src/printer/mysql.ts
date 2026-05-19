@@ -383,6 +383,19 @@ export class MysqlPrinter extends BasePrinter {
     if (upper === "AGE") {
       assertFeature("mysql", "AGE_FN")
     }
+    // MySQL has no `CORR`, `COVAR_*`, or `REGR_*` aggregates. They're
+    // computable from `SUM`/`AVG`/`STDDEV` by hand, but the standard
+    // names don't parse — refuse so the failure points at the builder.
+    if (
+      upper === "CORR" ||
+      upper === "COVAR_POP" ||
+      upper === "COVAR_SAMP" ||
+      upper === "REGR_SLOPE" ||
+      upper === "REGR_INTERCEPT" ||
+      upper === "REGR_R2"
+    ) {
+      assertFeature("mysql", "LINEAR_REGRESSION_AGG")
+    }
     return super.printFunctionCall(node)
   }
 }
