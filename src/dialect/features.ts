@@ -68,6 +68,16 @@ export const FEATURES = {
   STRING_AGG: { label: "STRING_AGG", dialects: ["pg", "mssql"] },
   GROUP_CONCAT: { label: "GROUP_CONCAT", dialects: ["mysql", "sqlite"] },
   ARRAY_AGG: { label: "ARRAY_AGG", dialects: ["pg"] },
+  /**
+   * SQL standard ordered-set aggregates — `PERCENTILE_CONT`,
+   * `PERCENTILE_DISC`, `MODE` etc. with the `WITHIN GROUP (ORDER BY
+   * …)` clause. PG, MySQL 8 (`PERCENTILE_*` only), MSSQL accept the
+   * standard form. SQLite has no equivalent.
+   */
+  ORDERED_SET_AGGREGATES: {
+    label: "ordered-set aggregates (WITHIN GROUP)",
+    dialects: ["pg", "mysql", "mssql"],
+  },
 
   // ── Arrays / JSON ─────────────────────────────────────────────────
   ARRAY_LITERALS: { label: "ARRAY[...]", dialects: ["pg"] },

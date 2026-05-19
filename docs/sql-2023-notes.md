@@ -34,7 +34,7 @@ The `WindowBuilder` exposes:
 **SQL:2023 additions we don't have:**
 
 - **`EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }`** frame-exclude clause. The `FrameSpec` type has no `exclude` field.
-- **`PERCENTILE_CONT` / `PERCENTILE_DISC`** (inverse distribution aggregates with `WITHIN GROUP`) — these are technically pre-2023 (introduced in 2003) but still missing. PG supports them natively; would need a `withinGroup()` builder method.
+- **`PERCENTILE_CONT` / `PERCENTILE_DISC`** (inverse-distribution aggregates with `WITHIN GROUP`) — top-level `percentileCont()` / `percentileDisc()` builders plus the generic `withinGroup(agg, [...orderBy])` attach the SQL standard ordered-set clause: `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_ms)`. Emitted on PG, MySQL 8, MSSQL. SQLite has no equivalent (`assertFeature("sqlite", "ORDERED_SET_AGGREGATES")` throws). ✅
 
 ## JSON / SQL:2016 + 2023
 

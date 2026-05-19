@@ -65,6 +65,9 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   "JSON_AGG",
   "JSONB_AGG",
   "JSON_OBJECT_AGG",
+  "PERCENTILE_CONT",
+  "PERCENTILE_DISC",
+  "MODE",
   // Window
   "ROW_NUMBER",
   "RANK",

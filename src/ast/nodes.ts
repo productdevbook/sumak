@@ -80,7 +80,20 @@ export interface FunctionCallNode {
   args: ExpressionNode[]
   distinct?: boolean
   filter?: ExpressionNode
+  /**
+   * Inline ORDER BY inside the argument list — `STRING_AGG(expr, sep
+   * ORDER BY x)`. Different clause from {@link withinGroup}; both can
+   * appear simultaneously though it's semantically unusual.
+   */
   orderBy?: OrderByNode[]
+  /**
+   * SQL standard ordered-set aggregate clause:
+   * `FN(args) WITHIN GROUP (ORDER BY …)`. Used by `PERCENTILE_CONT`,
+   * `PERCENTILE_DISC`, `MODE`, and other inverse-distribution
+   * aggregates. Structurally separate from `orderBy` (inside the arg
+   * list) — both clauses can attach to the same call.
+   */
+  withinGroup?: OrderByNode[]
   alias?: string
 }
 
