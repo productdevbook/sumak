@@ -11,6 +11,8 @@ import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
 import { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
 import {
   AlterTypeAddValueBuilder,
+  AlterTypeRenameBuilder,
+  AlterTypeRenameValueBuilder,
   CreateDomainBuilder,
   CreateTypeEnumBuilder,
   DropDomainBuilder,
@@ -939,6 +941,8 @@ const DDL_NODE_TYPES = new Set<string>([
   "create_domain",
   "drop_domain",
   "alter_type_add_value",
+  "alter_type_rename",
+  "alter_type_rename_value",
   "lock_table",
   "copy",
   "listen",
@@ -1322,6 +1326,55 @@ export class SchemaBuilder {
    */
   alterTypeAddValue(name: string): AlterTypeAddValueBuilder {
     return new AlterTypeAddValueBuilder(name)
+  }
+
+  /**
+   * `ALTER TYPE <name> RENAME TO <new_name>`. PostgreSQL-only.
+   *
+   * Renames an existing custom type. Every column, function, and cast
+   * that references the type continues to work — PG resolves these by
+   * the type's OID, not by name. The rename is a single catalog tuple
+   * update and is fully transactional, unlike `ADD VALUE`.
+   *
+   * ```ts
+   * db.compileDDL(db.schema.alterTypeRename("order_status", "order_state").build())
+   * // ALTER TYPE "order_status" RENAME TO "order_state"
+   *
+   * // Or stage the target name separately:
+   * db.compileDDL(db.schema.alterTypeRename("order_status").to("order_state").build())
+   * ```
+   *
+   * The new name must not collide with any other type, table, view, or
+   * sequence in the same schema (PG keeps these in a single namespace).
+   * Both names go through `validateFunctionName`.
+   */
+  alterTypeRename(name: string, newName?: string): AlterTypeRenameBuilder {
+    return new AlterTypeRenameBuilder(name, newName)
+  }
+
+  /**
+   * `ALTER TYPE <name> RENAME VALUE '<old>' TO '<new>'`. PostgreSQL-only
+   * (PG 10+).
+   *
+   * Renames a single label on an existing enum. Stored rows keep their
+   * representation across the rename — enum values are stored by OID
+   * internally, not as text — so this is a pure catalog operation with
+   * no table rewrite, and is fully transactional.
+   *
+   * ```ts
+   * db.compileDDL(
+   *   db.schema.alterTypeRenameValue("order_status").from("paid").to("captured").build(),
+   * )
+   * // ALTER TYPE "order_status" RENAME VALUE 'paid' TO 'captured'
+   * ```
+   *
+   * No `IF NOT EXISTS` clause exists for this form — PG raises if the
+   * old label is missing or if the new label already exists. Both
+   * label strings are escaped via `escapeStringLiteral`; the type
+   * name flows through `validateFunctionName`.
+   */
+  alterTypeRenameValue(typeName: string): AlterTypeRenameValueBuilder {
+    return new AlterTypeRenameValueBuilder(typeName)
   }
 
   /**

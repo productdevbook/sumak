@@ -1,5 +1,7 @@
 import type {
   AlterTypeAddValueNode,
+  AlterTypeRenameNode,
+  AlterTypeRenameValueNode,
   CreateDomainNode,
   CreateTypeEnumNode,
   DropDomainNode,
@@ -439,4 +441,165 @@ export class AlterTypeAddValueBuilder {
  */
 export function alterTypeAddValue(name: string): AlterTypeAddValueBuilder {
   return new AlterTypeAddValueBuilder(name)
+}
+
+/**
+ * Immutable builder for {@link AlterTypeRenameNode} — PostgreSQL
+ * `ALTER TYPE <name> RENAME TO <new_name>`.
+ *
+ * Renames a custom type in place. Every column, function, and cast
+ * that references the type continues to work — PG resolves these by
+ * OID, not by textual name. The rename is purely catalog-level (a
+ * single tuple update on `pg_type`) and fully transactional.
+ *
+ * ```ts
+ * db.schema.alterTypeRename("order_status", "order_state").build()
+ * // ALTER TYPE "order_status" RENAME TO "order_state"
+ *
+ * // Or the chained form — `.to()` overrides the constructor-supplied
+ * // target so a caller can stage the rename target separately.
+ * db.schema.alterTypeRename("order_status").to("order_state").build()
+ * ```
+ *
+ * Both names go through `validateFunctionName` at print time — any
+ * non-identifier shape (with embedded SQL, spaces, etc.) is rejected
+ * with a {@link SecurityError}.
+ *
+ * PostgreSQL-only. The printer refuses on MySQL / SQLite / MSSQL with
+ * {@link UnsupportedDialectFeatureError} (the `CUSTOM_TYPES` feature
+ * flag, shared with `CREATE TYPE AS ENUM`).
+ */
+export class AlterTypeRenameBuilder {
+  private readonly _node: AlterTypeRenameNode
+
+  constructor(name: string, newName?: string)
+  constructor(node: AlterTypeRenameNode)
+  constructor(nameOrNode: string | AlterTypeRenameNode, newName?: string) {
+    if (typeof nameOrNode === "string") {
+      // `newName` is required at print time. When omitted at
+      // construction the builder seeds an empty string; the printer
+      // refuses to emit an empty target name and points at `.to(...)`.
+      this._node = {
+        type: "alter_type_rename",
+        name: nameOrNode,
+        newName: newName ?? "",
+      }
+    } else {
+      this._node = nameOrNode
+    }
+  }
+
+  private _clone(patch: Partial<AlterTypeRenameNode>): AlterTypeRenameBuilder {
+    return new AlterTypeRenameBuilder({ ...this._node, ...patch })
+  }
+
+  /**
+   * Set (or override) the target name. Useful when the factory was
+   * called without the new name — `alterTypeRename("foo").to("bar")` —
+   * or when the target name is computed late.
+   */
+  to(newName: string): AlterTypeRenameBuilder {
+    return this._clone({ newName })
+  }
+
+  build(): AlterTypeRenameNode {
+    return { ...this._node }
+  }
+}
+
+/**
+ * Factory for {@link AlterTypeRenameBuilder}. The new name can be
+ * supplied directly here for the common one-line case, or deferred via
+ * `.to(...)` when staging the rename target separately.
+ *
+ * ```ts
+ * alterTypeRename("order_status", "order_state").build()
+ * // or
+ * alterTypeRename("order_status").to("order_state").build()
+ * ```
+ */
+export function alterTypeRename(name: string, newName?: string): AlterTypeRenameBuilder {
+  return new AlterTypeRenameBuilder(name, newName)
+}
+
+/**
+ * Immutable builder for {@link AlterTypeRenameValueNode} — PostgreSQL
+ * `ALTER TYPE <name> RENAME VALUE '<old>' TO '<new>'`.
+ *
+ * Renames a single label on an existing enum type (PG 10+). Stored
+ * rows keep their representation across the rename — enum values are
+ * stored by OID, not by label text — so this is a pure catalog
+ * operation with no table rewrite.
+ *
+ * ```ts
+ * db.schema.alterTypeRenameValue("order_status").from("paid").to("captured").build()
+ * // ALTER TYPE "order_status" RENAME VALUE 'paid' TO 'captured'
+ * ```
+ *
+ * Unlike `ADD VALUE`, there is no `IF NOT EXISTS` clause — PG raises
+ * if the old label is missing or if the new label already exists. The
+ * statement is fully transactional and safe to batch with other DDL
+ * inside a migration.
+ *
+ * Both label strings are escaped through `escapeStringLiteral` at
+ * print time. The type name flows through `validateFunctionName`.
+ *
+ * PostgreSQL-only. The printer refuses on MySQL / SQLite / MSSQL with
+ * {@link UnsupportedDialectFeatureError}.
+ */
+export class AlterTypeRenameValueBuilder {
+  private readonly _node: AlterTypeRenameValueNode
+
+  constructor(name: string)
+  constructor(node: AlterTypeRenameValueNode)
+  constructor(nameOrNode: string | AlterTypeRenameValueNode) {
+    if (typeof nameOrNode === "string") {
+      // Both label fields are required at print time; seed with empty
+      // strings and let the printer refuse if either is left unset.
+      this._node = {
+        type: "alter_type_rename_value",
+        name: nameOrNode,
+        oldValue: "",
+        newValue: "",
+      }
+    } else {
+      this._node = nameOrNode
+    }
+  }
+
+  private _clone(patch: Partial<AlterTypeRenameValueNode>): AlterTypeRenameValueBuilder {
+    return new AlterTypeRenameValueBuilder({ ...this._node, ...patch })
+  }
+
+  /**
+   * Set the existing label to rename. Required — the printer throws if
+   * left empty. Single quotes inside the label are doubled at print
+   * time so a label like `O'Brien` is safe to splice in.
+   */
+  from(oldValue: string): AlterTypeRenameValueBuilder {
+    return this._clone({ oldValue })
+  }
+
+  /**
+   * Set the new label name. Required — the printer throws if left
+   * empty. Escaped the same way as `from()`.
+   */
+  to(newValue: string): AlterTypeRenameValueBuilder {
+    return this._clone({ newValue })
+  }
+
+  build(): AlterTypeRenameValueNode {
+    return { ...this._node }
+  }
+}
+
+/**
+ * Factory for {@link AlterTypeRenameValueBuilder}.
+ *
+ * ```ts
+ * alterTypeRenameValue("order_status").from("paid").to("captured").build()
+ * ```
+ */
+export function alterTypeRenameValue(name: string): AlterTypeRenameValueBuilder {
+  return new AlterTypeRenameValueBuilder(name)
 }
