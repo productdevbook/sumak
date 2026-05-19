@@ -19,22 +19,28 @@ import {
   PostgresAdapter,
   PostgresIntrospector,
   PostgresQueryCompiler,
+  sql as kSql,
 } from "kysely"
 
 import { typedCol, typedGt, typedLit } from "../../src/ast/typed-expression.ts"
 import {
   and as sand,
+  anyValue as sanyValue,
   avg as savg,
   case_ as scase,
   coalesce as scoalesce,
   count as scount,
   countDistinct as scountDistinct,
   exists as sexists,
+  jsonValue as sjsonValue,
   max as smax,
   or as sor,
   over as sover,
+  percentileCont as spercentileCont,
+  rank as srank,
   rowNumber as srowNumber,
   subqueryExpr as ssubqueryExpr,
+  withinGroup as swithinGroup,
 } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { sumak } from "../../src/sumak.ts"
@@ -966,6 +972,288 @@ export const scenarios: Scenario[] = [
           .selectFrom("posts")
           .select((eb) => eb.fn.count<number>("authorId").distinct().as("uniqueAuthors"))
           .compile(),
+      ),
+  },
+
+  // ──────────────────────────────────────────────────────────────────
+  // SQL:2003 / 2011 / 2016 / 2023 features — added in PRs #142–151.
+  // Each scenario exercises a printer path that didn't exist in the
+  // bench suite before, so we can track compile-cost regressions as
+  // the new feature surface evolves. Where competitors have no first-
+  // class API (`PERCENTILE_CONT`, named WINDOW, `JSON_VALUE`, `IS
+  // JSON`, `ANY_VALUE`, three-branch MERGE), they fall back to raw
+  // sql templates — we're measuring compile cost, not API surface
+  // ergonomics.
+  // ──────────────────────────────────────────────────────────────────
+
+  {
+    name: "select-window-rank",
+    // RANK() OVER (PARTITION BY authorId ORDER BY id) — sibling of
+    // window-row-number but uses RANK, which has different semantics
+    // for ties (gaps). Compile path is identical to ROW_NUMBER; this
+    // exists so the rank() helper has explicit bench coverage rather
+    // than relying on rowNumber() as a stand-in.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select("id", "authorId")
+        .select({
+          rk: sover(srank(), (w) => w.partitionBy("authorId").orderBy("id")),
+        })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            id: dPosts.id,
+            authorId: dPosts.authorId,
+            rk: drizzleSql<number>`rank() over (partition by ${dPosts.authorId} order by ${dPosts.id})`,
+          })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select((eb) => [
+            "id",
+            "authorId",
+            eb.fn
+              .agg<number>("rank")
+              .over((ob) => ob.partitionBy("authorId" as never).orderBy("id" as never))
+              .as("rk"),
+          ])
+          .compile(),
+      ),
+  },
+  {
+    name: "select-percentile",
+    // SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY published)
+    // FROM posts — SQL:2003 ordered-set aggregate, common dashboard
+    // shape. Sumak has first-class `withinGroup(percentileCont(0.5), …)`;
+    // kysely and drizzle drop to raw template literals because their
+    // typed APIs don't model the WITHIN GROUP clause.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select({
+          p50: swithinGroup(spercentileCont(0.5), [{ expr: typedCol<number>("published") }]),
+        })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            p50: drizzleSql<number>`percentile_cont(0.5) within group (order by ${dPosts.published})`,
+          })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select(
+            kSql<number>`percentile_cont(0.5) within group (order by ${kSql.ref("published")})`.as(
+              "p50",
+            ),
+          )
+          .compile(),
+      ),
+  },
+  {
+    name: "select-named-window",
+    // SELECT … OVER w … OVER w FROM posts
+    //   WINDOW w AS (PARTITION BY authorId ORDER BY id)
+    // SQL:2003 named WINDOW lets two OVER references share a single
+    // spec. Sumak has `.window(name, build)` + `over(fn, name)`. Kysely
+    // and drizzle have no named-WINDOW surface — both fall back to a
+    // raw SELECT-string composition. The compile cost difference is
+    // the point: sumak's AST has a dedicated WindowNode and a single
+    // emit pass; the raw forms drop their entire payload as a string
+    // literal and skip the AST work entirely.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .window("w", (b) => b.partitionBy("authorId").orderBy("id"))
+        .select("id", "authorId")
+        .select({
+          rn: sover(srowNumber(), "w"),
+          rk: sover(srank(), "w"),
+        })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            id: dPosts.id,
+            authorId: dPosts.authorId,
+            rn: drizzleSql<number>`row_number() over w`,
+            rk: drizzleSql<number>`rank() over w`,
+          })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    // Kysely has no public surface for the trailing WINDOW clause so we
+    // fall through to a fully-raw query; that's the comparison point.
+    kysely: () =>
+      kyselyToResult(
+        kSql<unknown>`select ${kSql.ref("id")}, ${kSql.ref("authorId")}, row_number() over w as ${kSql.ref("rn")}, rank() over w as ${kSql.ref("rk")} from ${kSql.ref("posts")} window w as (partition by ${kSql.ref("authorId")} order by ${kSql.ref("id")})`.compile(
+          k,
+        ),
+      ),
+  },
+  {
+    name: "select-json-value",
+    // SELECT JSON_VALUE(body, '$.path') FROM posts — SQL:2016
+    // scalar JSON extraction (PG 17+, MySQL 8, MSSQL). Sumak has a
+    // typed `jsonValue(col, path)` helper; competitors use raw sql
+    // because they don't model the SQL:2016 function-call surface yet.
+    // Path is a literal, not a parameter, in every dialect — that's
+    // the spec.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select({
+          name: sjsonValue(typedCol<unknown>("body"), "$.name") as never,
+        })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            name: drizzleSql<string>`JSON_VALUE(${dPosts.body}, '$.name')`,
+          })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select(kSql<string>`JSON_VALUE(${kSql.ref("body")}, '$.name')`.as("name"))
+          .compile(),
+      ),
+  },
+  {
+    name: "select-is-json",
+    // SELECT * FROM posts WHERE body IS JSON — SQL:2016 JSON-validity
+    // predicate (PG 16+, MySQL 8, MSSQL). Sumak has a first-class
+    // `.isJson()` on column proxies; kysely and drizzle drop to raw
+    // SQL because the predicate isn't part of their boolean AST.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .selectAll()
+        .where(({ body }) => body.isJson())
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select()
+          .from(dPosts)
+          .where(drizzleSql`${dPosts.body} IS JSON`)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .selectAll()
+          .where(kSql<boolean>`${kSql.ref("body")} IS JSON`)
+          .compile(),
+      ),
+  },
+  {
+    name: "select-count-any-value",
+    // SELECT authorId, ANY_VALUE(title) FROM posts GROUP BY authorId —
+    // SQL:2023 ANY_VALUE aggregate (PG 16+, MySQL 8, SQLite, MSSQL).
+    // Replaces the older "GROUP BY then hope the dialect picks
+    // something sensible" pattern with an explicit "any row will do"
+    // signal. Sumak has a typed `anyValue(expr)` helper; competitors
+    // fall back to raw sql.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select("authorId")
+        .select({ sampleTitle: sanyValue(typedCol<string>("title")) })
+        .groupBy("authorId")
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            authorId: dPosts.authorId,
+            sampleTitle: drizzleSql<string>`ANY_VALUE(${dPosts.title})`,
+          })
+          .from(dPosts)
+          .groupBy(dPosts.authorId)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select(["authorId", kSql<string>`ANY_VALUE(${kSql.ref("title")})`.as("sampleTitle")])
+          .groupBy("authorId")
+          .compile(),
+      ),
+  },
+  {
+    name: "merge-not-matched-by-source-bench",
+    // MERGE INTO users USING comments AS c ON … WHEN MATCHED … WHEN
+    // NOT MATCHED … WHEN NOT MATCHED BY SOURCE …
+    //
+    // SQL:2023 three-branch MERGE — PG 17+ and MSSQL only. Sumak has a
+    // typed merge builder with `.whenMatchedThenUpdate()` /
+    // `.whenNotMatchedThenInsert()` / `.whenNotMatchedBySourceThenDelete()`.
+    // Drizzle has no MERGE support at all; kysely does have native
+    // merge methods (#143) but we use raw template literals on both
+    // for a fair compile-cost comparison: this scenario measures
+    // sumak's typed AST construction vs the competitors' "just emit
+    // the string" baseline.
+    //
+    // The bench cost is dominated by the three WHEN-branch AST nodes
+    // — MERGE compile is the heaviest scenario in the suite by a wide
+    // margin, expected to land around 30–50k hz vs the 100k+ baseline
+    // for simpler scenarios.
+    sumak: () =>
+      s
+        .mergeInto("users", {
+          source: "comments",
+          alias: "c",
+          on: ({ target, source }) => target.id.eq(source.authorId),
+        })
+        .whenMatchedThenUpdate({ name: "updated" })
+        .whenNotMatchedThenInsert({ id: 1, name: "new", email: "new@x.io", createdAt: new Date(0) })
+        .whenNotMatchedBySourceThenDelete()
+        .toSQL(),
+    drizzle: () => {
+      // Drizzle has no MERGE — we emit the SQL via the package's
+      // own dialect.sqlToQuery() so the params are parameterised the
+      // same way drizzle would normally do it. The dialect handle is
+      // internal but stable; we type-cast through `any` since the
+      // bench is a measurement harness, not a typed consumer.
+      const updated = "updated"
+      const newName = "new"
+      const newEmail = "new@x.io"
+      const newId = 1
+      const newDate = new Date(0)
+      const raw = drizzleSql`MERGE INTO ${dUsers} USING ${dComments} AS "c" ON ${dUsers.id} = ${dComments.authorId} WHEN MATCHED THEN UPDATE SET ${dUsers.name} = ${updated} WHEN NOT MATCHED THEN INSERT (${dUsers.id}, ${dUsers.name}, ${dUsers.email}, ${dUsers.createdAt}) VALUES (${newId}, ${newName}, ${newEmail}, ${newDate}) WHEN NOT MATCHED BY SOURCE THEN DELETE`
+      return drizzleToResult(
+        (
+          d as unknown as {
+            dialect: { sqlToQuery(sql: unknown): { sql: string; params: unknown[] } }
+          }
+        ).dialect.sqlToQuery(raw),
+      )
+    },
+    kysely: () =>
+      kyselyToResult(
+        kSql<unknown>`MERGE INTO ${kSql.ref("users")} USING ${kSql.ref("comments")} AS ${kSql.ref("c")} ON ${kSql.ref("users.id")} = ${kSql.ref("c.authorId")} WHEN MATCHED THEN UPDATE SET ${kSql.ref("name")} = ${"updated"} WHEN NOT MATCHED THEN INSERT (${kSql.ref("id")}, ${kSql.ref("name")}, ${kSql.ref("email")}, ${kSql.ref("createdAt")}) VALUES (${1}, ${"new"}, ${"new@x.io"}, ${new Date(0)}) WHEN NOT MATCHED BY SOURCE THEN DELETE`.compile(
+          k,
+        ),
       ),
   },
 ]
