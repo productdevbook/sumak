@@ -3,6 +3,8 @@ import type {
   AlterSequenceNode,
   AlterTableNode,
   AlterTypeAddValueNode,
+  AlterTypeRenameNode,
+  AlterTypeRenameValueNode,
   AnalyzeNode,
   ColumnDefinitionNode,
   CommentNode,
@@ -134,6 +136,10 @@ export class DDLPrinter {
         return this.printDropDomain(node)
       case "alter_type_add_value":
         return this.printAlterTypeAddValue(node)
+      case "alter_type_rename":
+        return this.printAlterTypeRename(node)
+      case "alter_type_rename_value":
+        return this.printAlterTypeRenameValue(node)
       case "lock_table":
         return this.printLockTable(node)
       case "copy":
@@ -334,6 +340,58 @@ export class DDLPrinter {
       parts.push(node.position.kind, `'${escapeStringLiteral(node.position.existing)}'`)
     }
     return parts.join(" ")
+  }
+
+  private printAlterTypeRename(node: AlterTypeRenameNode): string {
+    // Same feature gate as the other ALTER TYPE forms: PG only.
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (node.newName === "") {
+      // Mirrors the `AlterTypeAddValueNode` empty-value diagnostic —
+      // builders seed `newName: ""` and require `.to(...)`. Refuse here
+      // rather than emit `RENAME TO ""` (which PG would reject as a
+      // bad identifier anyway, with a less helpful message).
+      throw new Error(
+        `ALTER TYPE "${node.name}" RENAME TO requires a non-empty target name — pass it to alterTypeRename(name, newName) or call .to(...) before compiling.`,
+      )
+    }
+    validateFunctionName(node.name)
+    validateFunctionName(node.newName)
+    return [
+      "ALTER TYPE",
+      quoteIdentifier(node.name, this.dialect),
+      "RENAME TO",
+      quoteIdentifier(node.newName, this.dialect),
+    ].join(" ")
+  }
+
+  private printAlterTypeRenameValue(node: AlterTypeRenameValueNode): string {
+    // Same feature gate — PG only. RENAME VALUE is PG 10+ specifically,
+    // but the dialect-level `CUSTOM_TYPES` flag is granular enough for
+    // the cross-dialect refusal; older PG versions raise their own
+    // syntax error if the server doesn't recognize the form.
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (node.oldValue === "") {
+      // Refuse with a pointer at `.from(...)` rather than emit a
+      // literal empty-string label (which PG would treat as a real
+      // search target — almost certainly not what the caller meant).
+      throw new Error(
+        `ALTER TYPE "${node.name}" RENAME VALUE requires a non-empty old value — call .from(...) before compiling.`,
+      )
+    }
+    if (node.newValue === "") {
+      throw new Error(
+        `ALTER TYPE "${node.name}" RENAME VALUE requires a non-empty new value — call .to(...) before compiling.`,
+      )
+    }
+    validateFunctionName(node.name)
+    return [
+      "ALTER TYPE",
+      quoteIdentifier(node.name, this.dialect),
+      "RENAME VALUE",
+      `'${escapeStringLiteral(node.oldValue)}'`,
+      "TO",
+      `'${escapeStringLiteral(node.newValue)}'`,
+    ].join(" ")
   }
 
   private printCreateTable(node: CreateTableNode): string {

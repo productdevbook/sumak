@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 import {
   AlterTypeAddValueBuilder,
+  AlterTypeRenameBuilder,
+  AlterTypeRenameValueBuilder,
   CreateDomainBuilder,
   CreateTypeEnumBuilder,
   DropDomainBuilder,
@@ -15,6 +17,8 @@ import { sqliteDialect } from "../../src/dialect/sqlite.ts"
 import { SecurityError, UnsupportedDialectFeatureError } from "../../src/errors.ts"
 import {
   alterTypeAddValue,
+  alterTypeRename,
+  alterTypeRenameValue,
   createDomain,
   createTypeEnum,
   dropDomain,
@@ -509,6 +513,194 @@ describe("ALTER TYPE ADD VALUE — PG emission", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────
+// ALTER TYPE RENAME
+// ─────────────────────────────────────────────────────────────────────
+
+describe("ALTER TYPE RENAME — builder shape", () => {
+  it("alterTypeRename(name) seeds an empty target", () => {
+    const node = alterTypeRename("e").build()
+    expect(node).toEqual({ type: "alter_type_rename", name: "e", newName: "" })
+  })
+
+  it("alterTypeRename(name, newName) accepts the target up front", () => {
+    const node = alterTypeRename("e", "f").build()
+    expect(node).toEqual({ type: "alter_type_rename", name: "e", newName: "f" })
+  })
+
+  it(".to(newName) sets the target after construction", () => {
+    const node = alterTypeRename("e").to("f").build()
+    expect(node.newName).toBe("f")
+  })
+
+  it(".to(newName) overrides a constructor-supplied target — last call wins", () => {
+    const node = alterTypeRename("e", "f").to("g").build()
+    expect(node.newName).toBe("g")
+  })
+
+  it("builder is immutable — branching returns independent nodes", () => {
+    const a = alterTypeRename("e")
+    const b = a.to("f")
+    expect(a.build().newName).toBe("")
+    expect(b.build().newName).toBe("f")
+  })
+})
+
+describe("ALTER TYPE RENAME — PG emission", () => {
+  it("emits via the two-arg factory form", () => {
+    const q = pg.compileDDL(alterTypeRename("order_status", "order_state").build())
+    expect(q.sql).toBe(`ALTER TYPE "order_status" RENAME TO "order_state"`)
+    expect(q.params).toEqual([])
+  })
+
+  it("emits via the chained .to() form", () => {
+    const q = pg.compileDDL(alterTypeRename("order_status").to("order_state").build())
+    expect(q.sql).toBe(`ALTER TYPE "order_status" RENAME TO "order_state"`)
+  })
+
+  it("quotes both names (identifier escape on edge-case names)", () => {
+    // Both identifiers flow through `quoteIdentifier`. The unusual but
+    // valid case below — a reserved word that's still a legal SQL
+    // identifier — must come back double-quoted on both sides.
+    const q = pg.compileDDL(alterTypeRename("user").to("account").build())
+    expect(q.sql).toBe(`ALTER TYPE "user" RENAME TO "account"`)
+  })
+
+  it("hand-rolled AST with empty newName throws with a pointer at .to()", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_rename",
+        name: "e",
+        newName: "",
+      }),
+    ).toThrow(/requires a non-empty target name/i)
+  })
+
+  it("hand-rolled AST with injected source name throws", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_rename",
+        name: "e; DROP TABLE users; --",
+        newName: "f",
+      }),
+    ).toThrow(SecurityError)
+  })
+
+  it("hand-rolled AST with injected target name throws", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_rename",
+        name: "e",
+        newName: "f; DROP TABLE users; --",
+      }),
+    ).toThrow(SecurityError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// ALTER TYPE RENAME VALUE
+// ─────────────────────────────────────────────────────────────────────
+
+describe("ALTER TYPE RENAME VALUE — builder shape", () => {
+  it("alterTypeRenameValue(name) seeds empty old/new values", () => {
+    const node = alterTypeRenameValue("e").build()
+    expect(node).toEqual({
+      type: "alter_type_rename_value",
+      name: "e",
+      oldValue: "",
+      newValue: "",
+    })
+  })
+
+  it(".from(v) sets the old label", () => {
+    const node = alterTypeRenameValue("e").from("x").build()
+    expect(node.oldValue).toBe("x")
+  })
+
+  it(".to(v) sets the new label", () => {
+    const node = alterTypeRenameValue("e").to("y").build()
+    expect(node.newValue).toBe("y")
+  })
+
+  it(".from(a).to(b) chains in either order", () => {
+    const a = alterTypeRenameValue("e").from("x").to("y").build()
+    const b = alterTypeRenameValue("e").to("y").from("x").build()
+    expect(a).toEqual(b)
+  })
+
+  it("builder is immutable — branching returns independent nodes", () => {
+    const base = alterTypeRenameValue("e").from("x")
+    const branched = base.to("y")
+    expect(base.build().newValue).toBe("")
+    expect(branched.build().newValue).toBe("y")
+  })
+})
+
+describe("ALTER TYPE RENAME VALUE — PG emission", () => {
+  it("emits the plain form", () => {
+    const q = pg.compileDDL(
+      alterTypeRenameValue("order_status").from("paid").to("captured").build(),
+    )
+    expect(q.sql).toBe(`ALTER TYPE "order_status" RENAME VALUE 'paid' TO 'captured'`)
+    expect(q.params).toEqual([])
+  })
+
+  it("escapes single quotes in the old label", () => {
+    // The old label sits in a SQL literal slot — single quotes must
+    // double through `escapeStringLiteral` exactly like ADD VALUE.
+    const q = pg.compileDDL(alterTypeRenameValue("names").from("O'Brien").to("Smith").build())
+    expect(q.sql).toBe(`ALTER TYPE "names" RENAME VALUE 'O''Brien' TO 'Smith'`)
+  })
+
+  it("escapes single quotes in the new label", () => {
+    const q = pg.compileDDL(alterTypeRenameValue("names").from("alice").to("O'Brien").build())
+    expect(q.sql).toBe(`ALTER TYPE "names" RENAME VALUE 'alice' TO 'O''Brien'`)
+  })
+
+  it("escapes single quotes on both sides simultaneously", () => {
+    const q = pg.compileDDL(alterTypeRenameValue("names").from("O'Brien").to("O'Hara").build())
+    expect(q.sql).toBe(`ALTER TYPE "names" RENAME VALUE 'O''Brien' TO 'O''Hara'`)
+  })
+
+  it("escapes backslashes", () => {
+    const q = pg.compileDDL(alterTypeRenameValue("foo").from("a\\b").to("c\\d").build())
+    expect(q.sql).toBe(`ALTER TYPE "foo" RENAME VALUE 'a\\\\b' TO 'c\\\\d'`)
+  })
+
+  it("hand-rolled AST with empty oldValue throws", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_rename_value",
+        name: "e",
+        oldValue: "",
+        newValue: "y",
+      }),
+    ).toThrow(/requires a non-empty old value/i)
+  })
+
+  it("hand-rolled AST with empty newValue throws", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_rename_value",
+        name: "e",
+        oldValue: "x",
+        newValue: "",
+      }),
+    ).toThrow(/requires a non-empty new value/i)
+  })
+
+  it("hand-rolled AST with injected type name throws", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_rename_value",
+        name: "e; DROP TABLE users; --",
+        oldValue: "x",
+        newValue: "y",
+      }),
+    ).toThrow(SecurityError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────
 // Dialect feature gate — PG only
 // ─────────────────────────────────────────────────────────────────────
 
@@ -520,6 +712,9 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
   const dropDom = (db: typeof pg) => db.compileDDL(db.schema.dropDomain("d").build())
   const alterAddVal = (db: typeof pg) =>
     db.compileDDL(db.schema.alterTypeAddValue("e").value("x").build())
+  const alterRename = (db: typeof pg) => db.compileDDL(db.schema.alterTypeRename("e", "f").build())
+  const alterRenameVal = (db: typeof pg) =>
+    db.compileDDL(db.schema.alterTypeRenameValue("e").from("x").to("y").build())
 
   it("MySQL: CREATE TYPE AS ENUM refused", () => {
     expect(() => createEnum(my as any)).toThrow(UnsupportedDialectFeatureError)
@@ -539,6 +734,14 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
 
   it("MySQL: ALTER TYPE ADD VALUE refused", () => {
     expect(() => alterAddVal(my as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MySQL: ALTER TYPE RENAME refused", () => {
+    expect(() => alterRename(my as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MySQL: ALTER TYPE RENAME VALUE refused", () => {
+    expect(() => alterRenameVal(my as any)).toThrow(UnsupportedDialectFeatureError)
   })
 
   it("SQLite: CREATE TYPE AS ENUM refused", () => {
@@ -561,6 +764,14 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
     expect(() => alterAddVal(sqlite as any)).toThrow(UnsupportedDialectFeatureError)
   })
 
+  it("SQLite: ALTER TYPE RENAME refused", () => {
+    expect(() => alterRename(sqlite as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("SQLite: ALTER TYPE RENAME VALUE refused", () => {
+    expect(() => alterRenameVal(sqlite as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
   it("MSSQL: CREATE TYPE AS ENUM refused", () => {
     expect(() => createEnum(mssql as any)).toThrow(UnsupportedDialectFeatureError)
   })
@@ -579,6 +790,14 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
 
   it("MSSQL: ALTER TYPE ADD VALUE refused", () => {
     expect(() => alterAddVal(mssql as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MSSQL: ALTER TYPE RENAME refused", () => {
+    expect(() => alterRename(mssql as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MSSQL: ALTER TYPE RENAME VALUE refused", () => {
+    expect(() => alterRenameVal(mssql as any)).toThrow(UnsupportedDialectFeatureError)
   })
 
   it("error message names the CUSTOM_TYPES feature", () => {
@@ -705,6 +924,26 @@ describe("Standalone builder classes", () => {
       value: "x",
     })
   })
+
+  it("AlterTypeRenameBuilder is constructable directly (two-arg form)", () => {
+    const node = new AlterTypeRenameBuilder("e", "f").build()
+    expect(node).toMatchObject({ type: "alter_type_rename", name: "e", newName: "f" })
+  })
+
+  it("AlterTypeRenameBuilder is constructable directly (chained .to() form)", () => {
+    const node = new AlterTypeRenameBuilder("e").to("f").build()
+    expect(node).toMatchObject({ type: "alter_type_rename", name: "e", newName: "f" })
+  })
+
+  it("AlterTypeRenameValueBuilder is constructable directly", () => {
+    const node = new AlterTypeRenameValueBuilder("e").from("x").to("y").build()
+    expect(node).toMatchObject({
+      type: "alter_type_rename_value",
+      name: "e",
+      oldValue: "x",
+      newValue: "y",
+    })
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────
@@ -740,6 +979,18 @@ describe("db.compile() routes custom-type nodes through DDLPrinter", () => {
     const node = pg.schema.alterTypeAddValue("e").value("x").build()
     const q = pg.compile(node)
     expect(q.sql).toBe(`ALTER TYPE "e" ADD VALUE 'x'`)
+  })
+
+  it("AlterTypeRenameNode round-trips through compile()", () => {
+    const node = pg.schema.alterTypeRename("e", "f").build()
+    const q = pg.compile(node)
+    expect(q.sql).toBe(`ALTER TYPE "e" RENAME TO "f"`)
+  })
+
+  it("AlterTypeRenameValueNode round-trips through compile()", () => {
+    const node = pg.schema.alterTypeRenameValue("e").from("x").to("y").build()
+    const q = pg.compile(node)
+    expect(q.sql).toBe(`ALTER TYPE "e" RENAME VALUE 'x' TO 'y'`)
   })
 })
 
@@ -974,5 +1225,112 @@ describe("PGlite roundtrip — CREATE TYPE AS ENUM + CREATE DOMAIN", () => {
     expect(rows.rows.map((row) => row.enumlabel)).toEqual(["alice", "O'Brien"])
 
     await pgdb.exec(db.compileDDL(db.schema.dropType("names").build()).sql)
+  })
+
+  // ALTER TYPE RENAME — fully transactional. The roundtrip below renames
+  // an enum that's already in use by a column, then asserts:
+  //   1. The catalog tuple in pg_type reflects the new name.
+  //   2. The old name no longer resolves.
+  //   3. Stored rows survive the rename intact (PG resolves type refs
+  //      by OID, not by name).
+  //   4. The column declared against the old name can still be queried
+  //      and accepts inserts under the new type name's alias.
+  it("ALTER TYPE RENAME — renames the type, column reference still works", async () => {
+    await pgdb.exec(
+      db.compileDDL(db.schema.createTypeEnum("color_old").values("red", "green").build()).sql,
+    )
+    await pgdb.exec(`
+      CREATE TEMP TABLE swatches (
+        id serial PRIMARY KEY,
+        c color_old NOT NULL
+      )
+    `)
+    await pgdb.exec(`INSERT INTO swatches (c) VALUES ('red'), ('green')`)
+
+    // Rename the type.
+    await pgdb.exec(db.compileDDL(db.schema.alterTypeRename("color_old", "color_new").build()).sql)
+
+    // The new name resolves; the old one does not.
+    const present = await pgdb.query<{ typname: string }>(
+      `SELECT typname FROM pg_type WHERE typname IN ('color_old', 'color_new')`,
+    )
+    expect(present.rows.map((r) => r.typname).sort()).toEqual(["color_new"])
+
+    // Existing rows survived the rename — the column was bound to the
+    // type by OID, not by name.
+    const r = await pgdb.query<{ c: string }>(`SELECT c FROM swatches ORDER BY id`)
+    expect(r.rows.map((row) => row.c)).toEqual(["red", "green"])
+
+    // The column can now be used through the new type name as an alias —
+    // a fresh insert via a cast to the renamed type lands fine.
+    await pgdb.exec(`INSERT INTO swatches (c) VALUES ('red'::color_new)`)
+    const after = await pgdb.query<{ c: string }>(`SELECT c FROM swatches ORDER BY id`)
+    expect(after.rows.map((row) => row.c)).toEqual(["red", "green", "red"])
+
+    await pgdb.exec(`DROP TABLE swatches`)
+    await pgdb.exec(db.compileDDL(db.schema.dropType("color_new").build()).sql)
+  })
+
+  it("ALTER TYPE RENAME VALUE — relabels an enum value in place", async () => {
+    await pgdb.exec(
+      db.compileDDL(db.schema.createTypeEnum("paystate").values("pending", "paid").build()).sql,
+    )
+    await pgdb.exec(`
+      CREATE TEMP TABLE bills (
+        id serial PRIMARY KEY,
+        s paystate NOT NULL
+      )
+    `)
+    await pgdb.exec(`INSERT INTO bills (s) VALUES ('pending'), ('paid'), ('paid')`)
+
+    await pgdb.exec(
+      db.compileDDL(db.schema.alterTypeRenameValue("paystate").from("paid").to("captured").build())
+        .sql,
+    )
+
+    // pg_enum reflects the new label. Stored rows take the new spelling
+    // automatically — enum data is stored by OID, the rows that were
+    // 'paid' are now 'captured' without an UPDATE.
+    const labels = await pgdb.query<{ enumlabel: string }>(
+      `SELECT enumlabel FROM pg_enum
+        JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+       WHERE pg_type.typname = 'paystate'
+       ORDER BY enumsortorder`,
+    )
+    expect(labels.rows.map((row) => row.enumlabel)).toEqual(["pending", "captured"])
+
+    const rows = await pgdb.query<{ s: string }>(`SELECT s FROM bills ORDER BY id`)
+    expect(rows.rows.map((row) => row.s)).toEqual(["pending", "captured", "captured"])
+
+    // New inserts must use the new label.
+    await pgdb.exec(`INSERT INTO bills (s) VALUES ('captured')`)
+    // The old label no longer exists.
+    await expect(pgdb.exec(`INSERT INTO bills (s) VALUES ('paid')`)).rejects.toThrow(
+      /invalid input value for enum/i,
+    )
+
+    await pgdb.exec(`DROP TABLE bills`)
+    await pgdb.exec(db.compileDDL(db.schema.dropType("paystate").build()).sql)
+  })
+
+  it("ALTER TYPE RENAME VALUE — escaped single quote round-trips through PG", async () => {
+    await pgdb.exec(
+      db.compileDDL(db.schema.createTypeEnum("vips").values("alice", "bob").build()).sql,
+    )
+    // Rename `alice` to `O'Brien` — the single quote in the new label
+    // must survive the escape-and-splice round trip.
+    await pgdb.exec(
+      db.compileDDL(db.schema.alterTypeRenameValue("vips").from("alice").to("O'Brien").build()).sql,
+    )
+
+    const labels = await pgdb.query<{ enumlabel: string }>(
+      `SELECT enumlabel FROM pg_enum
+        JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+       WHERE pg_type.typname = 'vips'
+       ORDER BY enumsortorder`,
+    )
+    expect(labels.rows.map((row) => row.enumlabel)).toEqual(["O'Brien", "bob"])
+
+    await pgdb.exec(db.compileDDL(db.schema.dropType("vips").build()).sql)
   })
 })

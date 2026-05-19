@@ -513,6 +513,56 @@ Practical workflow for migrations that need a new enum label _and_ immediately w
 
 Sumak emits the statement verbatim; the surrounding transactional behavior is the runner's job. If you're using `db.transaction(...)` for migrations, split the enum extension out into its own one-shot DDL apply rather than batching it with the writes that need the new value.
 
+#### Renaming the type itself (`ALTER TYPE … RENAME TO`)
+
+Renaming a custom type is a pure catalog tuple update — every column, function, and cast that references the type continues to work afterward, because PG resolves these by the type's OID rather than its textual name. There's no table rewrite and no need to drop-and-recreate anything that consumed the old name:
+
+```ts
+import { alterTypeRename } from "sumak"
+
+// Pass the new name directly for the common one-line case.
+db.schema.alterTypeRename("order_status", "order_state").build()
+// ALTER TYPE "order_status" RENAME TO "order_state"
+
+// Or stage the target name separately via .to(...).
+db.schema.alterTypeRename("order_status").to("order_state").build()
+```
+
+Both names go through `validateFunctionName` and are double-quoted on emission. The new name must not collide with any other type, table, view, or sequence in the same schema — PG keeps these in a single namespace.
+
+Unlike `ADD VALUE`, this statement is fully transactional and safe to batch with other DDL inside a `BEGIN … COMMIT` migration block.
+
+#### Renaming a single enum label (`ALTER TYPE … RENAME VALUE`)
+
+Sometimes a label's spelling is wrong (`paid` → `captured`, or a typo fix), and you'd rather not migrate every row. `ALTER TYPE … RENAME VALUE` relabels the enum in place — stored rows take the new spelling automatically because enum values are stored by OID, not as text. No `UPDATE` of the data is needed:
+
+```ts
+import { alterTypeRenameValue } from "sumak"
+
+db.schema.alterTypeRenameValue("order_status").from("paid").to("captured").build()
+// ALTER TYPE "order_status" RENAME VALUE 'paid' TO 'captured'
+```
+
+Both label strings flow through `escapeStringLiteral`, so a fix like `Smith` → `O'Brien` survives intact: the trailing single quote doubles to `''` exactly the same way `ADD VALUE` handles it. The type name continues to go through `validateFunctionName`.
+
+There's no `IF NOT EXISTS` clause for this form — PG raises `enum label "old" does not exist` if the source label is gone, or `enum label "new" already exists` if the target label is already on the enum. Migrators that need idempotency wrap the call in a probe of `pg_enum`:
+
+```ts
+// Pseudocode — issue the RENAME only when the old label still exists.
+const stillThere = await db.execute(sql`
+  SELECT 1 FROM pg_enum e
+    JOIN pg_type t ON t.oid = e.enumtypid
+   WHERE t.typname = 'order_status' AND e.enumlabel = 'paid'
+`)
+if (stillThere.rows.length > 0) {
+  await db.execute(
+    db.schema.alterTypeRenameValue("order_status").from("paid").to("captured").build(),
+  )
+}
+```
+
+This form is also fully transactional (PG 10+), so it batches cleanly with other migration DDL inside `BEGIN … COMMIT`.
+
 ### CHECK domains
 
 A _domain_ in PG is a typed constraint wrapper around an existing type. Declare it once, reference it everywhere — every column declared with the domain inherits its `CHECK`, `DEFAULT`, and `NOT NULL`:

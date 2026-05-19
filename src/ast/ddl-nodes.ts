@@ -1111,6 +1111,76 @@ export interface AlterTypeAddValueNode {
   position?: { kind: "BEFORE" | "AFTER"; existing: string }
 }
 
+// ── ALTER TYPE RENAME ──
+
+/**
+ * `ALTER TYPE name RENAME TO new_name`.
+ *
+ * PostgreSQL-only DDL — renames an existing custom type (enum, domain,
+ * composite, range, base) in place. Every column, function argument, and
+ * cast that references the old name continues to work after the rename:
+ * PG resolves these by the type's stable OID, not by the textual name,
+ * so dropping a table and recreating it after a rename is unnecessary
+ * (and would lose data).
+ *
+ * The new name must not collide with any other type, table, view, or
+ * sequence in the same schema — PG keeps types in the same namespace as
+ * relations. Catalog lookups (`pg_type.typname`) and any tooling that
+ * displays the type name (psql `\dT`, ORM schemas regenerated post-
+ * rename) reflect the new name immediately.
+ *
+ * Unlike `ALTER TYPE … ADD VALUE`, this statement is fully
+ * transactional and safe inside a migration step — the rename itself is
+ * just a single tuple update on `pg_type`.
+ *
+ * MySQL / SQLite have no equivalent (no user-defined named types of
+ * this shape). MSSQL has `sp_rename N'oldType', N'newType', N'USERDATATYPE'`
+ * but that operates on alias types only, a different surface. The DDL
+ * printer refuses on every non-PG dialect.
+ */
+export interface AlterTypeRenameNode {
+  type: "alter_type_rename"
+  name: string
+  newName: string
+}
+
+// ── ALTER TYPE RENAME VALUE ──
+
+/**
+ * `ALTER TYPE name RENAME VALUE 'old_label' TO 'new_label'`.
+ *
+ * PostgreSQL-only DDL — renames a single label on an existing enum type.
+ * PG 10+ feature. Rows that already store the old label *keep their
+ * stored representation* (enum values are stored by OID, not by label
+ * string), so a rename is essentially free at the data layer and does
+ * not rewrite any tables.
+ *
+ * The new label must not already exist on the same enum (PG raises
+ * `enum label "new" already exists` if it does). Unlike `ADD VALUE`,
+ * there's no `IF NOT EXISTS` / idempotency clause — re-running a
+ * migration that already renamed the label raises `enum label "old"
+ * does not exist`. Sumak emits the statement verbatim; migrators that
+ * need idempotency wrap the call in a catalog probe of `pg_enum`.
+ *
+ * Both labels are escaped through `escapeStringLiteral` at print time —
+ * a label like `O'Brien` is safe to splice into either side. The type
+ * name flows through `validateFunctionName`.
+ *
+ * This statement is fully transactional (unlike `ADD VALUE`) and safe
+ * to batch with other migration steps inside a single `BEGIN … COMMIT`.
+ *
+ * MySQL has no equivalent (its inline `ENUM(...)` column shape changes
+ * via `ALTER TABLE … MODIFY COLUMN`, which rewrites the column);
+ * SQLite has no enum; MSSQL has no enum either. The DDL printer refuses
+ * on every non-PG dialect.
+ */
+export interface AlterTypeRenameValueNode {
+  type: "alter_type_rename_value"
+  name: string
+  oldValue: string
+  newValue: string
+}
+
 // ── LOCK TABLE (PG advisory locking) ──
 
 /**
@@ -1464,6 +1534,8 @@ export type DDLNode =
   | CreateDomainNode
   | DropDomainNode
   | AlterTypeAddValueNode
+  | AlterTypeRenameNode
+  | AlterTypeRenameValueNode
   | LockTableNode
   | CopyNode
   | ListenNode
