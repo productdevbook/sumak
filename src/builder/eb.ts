@@ -121,22 +121,55 @@ export class Col<T> {
     return wrap(binOp("!=", this._node, rhsNode(value)))
   }
 
-  /** > */
+  /**
+   * `>` — greater than. Accepts raw value, another `Col`, or `Expression`.
+   *
+   * ```ts
+   * .where(({ age }) => age.gt(18))
+   * // WHERE "age" > $1
+   * ```
+   *
+   * NULL handling: `col > NULL` evaluates to UNKNOWN per SQL three-
+   * valued logic and never matches. Use `col.isNull({ negate: true })`
+   * if you want "not null" — `.gt(null)` produces `WHERE col > NULL`
+   * which is always false; that's the caller's intent or it isn't.
+   */
   gt(value: CmpArg<T>): Expression<boolean> {
     return wrap(binOp(">", this._node, rhsNode(value)))
   }
 
-  /** >= */
+  /**
+   * `>=` — greater than or equal. See `.gt()` for NULL handling.
+   *
+   * ```ts
+   * .where(({ price }) => price.gte(100))
+   * // WHERE "price" >= $1
+   * ```
+   */
   gte(value: CmpArg<T>): Expression<boolean> {
     return wrap(binOp(">=", this._node, rhsNode(value)))
   }
 
-  /** < */
+  /**
+   * `<` — less than. See `.gt()` for NULL handling.
+   *
+   * ```ts
+   * .where(({ age }) => age.lt(65))
+   * // WHERE "age" < $1
+   * ```
+   */
   lt(value: CmpArg<T>): Expression<boolean> {
     return wrap(binOp("<", this._node, rhsNode(value)))
   }
 
-  /** <= */
+  /**
+   * `<=` — less than or equal. See `.gt()` for NULL handling.
+   *
+   * ```ts
+   * .where(({ age }) => age.lte(65))
+   * // WHERE "age" <= $1
+   * ```
+   */
   lte(value: CmpArg<T>): Expression<boolean> {
     return wrap(binOp("<=", this._node, rhsNode(value)))
   }
