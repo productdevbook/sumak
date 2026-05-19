@@ -549,112 +549,25 @@ export function unsafeSqlFn(name: string, ...args: Expression<any>[]): Expressio
   )
 }
 
-/**
- * `COUNT(*)` (no argument) or `COUNT(expr)` (one argument).
- *
- * `COUNT(*)` counts every row including nulls; `COUNT(col)` counts
- * only rows where `col IS NOT NULL`. The two are semantically
- * different — picking the right one matters.
- */
-export function count(): Expression<number>
-export function count<T>(expr: Col<T> | Expression<T>): Expression<number>
-export function count<T>(expr?: Col<T> | Expression<T>): Expression<number> {
-  if (expr === undefined) return wrap(rawFn("COUNT", [rawStar()]))
-  const node = expr instanceof Col ? expr._node : (expr as Expression<T>).node
-  return wrap(rawFn("COUNT", [node]))
-}
-
-/**
- * `COUNT(DISTINCT expr)` — counts unique non-null values. Sub-linear
- * cost on indexed columns; expensive on unindexed text. Returns 0
- * (not NULL) for an empty set, unlike `SUM` / `AVG` / `MIN` / `MAX`.
- *
- * ```ts
- * db.selectFrom("orders").select({ uniqueCustomers: countDistinct(typedCol("customer_id")) })
- * // SELECT COUNT(DISTINCT "customer_id") AS "uniqueCustomers" FROM "orders"
- * ```
- */
-export function countDistinct(expr: Expression<any>): Expression<number> {
-  const node: FunctionCallNode = {
-    type: "function_call",
-    name: "COUNT",
-    args: [(expr as any).node],
-    distinct: true,
-  }
-  return wrap(node)
-}
-
-/**
- * `SUM(expr)` aggregate.
- *
- * Returns `NULL` (not `0`) when no rows match the WHERE clause — `SUM`
- * over an empty set is `NULL` per SQL three-valued logic. Use
- * `coalesce(sum(...), val(0))` if you want a numeric default.
- *
- * ```ts
- * db.selectFrom("orders").select({ total: sum(typedCol<number>("amount")) })
- * // SELECT SUM("amount") AS "total" FROM "orders"
- * ```
- */
-export function sum(expr: Expression<number>): Expression<number> {
-  return wrap(rawFn("SUM", [(expr as any).node]))
-}
-
-/**
- * `SUM(DISTINCT expr)` — only adds each distinct value once. Useful
- * when the same value can appear in multiple rows but should only
- * contribute one to the total.
- */
-export function sumDistinct(expr: Expression<number>): Expression<number> {
-  const node: FunctionCallNode = {
-    type: "function_call",
-    name: "SUM",
-    args: [(expr as any).node],
-    distinct: true,
-  }
-  return wrap(node)
-}
-
-/**
- * `AVG(expr)` aggregate.
- *
- * Returns `NULL` for an empty set. Numeric type promotion is dialect-
- * specific: PG and SQLite return DOUBLE for integer columns; MySQL
- * preserves DECIMAL precision. Use an explicit `cast()` if you need
- * cross-dialect-stable output.
- */
-export function avg(expr: Expression<number>): Expression<number> {
-  return wrap(rawFn("AVG", [(expr as any).node]))
-}
-
-/** `AVG(DISTINCT expr)` — only averages each distinct value once. */
-export function avgDistinct(expr: Expression<number>): Expression<number> {
-  const node: FunctionCallNode = {
-    type: "function_call",
-    name: "AVG",
-    args: [(expr as any).node],
-    distinct: true,
-  }
-  return wrap(node)
-}
-
-/**
- * `MIN(expr)` aggregate. Returns the smallest non-null value, or
- * `NULL` for an empty set. Works on every comparable column type:
- * numeric, text, timestamp, date.
- */
-export function min<T>(expr: Expression<T>): Expression<T> {
-  return wrap(rawFn("MIN", [(expr as any).node]))
-}
-
-/**
- * `MAX(expr)` aggregate. Returns the largest non-null value, or
- * `NULL` for an empty set. See `min()` for the comparable-column-type
- * note.
- */
-export function max<T>(expr: Expression<T>): Expression<T> {
-  return wrap(rawFn("MAX", [(expr as any).node]))
-}
+// Aggregate helpers live in `./aggregate.ts` so this file can stay
+// focused on the typed-expression core. The re-export here preserves
+// the historical `import { count } from "sumak"` shape so user code
+// is unchanged. See the dedicated file for full JSDoc.
+export {
+  arrayAgg,
+  avg,
+  avgDistinct,
+  count,
+  countDistinct,
+  jsonAgg,
+  max,
+  min,
+  stringAgg,
+  sum,
+  sumDistinct,
+  aggOrderBy,
+  filter,
+} from "./aggregate.ts"
 
 /** COALESCE(a, b, c, ...) — returns first non-null value */
 export function coalesce<T>(...args: Expression<T | null>[]): Expression<T> {
@@ -1278,19 +1191,6 @@ export function ceil(expr: Expression<number>): Expression<number> {
 }
 
 /**
- * `JSON_AGG(expr)` — aggregate rows into a JSON array. **PG-only**;
- * MySQL has `JSON_ARRAYAGG`, SQLite has `json_group_array`, MSSQL
- * has nothing equivalent. Reach for `stringAgg` or build the array
- * in application code for portability.
- *
- * Often paired with `over(...)` for windowed aggregation, or with
- * `groupBy` for row-grouping.
- */
-export function jsonAgg<T>(expr: Expression<T>): Expression<T[]> {
-  return wrap(rawFn("JSON_AGG", [(expr as any).node]))
-}
-
-/**
  * `TO_JSON(expr)` — convert any value to its JSON representation.
  * **PG-only**. MySQL emits the closest equivalent via
  * `CAST(expr AS JSON)`; SQLite has no equivalent.
@@ -1540,56 +1440,6 @@ export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
 }
 
-/** STRING_AGG(expr, delimiter) — aggregate strings with separator */
-export function stringAgg(
-  expr: Expression<string>,
-  delimiter: string,
-  orderBy?: { expr: Expression<any>; direction?: "ASC" | "DESC" }[],
-): Expression<string> {
-  const node: FunctionCallNode = {
-    type: "function_call",
-    name: "STRING_AGG",
-    args: [(expr as any).node, rawLit(delimiter)],
-    orderBy: orderBy?.map((o) => ({
-      expr: (o.expr as any).node,
-      direction: o.direction ?? "ASC",
-    })),
-  }
-  return wrap(node)
-}
-
-/** ARRAY_AGG(expr) — aggregate values into array */
-export function arrayAgg<T>(
-  expr: Expression<T>,
-  orderBy?: { expr: Expression<any>; direction?: "ASC" | "DESC" }[],
-): Expression<T[]> {
-  const node: FunctionCallNode = {
-    type: "function_call",
-    name: "ARRAY_AGG",
-    args: [(expr as any).node],
-    orderBy: orderBy?.map((o) => ({
-      expr: (o.expr as any).node,
-      direction: o.direction ?? "ASC",
-    })),
-  }
-  return wrap(node)
-}
-
-/** Attach ORDER BY to an existing aggregate expression. */
-export function aggOrderBy<T>(
-  agg: Expression<T>,
-  orderBy: { expr: Expression<any>; direction?: "ASC" | "DESC" }[],
-): Expression<T> {
-  const fnNode = (agg as any).node as FunctionCallNode
-  return wrap<T>({
-    ...fnNode,
-    orderBy: orderBy.map((o) => ({
-      expr: (o.expr as any).node,
-      direction: o.direction ?? "ASC",
-    })),
-  })
-}
-
 /**
  * Row-value tuple for comparisons.
  *
@@ -1608,17 +1458,4 @@ export function tuple(...exprs: Expression<any>[]): Expression<any> {
     elements: exprs.map((e) => (e as any).node),
   }
   return wrap(node)
-}
-
-/**
- * Attach FILTER (WHERE ...) to an aggregate expression.
- *
- * ```ts
- * filter(count(), ({ active }) => active.eq(true))
- * // COUNT(*) FILTER (WHERE "active" = $1)
- * ```
- */
-export function filter<T>(agg: Expression<T>, condition: Expression<boolean>): Expression<T> {
-  const fnNode = (agg as any).node as FunctionCallNode
-  return wrap<T>({ ...fnNode, filter: (condition as any).node })
 }
