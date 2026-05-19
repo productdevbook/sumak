@@ -677,34 +677,85 @@ export class DDLPrinter {
 
   private printTruncateTable(node: TruncateTableNode): string {
     if (this.dialect === "sqlite") {
-      // SQLite has no TRUNCATE TABLE — use DELETE FROM. Some tooling
-      // auto-rewrites, but semantics differ (TRUNCATE is DDL, ignores
-      // triggers, etc.), so refuse rather than silently change behavior.
+      // SQLite has no TRUNCATE TABLE — DELETE FROM is the workaround.
+      // Note the semantic gap: TRUNCATE doesn't fire row triggers and
+      // can be non-transactional, while DELETE FROM fires triggers and
+      // is fully transactional. SQLite 3.6.5+ does optimise an
+      // unconditional `DELETE FROM tab` to a TRUNCATE-like fast path
+      // internally, so the perf characteristics are usually close, but
+      // we refuse rather than silently rewrite — the caller should
+      // make that choice explicitly.
       throw new UnsupportedDialectFeatureError(
         "sqlite",
         "TRUNCATE TABLE (SQLite has no TRUNCATE — use `db.deleteFrom(t).allRows()`)",
       )
     }
-    const parts: string[] = ["TRUNCATE TABLE"]
-    parts.push(quoteTableRef(node.table.name, this.dialect, node.table.schema))
-    if (node.restartIdentity) {
-      if (this.dialect === "mssql" || this.dialect === "mysql") {
+    if (node.tables.length === 0) {
+      throw new Error("TRUNCATE TABLE requires at least one table.")
+    }
+    if (node.cascade && node.restrict) {
+      throw new Error("TRUNCATE TABLE: cascade and restrict are mutually exclusive — set only one.")
+    }
+    if (node.restartIdentity && node.continueIdentity) {
+      throw new Error(
+        "TRUNCATE TABLE: restartIdentity and continueIdentity are mutually exclusive — set only one.",
+      )
+    }
+
+    // Multi-table is PG-only. MySQL / MSSQL accept exactly one table
+    // per statement; refuse before we render any partial SQL.
+    const isPg = this.dialect === "pg"
+    if (node.tables.length > 1 && !isPg) {
+      throw new UnsupportedDialectFeatureError(
+        this.dialect,
+        "TRUNCATE TABLE with multiple tables (PG only — emit one statement per table on MySQL / MSSQL)",
+      )
+    }
+
+    // All PG-specific modifiers refuse on MySQL / MSSQL with a hint at
+    // the right escape hatch.
+    if (!isPg) {
+      if (node.only) {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "TRUNCATE ONLY (PG only — MySQL / MSSQL have no table inheritance)",
+        )
+      }
+      if (node.restartIdentity) {
         throw new UnsupportedDialectFeatureError(
           this.dialect,
           "TRUNCATE ... RESTART IDENTITY (use DBCC CHECKIDENT on MSSQL, ALTER TABLE AUTO_INCREMENT on MySQL)",
         )
       }
-      parts.push("RESTART IDENTITY")
-    }
-    if (node.cascade) {
-      if (this.dialect === "mssql" || this.dialect === "mysql") {
+      if (node.continueIdentity) {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "TRUNCATE ... CONTINUE IDENTITY (PG only — the default behaviour is already 'continue' on MySQL / MSSQL)",
+        )
+      }
+      if (node.cascade) {
         throw new UnsupportedDialectFeatureError(
           this.dialect,
           "TRUNCATE ... CASCADE (truncate dependent tables manually)",
         )
       }
-      parts.push("CASCADE")
+      if (node.restrict) {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "TRUNCATE ... RESTRICT (PG only — RESTRICT is the implicit default on MySQL / MSSQL)",
+        )
+      }
     }
+
+    const parts: string[] = ["TRUNCATE TABLE"]
+    if (node.only) parts.push("ONLY")
+    const refs = node.tables.map((t) => quoteTableRef(t.name, this.dialect, t.schema))
+    parts.push(refs.join(", "))
+    // CONTINUE IDENTITY / RESTRICT are SQL defaults — omit when set so
+    // the emitted SQL is compact. RESTART IDENTITY and CASCADE are
+    // emitted explicitly when set.
+    if (node.restartIdentity) parts.push("RESTART IDENTITY")
+    if (node.cascade) parts.push("CASCADE")
     return parts.join(" ")
   }
 

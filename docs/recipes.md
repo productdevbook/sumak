@@ -618,6 +618,64 @@ The sequence name passed to `nextval` / `currval` / `setval` is captured as a SQ
 
 ---
 
+## TRUNCATE TABLE
+
+`TRUNCATE` is the fast row-removal DDL: it bypasses the row-by-row delete path the engine uses for `DELETE`, doesn't fire row triggers (PG `BEFORE`/`AFTER ROW` and MySQL row-level triggers), and on PostgreSQL it can also restart attached identity sequences and cascade through foreign keys. The grammar is widest on PG — multiple tables in one statement, `ONLY` to skip inheritance children, `RESTART IDENTITY` vs `CONTINUE IDENTITY`, `CASCADE` vs `RESTRICT`. MySQL and SQL Server accept only the simple `TRUNCATE TABLE <name>` form; SQLite has no TRUNCATE at all (use `DELETE FROM <table>` — SQLite 3.6.5+ internally optimises an unconditional `DELETE FROM` to a TRUNCATE-like fast path, but the trigger semantics differ).
+
+sumak exposes the full grammar through a single fluent builder:
+
+```ts
+import { truncate } from "sumak"
+
+// Simple form — works on PG / MySQL / MSSQL:
+db.compileDDL(truncate("users").build())
+//   PG / MySQL / MSSQL: TRUNCATE TABLE "users"
+
+// Multi-table (PG only — atomic across the list):
+db.compileDDL(truncate(["users", "orders", "audits"]).build())
+//   PG: TRUNCATE TABLE "users", "orders", "audits"
+
+// Skip inheritance children (PG only):
+db.compileDDL(truncate("events").only().build())
+//   PG: TRUNCATE TABLE ONLY "events"
+
+// Reset attached identity sequences (PG only):
+db.compileDDL(truncate("users").restartIdentity().build())
+//   PG: TRUNCATE TABLE "users" RESTART IDENTITY
+
+// All modifiers in combination:
+db.compileDDL(truncate(["users", "orders"]).only().restartIdentity().cascade().build())
+//   PG: TRUNCATE TABLE ONLY "users", "orders" RESTART IDENTITY CASCADE
+```
+
+The same factory hangs off the schema builder as `db.schema.truncate(table | tables)` for symmetry with the rest of the DDL surface. The legacy `db.schema.truncateTable(name)` is still around for back-compat — it builds a single-table node with the same shape, so existing call sites continue to work unchanged.
+
+### Modifier semantics
+
+- `.only()` — emit `ONLY` before the table list to skip table-inheritance descendants. Without it PostgreSQL truncates the named table _and_ every table that inherits from it. **PG only**; MySQL and SQL Server have no table inheritance and the printer refuses if set on those dialects.
+- `.restartIdentity()` / `.continueIdentity()` — `RESTART IDENTITY` resets every sequence attached to an identity column on any of the truncated tables; `CONTINUE IDENTITY` (the SQL default) leaves them alone. The keyword for the default is omitted in the emitted SQL. **PG only** — MySQL uses `ALTER TABLE … AUTO_INCREMENT = 1`, MSSQL uses `DBCC CHECKIDENT (table, RESEED, 0)`.
+- `.cascade()` / `.restrict()` — `CASCADE` recursively truncates every table that references one of the named tables by foreign key; `RESTRICT` (the SQL default) refuses to truncate if any FK references exist. The keyword for the default is omitted. **PG only**.
+
+The four modifier pairs are pairwise mutually exclusive — calling `.cascade()` then `.restrict()` overrides the first; the printer also refuses if both are somehow set on a hand-built AST node.
+
+### SQLite — DELETE FROM as the workaround
+
+SQLite has no TRUNCATE; the printer raises `UnsupportedDialectFeatureError` with a pointer at `db.deleteFrom(table).allRows()`. The semantic gap is real: `DELETE FROM` fires row triggers, participates fully in transactions, and respects foreign-key cascades; `TRUNCATE` on PG/MySQL is DDL with looser durability and trigger semantics. SQLite's internal optimisation of unconditional `DELETE FROM` to a TRUNCATE-like fast path means the performance is usually close — but the caller picks which semantics they want, not the printer.
+
+### Feature matrix
+
+| Feature              | PG  | MySQL | SQLite | MSSQL |
+| -------------------- | --- | ----- | ------ | ----- |
+| `TRUNCATE TABLE <t>` | yes | yes   | —      | yes   |
+| Multi-table list     | yes | —     | —      | —     |
+| `ONLY`               | yes | —     | —      | —     |
+| `RESTART IDENTITY`   | yes | —     | —      | —     |
+| `CONTINUE IDENTITY`  | yes | —     | —      | —     |
+| `CASCADE`            | yes | —     | —      | —     |
+| `RESTRICT`           | yes | —     | —      | —     |
+
+---
+
 ## Multi-tenant scoping
 
 ```ts

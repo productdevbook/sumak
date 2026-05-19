@@ -310,17 +310,19 @@ export type {
   DropSequenceNode,
   DropViewNode,
   RefreshMaterializedViewNode,
+  TruncateTableNode,
 } from "./ast/ddl-nodes.ts"
 
 // ─── DDL builders (advanced / custom DDL flows) ────────────────────────────
 export { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
-export { DropViewBuilder } from "./builder/ddl/drop.ts"
+export { DropViewBuilder, TruncateTableBuilder } from "./builder/ddl/drop.ts"
 export {
   CreateSequenceBuilder,
   createSequence,
   DropSequenceBuilder,
   dropSequence,
 } from "./builder/ddl/create-sequence.ts"
+export { TruncateBuilder, truncate, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"
