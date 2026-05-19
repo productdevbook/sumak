@@ -1461,6 +1461,25 @@ exports[`bench scenarios produce equivalent SQL > select-case-when > snapshot of
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-coalesce > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "id", COALESCE("name", 'unknown') from "users"",
+  },
+  "kysely": {
+    "params": [
+      "unknown",
+    ],
+    "sql": "select "id", coalesce("name", $1) as "displayName" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", COALESCE("name", 'unknown') AS "displayName" FROM "users"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-distinct > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
@@ -1520,6 +1539,23 @@ exports[`bench scenarios produce equivalent SQL > select-group-having > snapshot
       0,
     ],
     "sql": "SELECT "authorId", COUNT(*) AS "total" FROM "posts" GROUP BY "authorId" HAVING ("authorId" > $1)",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-group-multi-col > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "authorId", "published", count(*) from "posts" group by "posts"."authorId", "posts"."published"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "authorId", "published", count(*) as "total" from "posts" group by "authorId", "published"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "authorId", "published", COUNT(*) AS "total" FROM "posts" GROUP BY "authorId", "published"",
   },
 }
 `;

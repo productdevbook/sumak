@@ -31,6 +31,8 @@
     "upsert-do-update": { "sumakMinHz": 100000 },
     "select-case-when": { "sumakMinHz": 110000 },
     "select-exists-subquery": { "sumakMinHz": 90000 },
-    "scalar-subquery-in-select": { "sumakMinHz": 100000 }
+    "scalar-subquery-in-select": { "sumakMinHz": 100000 },
+    "select-coalesce": { "sumakMinHz": 150000 },
+    "select-group-multi-col": { "sumakMinHz": 130000 }
   }
 }

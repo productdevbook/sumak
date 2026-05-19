@@ -25,6 +25,7 @@ import {
   and as sand,
   avg as savg,
   case_ as scase,
+  coalesce as scoalesce,
   count as scount,
   exists as sexists,
   max as smax,
@@ -604,6 +605,67 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "select-coalesce",
+    // SELECT id, COALESCE(name, 'unknown') FROM users — null-safe
+    // fallback. Three-arg COALESCE is the standard shape; sumak
+    // accepts variadic expressions.
+    sumak: () =>
+      s
+        .selectFrom("users")
+        .select("id")
+        .select({ displayName: scoalesce(typedCol<string | null>("name"), typedLit("unknown")) })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            id: dUsers.id,
+            displayName: drizzleSql<string>`COALESCE(${dUsers.name}, 'unknown')`,
+          })
+          .from(dUsers)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select((eb) => ["id", eb.fn.coalesce("name", eb.val("unknown")).as("displayName")])
+          .compile(),
+      ),
+  },
+  {
+    name: "select-group-multi-col",
+    // GROUP BY authorId, published — two grouping columns. Exercises
+    // the GROUP BY array handling in each printer.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select("authorId", "published")
+        .select({ total: scount() })
+        .groupBy("authorId", "published")
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            authorId: dPosts.authorId,
+            published: dPosts.published,
+            total: count(),
+          })
+          .from(dPosts)
+          .groupBy(dPosts.authorId, dPosts.published)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select((eb) => ["authorId", "published", eb.fn.countAll().as("total")])
+          .groupBy(["authorId", "published"])
+          .compile(),
+      ),
+  },
+  {
     name: "scalar-subquery-in-select",
     // SELECT id, name, (SELECT COUNT(*) FROM posts) AS total_posts FROM users
     // — non-correlated scalar subquery as a SELECT column. Common
