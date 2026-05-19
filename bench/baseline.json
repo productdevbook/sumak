@@ -35,6 +35,7 @@
     "select-coalesce": { "sumakMinHz": 150000 },
     "select-group-multi-col": { "sumakMinHz": 130000 },
     "insert-from-select": { "sumakMinHz": 130000 },
-    "select-from-derived": { "sumakMinHz": 90000 }
+    "select-from-derived": { "sumakMinHz": 90000 },
+    "select-count-distinct": { "sumakMinHz": 90000 }
   }
 }
