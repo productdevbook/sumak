@@ -53,7 +53,12 @@ import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import { formatParam } from "../utils/param.ts"
 import { escapeStringLiteral, validateDataType, validateFunctionName } from "../utils/security.ts"
-import { NILADIC_FUNCTIONS, STANDARD_FUNCTIONS, WINDOW_ONLY_FUNCTIONS } from "./function-tables.ts"
+import {
+  NILADIC_FUNCTIONS,
+  SEQUENCE_FUNCTIONS,
+  STANDARD_FUNCTIONS,
+  WINDOW_ONLY_FUNCTIONS,
+} from "./function-tables.ts"
 import type { Printer } from "./types.ts"
 
 export class BasePrinter implements Printer {
@@ -618,6 +623,14 @@ export class BasePrinter implements Printer {
         result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
       }
       return result
+    }
+    // Sequence-access functions (`nextval` / `currval` / `setval`) —
+    // PG-only function-shape grammar. Refuse on MySQL / SQLite / MSSQL
+    // before any argument rendering happens. MSSQL has the equivalent
+    // `NEXT VALUE FOR <seq>` grammar but it's not a function call —
+    // supporting it needs a dedicated AST node and printer pass.
+    if (SEQUENCE_FUNCTIONS.has(node.name.toUpperCase())) {
+      assertFeature(this.dialect, "SEQUENCE_FNS")
     }
     // SQL standard `EXTRACT(<field> FROM <expr>)` — the field name sits
     // outside the argument list and uses the `FROM` keyword instead of

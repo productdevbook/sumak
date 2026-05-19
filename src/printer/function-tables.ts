@@ -145,4 +145,21 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   // function has no analogue on MSSQL (which uses `$action` in its
   // `OUTPUT` clause), so it's only meaningful inside `MERGE … RETURNING`.
   "MERGE_ACTION",
+  // Sequence access — PG-only function-shape grammar. The base
+  // BasePrinter.printFunctionCall asserts the `SEQUENCE_FNS` feature
+  // flag when it sees any of these names, so MySQL / SQLite / MSSQL
+  // refuse rather than emit lowercase calls the engines reject. MSSQL
+  // has a different grammar (`NEXT VALUE FOR <seq>`) that isn't a
+  // function call — supporting it cleanly needs its own AST node.
+  "NEXTVAL",
+  "CURRVAL",
+  "SETVAL",
 ])
+
+/**
+ * Function names that are PG-only and use the function-call grammar.
+ * The base printer asserts the `SEQUENCE_FNS` feature flag when it sees
+ * any of these names. Kept as a separate set so the lookup is O(1) and
+ * the gate fires before the regular argument-rendering path.
+ */
+export const SEQUENCE_FUNCTIONS: ReadonlySet<string> = new Set(["NEXTVAL", "CURRVAL", "SETVAL"])
