@@ -245,6 +245,7 @@ export {
   camelCase,
   caslAuthz,
   dataMasking,
+  defaults,
   multiTenant,
   normalizeStrings,
   optimisticLock,
@@ -254,6 +255,7 @@ export {
   withSchema,
 } from "./plugin/factories.ts"
 export type { CaslAuthzConfig, SubjectTypeConfig } from "./plugin/factories.ts"
+export type { DefaultsConfig, DefaultThunk, TableDefaults } from "./plugin/defaults.ts"
 export type {
   NormalizeStringsConfig,
   NormalizeTransform,

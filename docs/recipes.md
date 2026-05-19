@@ -1024,6 +1024,51 @@ MySQL has `LOCK TABLES name READ|WRITE` but the grammar (no `IN … MODE`, no `N
 
 ---
 
+## Default values from runtime context
+
+The `defaults` plugin auto-fills INSERT columns the user omitted by calling a per-column thunk. It is the generic version of the audit plugin (`createdAt` / `updatedAt` / `createdBy` / `updatedBy`): any column, any value provider. Common targets are `tenantId`, `createdBy`, generated UUIDs, or anything that should come from per-request context rather than a SQL `DEFAULT`.
+
+```ts
+import { defaults, sumak, pgDialect } from "sumak"
+
+const db = sumak({
+  dialect: pgDialect(),
+  tables: { users, posts },
+  plugins: [
+    defaults({
+      users: {
+        tenantId: () => requestContext().tenantId,
+        createdBy: () => currentUserId(),
+      },
+      posts: {
+        authorId: () => currentUserId(),
+        tenantId: () => requestContext().tenantId,
+      },
+    }),
+  ],
+})
+
+// User omits tenantId / createdBy — plugin injects from the thunks.
+db.insertInto("users").values({ name: "Alice" }).toSQL()
+// INSERT INTO "users" ("name", "tenantId", "createdBy") VALUES ($1, $2, $3)
+// params: ["Alice", <from-context>, <from-user>]
+
+// Explicit values are respected — the thunk isn't called.
+db.insertInto("users").values({ name: "Bob", tenantId: 99 }).toSQL()
+// params: ["Bob", 99, <from-user>]
+```
+
+Behaviour rules:
+
+- **INSERT-only.** UPDATE doesn't auto-inject defaults (you don't expect `tenantId` to change on UPDATE). For audit-style update-time stamping, use the `audit` plugin.
+- **Multi-row inserts.** Each row gets its own thunk call — fresh UUIDs, fresh timestamps, etc. Postgres requires every row to have the same column count, so when at least one row in the batch supplies a value, the column is present in the INSERT column list and the other rows get parameterised `NULL` placeholders for it.
+- **`null` from thunk = skip.** Return `null` from the thunk to say "no default applies, fall through to whatever DB-side default the column has". If every row's thunk returns `null` the column is dropped entirely. (To insert a literal SQL `NULL` instead, pass it explicitly in `values({ col: null })`.)
+- **Pass-through everywhere else.** Unknown tables, unconfigured columns, and SELECT / UPDATE / DELETE / MERGE statements are left alone.
+
+Compared with `multiTenant`: the multi-tenant plugin **filters** on `tenantId` (adds `WHERE tenantId = ?` to SELECT / UPDATE / DELETE) and **injects** on INSERT. If you only need the injection behaviour without the filtering — say, your tenant scoping is enforced via Postgres RLS and you just want write-time stamping — `defaults` is the lighter primitive.
+
+---
+
 ## Multi-tenant scoping
 
 ```ts
