@@ -1537,6 +1537,29 @@ exports[`bench scenarios produce equivalent SQL > select-exists-subquery > snaps
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-from-derived > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      0,
+    ],
+    "sql": "select "id", "name" from (select "id", "name" from "users" where "users"."id" > $1) "u"",
+  },
+  "kysely": {
+    "params": [
+      0,
+    ],
+    "sql": "select * from (select "id", "name" from "users" where "id" > $1) as "u"",
+  },
+  "sumak": {
+    "params": [
+      0,
+    ],
+    "sql": "SELECT * FROM (SELECT "id", "name" FROM "users" WHERE ("id" > $1)) AS "u"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-group-having > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
