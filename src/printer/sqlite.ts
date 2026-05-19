@@ -180,6 +180,18 @@ export class SqlitePrinter extends BasePrinter {
     if (upper === "JSON_VALUE") {
       assertFeature("sqlite", "JSON_VALUE_FN")
     }
+    // SQLite has no SQL:2016 `JSON_QUERY` / `JSON_EXISTS` either —
+    // `json_extract` returns the JSON sub-document on a path hit and
+    // NULL on a miss, so it conflates the two semantics. Refuse the
+    // standard names so callers explicitly pick the SQLite-idiomatic
+    // form (`json_extract` for sub-doc extraction, `json_extract(expr,
+    // path) IS NOT NULL` for existence).
+    if (upper === "JSON_QUERY") {
+      assertFeature("sqlite", "JSON_QUERY_FN")
+    }
+    if (upper === "JSON_EXISTS") {
+      assertFeature("sqlite", "JSON_EXISTS_FN")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently

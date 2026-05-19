@@ -45,15 +45,17 @@ Sumak's JSON surface (`src/builder/eb.ts`):
 - `jsonRef` for PG path-extraction operators (`->`, `->>`, `#>`, `#>>`).
 - `isJson` — `expr IS [NOT] JSON [VALUE|SCALAR|ARRAY|OBJECT]` predicate.
 - `jsonValue` — `JSON_VALUE(expr, '$.path' [RETURNING type])`.
+- `jsonQuery` — `JSON_QUERY(expr, '$.path' [RETURNING type])`.
+- `jsonExists` — `JSON_EXISTS(expr, '$.path')` boolean predicate.
 
 **Supported SQL:2023 standard JSON functions:**
 
 - **`JSON_VALUE(expr, path [RETURNING type])`** — top-level `jsonValue(jsonExpr, path, { returning? })`. The path arg is emitted as an inline string literal (SQL standard), and the optional `RETURNING <type>` runs through the same `validateDataType` guard as `cast()` before injection. Dialect matrix: PG 17+, MySQL 8, MSSQL accept the bare form; PG 17+ and MySQL 8 also accept `RETURNING type`. MSSQL's `JSON_VALUE` always returns nvarchar(4000) — the printer refuses a non-empty `returningType` and points at the CAST workaround. SQLite has no equivalent (`json_extract` differs on path grammar and missing-vs-null semantics) and the printer refuses via the `JSON_VALUE_FN` feature flag. AST: a new `FunctionCallNode.returningType?: string` slot (no new node type) so the same shape opens the door for `JSON_QUERY` later. The verbose `NULL ON ERROR` / `DEFAULT 'x' ON ERROR` empty/error handlers are not surfaced yet; write the raw clause via `unsafeRawExpr` if needed. ✅
+- **`JSON_QUERY(expr, path [RETURNING type])`** — top-level `jsonQuery(jsonExpr, path, { returning? })`. Sibling of `JSON_VALUE` that returns JSON-typed values (objects, arrays, scalars-as-JSON) rather than coerced scalars. Reuses the same `FunctionCallNode.returningType` slot as `JSON_VALUE`, so the `validateDataType` guard applies. Dialect matrix: PG 17+ accepts bare + `RETURNING`; MSSQL accepts only the bare form (its `JSON_QUERY` always returns nvarchar — the printer refuses `returningType` via the same path used for `JSON_VALUE`). MySQL 8 has no `JSON_QUERY` (use `JSON_EXTRACT`) and SQLite has nothing equivalent — both throw `UnsupportedDialectFeatureError` via the `JSON_QUERY_FN` flag. The verbose `WRAPPER` / `KEEP QUOTES` / empty-error handlers are not surfaced; use `unsafeRawExpr` if needed. ✅
+- **`JSON_EXISTS(expr, path)`** — top-level `jsonExists(jsonExpr, path)`. Boolean predicate that returns TRUE when the path resolves in the JSON document; closer to PG's existence operator than to JSON extraction. PG 17+ and MSSQL accept the standard form. MySQL has `JSON_CONTAINS_PATH(json, 'one'|'all', '$.path', …)` with a different argument shape (no native `JSON_EXISTS`); SQLite has nothing equivalent — both throw via the `JSON_EXISTS_FN` flag. ✅
 
 **SQL:2023 standard JSON functions we don't have:**
 
-- **`JSON_QUERY(expr, path)`** — extract JSON sub-document. The `FunctionCallNode.returningType` slot already supports the clause shape — a follow-up adds the builder helper.
-- **`JSON_EXISTS(expr, path)`** — boolean test for path existence.
 - **`JSON_TABLE(expr, path COLUMNS (…))`** — pivot JSON array into a relation (table-valued function). PG 17 added it; MySQL 8 has had it; MSSQL `OPENJSON` is the closest.
 
 The remaining gaps are all standardized but uniformly opt-in across DB engines — adding builder helpers makes most sense once at least PG and MySQL share the same shape. Today the safest user-land path is `unsafeRawExpr("JSON_QUERY(...)", [...])`.
