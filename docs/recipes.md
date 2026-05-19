@@ -877,6 +877,105 @@ The printer throws `UnsupportedDialectFeatureError` rather than emitting SQL the
 
 ---
 
+## Math functions
+
+The `num` namespace (and the matching flat builders under `eb.ts`) wraps the SQL-standard math built-ins as typed expressions. They compose with `add` / `sub` / `mul` / `div` / column refs / `val(...)` and emit through the printer's uppercase allowlist:
+
+```ts
+import { num, typedCol, val } from "sumak"
+
+const radius = typedCol<number>("radius")
+const theta = typedCol<number>("theta_rad")
+
+db.selectFrom("circles")
+  .select({
+    area: num.mul(num.pi(), num.power(radius, val(2))), // π · r²
+    circumference: num.mul(num.mul(val(2), num.pi()), radius),
+    perim_quarter_arc: num.mul(num.div(num.pi(), val(2)), radius),
+  })
+  .toSQL()
+// PG/MySQL/MSSQL: (PI() * POWER("radius", 2)) AS "area", …
+
+db.selectFrom("samples")
+  .select({
+    db_volume: num.mul(val(20), num.log(num.div(val("v"), val("v_ref")))),
+    delta_sign: num.sign(num.sub(typedCol<number>("a"), typedCol<number>("b"))),
+  })
+  .toSQL()
+```
+
+> The example uses `num.mul` / `num.div` / `num.sub` as illustration — those arithmetic builders aren't actually on the `num` namespace (they live as `add` / `sub` / `mul` / `div` flat exports). Same shape, different import.
+
+### What's exposed
+
+| Builder           | Shape           | Notes                                                                                                   |
+| ----------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
+| `num.power(b, e)` | `POWER(b, e)`   | Standard SQL.                                                                                           |
+| `num.sqrt(x)`     | `SQRT(x)`       | Standard SQL.                                                                                           |
+| `num.ln(x)`       | natural log     | Emits `LN(x)` on PG / MySQL / SQLite; rewrites to `LOG(x)` on MSSQL (no `LN` keyword).                  |
+| `num.log(x)`      | **base-10** log | Emits `LOG(x)` on PG / SQLite; rewrites to `LOG10(x)` on MySQL & MSSQL (their `LOG(x)` is natural log). |
+| `num.exp(x)`      | `EXP(x)`        | e raised to `x`. Inverse of `ln`.                                                                       |
+| `num.sign(x)`     | `SIGN(x)`       | `-1` / `0` / `1`.                                                                                       |
+| `num.pi()`        | `PI()`          | PG / MySQL / MSSQL only. SQLite throws — substitute `val(3.141592653589793)`.                           |
+| `num.degrees(x)`  | `DEGREES(x)`    | Radians → degrees.                                                                                      |
+| `num.radians(x)`  | `RADIANS(x)`    | Degrees → radians.                                                                                      |
+| `num.sin(x)`      | `SIN(x)`        | Argument in **radians**; compose with `num.radians(deg)` to convert.                                    |
+| `num.cos(x)`      | `COS(x)`        | Same — radians.                                                                                         |
+| `num.tan(x)`      | `TAN(x)`        | Same — radians.                                                                                         |
+
+The existing `num.abs` / `num.round` / `num.ceil` / `num.floor` / `num.greatest` / `num.least` are unchanged.
+
+### Dialect divergences sumak normalises
+
+Two SQL functions have dialect-divergent semantics at the SQL level — sumak rewrites at print time so the JS-visible name has consistent meaning:
+
+- **`LN(x)`** (natural log) — PG / MySQL / SQLite ship `LN` natively. MSSQL has no `LN` keyword at all; its `LOG(x)` _is_ the natural log. The MSSQL printer rewrites `LN(x)` → `LOG(x)`, so `num.ln(x)` is portable.
+- **`LOG(x)`** (base-10 log) — PG and SQLite (3.35+) ship `LOG(x)` as base-10. **MySQL and MSSQL** spell `LOG(x)` as the _natural_ log; base-10 lives under `LOG10(x)`. The MySQL and MSSQL printers rewrite `LOG(x)` → `LOG10(x)`, so `num.log(x)` portably means base-10.
+
+The two-argument `LOG(b, x)` form is _not_ exposed. PG/MySQL spell it `LOG(b, x)`, MSSQL spells it `LOG(x, b)` with arguments reversed; silently picking one would change semantics on the other dialect. If you need base-b log, write `div(ln(x), ln(val(b)))` (mathematically identical and dialect-portable), or reach for `unsafeRawExpr` and own the divergence.
+
+### PI on SQLite
+
+SQLite has no built-in `PI()` function — there are no math constants at all. The SQLite printer throws `UnsupportedDialectFeatureError` rather than emit `PI()` for the driver to reject. Substitute the literal:
+
+```ts
+const PI = val(3.141592653589793)
+db.selectFrom("circles").select({ area: mul(PI, num.power(radius, val(2))) })
+```
+
+Or use `acos(-1)` — SQLite 3.35+ has `acos`, and `acos(-1) = π`. (sumak doesn't expose `acos` as a typed builder yet; reach for `sqlFn("ACOS", val(-1))` if you want the constant-folded form.)
+
+### Trigonometric arguments are in radians
+
+`SIN`, `COS`, `TAN` all take a **radians** argument on every dialect. To convert from degrees, wrap with `num.radians(...)`:
+
+```ts
+const lat_deg = typedCol<number>("latitude_deg")
+db.selectFrom("locations")
+  .select({ sin_lat: num.sin(num.radians(lat_deg)) })
+  .toSQL()
+// PG/MySQL/SQLite: SIN(RADIANS("latitude_deg"))
+```
+
+### Dialect support, at a glance
+
+| Builder         | PG  | MySQL                      | SQLite (3.35+) | MSSQL                      |
+| --------------- | --- | -------------------------- | -------------- | -------------------------- |
+| `power`         | yes | yes                        | yes            | yes                        |
+| `sqrt`          | yes | yes                        | yes            | yes                        |
+| `ln`            | yes | yes                        | yes            | yes (rewritten to `LOG`)   |
+| `log` (base-10) | yes | yes (rewritten to `LOG10`) | yes            | yes (rewritten to `LOG10`) |
+| `exp`           | yes | yes                        | yes            | yes                        |
+| `sign`          | yes | yes                        | yes            | yes                        |
+| `pi`            | yes | yes                        | **no**         | yes                        |
+| `degrees`       | yes | yes                        | yes            | yes                        |
+| `radians`       | yes | yes                        | yes            | yes                        |
+| `sin/cos/tan`   | yes | yes                        | yes            | yes                        |
+
+Older SQLite engines (< 3.35) lack `LN` / `LOG` / `EXP` / `SIN` / `COS` / `TAN` / `DEGREES` / `RADIANS` too — sumak doesn't gate per-version (the printer can't know the runtime engine version), so older SQLite will surface a driver-level "no such function" error at execution time. The supported SQLite version line for sumak is 3.35+.
+
+---
+
 ## EXISTS / NOT EXISTS (correlated subquery)
 
 ```ts

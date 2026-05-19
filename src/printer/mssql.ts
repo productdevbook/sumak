@@ -669,6 +669,36 @@ export class MssqlPrinter extends BasePrinter {
     if (upper === "REGEXP_SUBSTR") {
       assertFeature("mssql", "REGEXP_SUBSTR_FN")
     }
+    // SQLite/MSSQL `LOG` semantics:
+    // - PG / SQLite (3.35+): `log(x)` is base-10
+    // - MySQL / MSSQL: `LOG(x)` is natural log; `LOG10(x)` is base-10
+    //
+    // sumak's `log(x)` builder is documented as base-10 across all
+    // dialects. Rewrite `LOG(x)` → `LOG10(x)` on MSSQL so the
+    // user-visible semantics stays portable. The two-arg LOG form
+    // isn't exposed by the builder (its dialect ambiguity is
+    // documented in eb.ts), so a 1-arg call is the only path here.
+    if (upper === "LOG" && node.args.length === 1) {
+      return super.printFunctionCall({ ...node, name: "LOG10" })
+    }
+    // MSSQL has no `LN` keyword — its `LOG(x)` is the natural log. Map
+    // the standard-name `LN` to `LOG` so the builder call works
+    // portably without surfacing a "no such function" parse error.
+    if (upper === "LN") {
+      return super.printFunctionCall({ ...node, name: "LOG" })
+    }
+    if (upper === "PI" && node.args.length === 0) {
+      assertFeature("mssql", "PI_FN")
+    }
+    if (
+      upper === "SIN" ||
+      upper === "COS" ||
+      upper === "TAN" ||
+      upper === "DEGREES" ||
+      upper === "RADIANS"
+    ) {
+      assertFeature("mssql", "TRIGONOMETRY_FNS")
+    }
     return super.printFunctionCall(node)
   }
 

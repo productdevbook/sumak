@@ -405,6 +405,14 @@ export class MysqlPrinter extends BasePrinter {
     if (upper === "REGEXP_MATCHES") {
       assertFeature("mysql", "REGEXP_MATCHES_FN")
     }
+    // MySQL's single-arg `LOG(x)` is **natural log**, not base-10;
+    // base-10 lives under the `LOG10(x)` name. sumak's `log(x)`
+    // builder is documented as base-10 across every dialect, so
+    // rewrite the function name here. `LN(x)` exists natively on
+    // MySQL and passes through unchanged.
+    if (upper === "LOG" && node.args.length === 1) {
+      return super.printFunctionCall({ ...node, name: "LOG10" })
+    }
     return super.printFunctionCall(node)
   }
 
