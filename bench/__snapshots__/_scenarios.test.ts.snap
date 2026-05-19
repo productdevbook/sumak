@@ -1490,6 +1490,23 @@ exports[`bench scenarios produce equivalent SQL > select-all > snapshot of gener
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-array-length > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select array_length("body", 1) from "posts"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select array_length("body", 1) as "tagCount" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT ARRAY_LENGTH("body", 1) AS "tagCount" FROM "posts"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-case-when > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
@@ -1566,6 +1583,23 @@ exports[`bench scenarios produce equivalent SQL > select-count-distinct > snapsh
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-date-trunc > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select DATE_TRUNC('day', "createdAt") from "users"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select DATE_TRUNC('day', "createdAt") as "bucket" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT DATE_TRUNC('day', "createdAt") AS "bucket" FROM "users"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-distinct > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
@@ -1602,6 +1636,23 @@ exports[`bench scenarios produce equivalent SQL > select-exists-subquery > snaps
       0,
     ],
     "sql": "SELECT * FROM "users" WHERE (EXISTS (SELECT * FROM "posts" WHERE ("authorId" > $1)))",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-extract-month > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select EXTRACT(MONTH FROM "createdAt") from "users"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select EXTRACT(MONTH FROM "createdAt") as "m" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT EXTRACT(MONTH FROM "createdAt") AS "m" FROM "users"",
   },
 }
 `;
@@ -1777,6 +1828,78 @@ exports[`bench scenarios produce equivalent SQL > select-percentile > snapshot o
   "sumak": {
     "params": [],
     "sql": "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "published" ASC) AS "p50" FROM "posts"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-position > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select POSITION('@' IN "email") from "users"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select POSITION('@' IN "email") as "atIdx" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT POSITION('@' IN "email") AS "atIdx" FROM "users"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-power > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      2,
+    ],
+    "sql": "select POWER("published", $1) from "posts"",
+  },
+  "kysely": {
+    "params": [
+      2,
+    ],
+    "sql": "select POWER("published", $1) as "sq" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT POWER("published", 2) AS "sq" FROM "posts"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-regex-replace > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select REGEXP_REPLACE("name", '[^a-z]', '', 'g') from "users"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select REGEXP_REPLACE("name", '[^a-z]', '', 'g') as "clean" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT REGEXP_REPLACE("name", '[^a-z]', '', 'g') AS "clean" FROM "users"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-stddev-group > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "authorId", STDDEV("published") from "posts" group by "posts"."authorId"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "authorId", STDDEV("published") as "jitter" from "posts" group by "authorId"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "authorId", STDDEV("published") AS "jitter" FROM "posts" GROUP BY "authorId"",
   },
 }
 `;

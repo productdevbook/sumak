@@ -43,6 +43,13 @@
     "select-json-value": { "sumakMinHz": 130000 },
     "select-is-json": { "sumakMinHz": 130000 },
     "select-count-any-value": { "sumakMinHz": 90000 },
-    "merge-not-matched-by-source-bench": { "sumakMinHz": 30000 }
+    "merge-not-matched-by-source-bench": { "sumakMinHz": 30000 },
+    "select-regex-replace": { "sumakMinHz": 90000 },
+    "select-extract-month": { "sumakMinHz": 100000 },
+    "select-date-trunc": { "sumakMinHz": 100000 },
+    "select-stddev-group": { "sumakMinHz": 90000 },
+    "select-position": { "sumakMinHz": 100000 },
+    "select-array-length": { "sumakMinHz": 100000 },
+    "select-power": { "sumakMinHz": 90000 }
   }
 }

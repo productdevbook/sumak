@@ -26,20 +26,28 @@ import { typedCol, typedGt, typedLit } from "../../src/ast/typed-expression.ts"
 import {
   and as sand,
   anyValue as sanyValue,
+  arrayLength as sarrayLength,
   avg as savg,
   case_ as scase,
   coalesce as scoalesce,
   count as scount,
   countDistinct as scountDistinct,
+  dateTrunc as sdateTrunc,
   exists as sexists,
+  extract as sextract,
   jsonValue as sjsonValue,
   max as smax,
   or as sor,
   over as sover,
   percentileCont as spercentileCont,
+  position as sposition,
+  power as spower,
   rank as srank,
+  regexpReplace as sregexpReplace,
   rowNumber as srowNumber,
+  stddev as sstddev,
   subqueryExpr as ssubqueryExpr,
+  val as sval,
   withinGroup as swithinGroup,
 } from "../../src/builder/eb.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
@@ -1254,6 +1262,219 @@ export const scenarios: Scenario[] = [
         kSql<unknown>`MERGE INTO ${kSql.ref("users")} USING ${kSql.ref("comments")} AS ${kSql.ref("c")} ON ${kSql.ref("users.id")} = ${kSql.ref("c.authorId")} WHEN MATCHED THEN UPDATE SET ${kSql.ref("name")} = ${"updated"} WHEN NOT MATCHED THEN INSERT (${kSql.ref("id")}, ${kSql.ref("name")}, ${kSql.ref("email")}, ${kSql.ref("createdAt")}) VALUES (${1}, ${"new"}, ${"new@x.io"}, ${new Date(0)}) WHEN NOT MATCHED BY SOURCE THEN DELETE`.compile(
           k,
         ),
+      ),
+  },
+
+  // ──────────────────────────────────────────────────────────────────
+  // Scalar / aggregate function coverage — features shipped after the
+  // previous bench wave (PRs #155, #156, #162, #164, #165, #166).
+  // Each scenario exercises a builder that has a dedicated AST shape
+  // on sumak's side (validated unit / field, pattern-literal inlining,
+  // POSITION-IN keyword form, etc.) while the competitors drop to raw
+  // sql templates. The bench measures the compile-cost of sumak's
+  // typed path against that raw-template baseline.
+  // ──────────────────────────────────────────────────────────────────
+
+  {
+    name: "select-regex-replace",
+    // SELECT REGEXP_REPLACE("name", '[^a-z]', '', 'g') FROM users — PG /
+    // MySQL / SQLite (3.36+). The pattern, replacement, and flags are
+    // emitted as inline literals (not parameters) on sumak — same shape
+    // a drizzle raw template would produce.
+    sumak: () =>
+      s
+        .selectFrom("users")
+        .select({
+          clean: sregexpReplace(typedCol<string>("name"), "[^a-z]", "", "g"),
+        })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            clean: drizzleSql<string>`REGEXP_REPLACE(${dUsers.name}, '[^a-z]', '', 'g')`,
+          })
+          .from(dUsers)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select(kSql<string>`REGEXP_REPLACE(${kSql.ref("name")}, '[^a-z]', '', 'g')`.as("clean"))
+          .compile(),
+      ),
+  },
+  {
+    name: "select-extract-month",
+    // SELECT EXTRACT(MONTH FROM "createdAt") FROM users — SQL standard.
+    // sumak validates the field against a fixed allowlist and emits the
+    // dedicated `extractField` AST shape; competitors fall back to raw
+    // since they have no typed surface for the FIELD-FROM-expr grammar.
+    sumak: () =>
+      s
+        .selectFrom("users")
+        .select({ m: sextract("month", typedCol<Date>("createdAt")) })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({ m: drizzleSql<number>`EXTRACT(MONTH FROM ${dUsers.createdAt})` })
+          .from(dUsers)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select(kSql<number>`EXTRACT(MONTH FROM ${kSql.ref("createdAt")})`.as("m"))
+          .compile(),
+      ),
+  },
+  {
+    name: "select-date-trunc",
+    // SELECT DATE_TRUNC('day', "createdAt") FROM users — PG-only standard
+    // for rounding a timestamp down to a calendar unit. sumak validates
+    // the unit against an identifier regex and inlines it as a literal;
+    // competitors emit raw.
+    sumak: () =>
+      s
+        .selectFrom("users")
+        .select({ bucket: sdateTrunc("day", typedCol<Date>("createdAt")) })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({ bucket: drizzleSql<Date>`DATE_TRUNC('day', ${dUsers.createdAt})` })
+          .from(dUsers)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select(kSql<Date>`DATE_TRUNC('day', ${kSql.ref("createdAt")})`.as("bucket"))
+          .compile(),
+      ),
+  },
+  {
+    name: "select-stddev-group",
+    // SELECT "authorId", STDDEV("published") FROM posts GROUP BY "authorId"
+    // — sample standard deviation per group. PG / MySQL / SQLite expose
+    // it under the SQL-standard name. sumak has a first-class
+    // `stddev(expr)` aggregate; competitors fall back to raw because
+    // their typed `fn.*` namespaces don't catalogue the dispersion
+    // family. Pairs aggregation + GROUP BY, which is the realistic
+    // shape this function appears in.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select("authorId")
+        .select({ jitter: sstddev(typedCol<number>("published")) })
+        .groupBy("authorId")
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({
+            authorId: dPosts.authorId,
+            jitter: drizzleSql<number>`STDDEV(${dPosts.published})`,
+          })
+          .from(dPosts)
+          .groupBy(dPosts.authorId)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select(["authorId", kSql<number>`STDDEV(${kSql.ref("published")})`.as("jitter")])
+          .groupBy("authorId")
+          .compile(),
+      ),
+  },
+  {
+    name: "select-position",
+    // SELECT POSITION($1 IN "email") FROM users — SQL standard 1-based
+    // substring search. sumak emits the IN-keyword form via a dedicated
+    // `isPositionCall` flag on the FunctionCallNode so the printer
+    // chooses POSITION-IN vs the MSSQL CHARINDEX rewrite. Competitors
+    // have no typed surface for POSITION's special grammar so they
+    // raw-template; the bench measures sumak's typed AST against that
+    // raw baseline.
+    sumak: () =>
+      s
+        .selectFrom("users")
+        .select({ atIdx: sposition(sval("@"), typedCol<string>("email")) })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({ atIdx: drizzleSql<number>`POSITION('@' IN ${dUsers.email})` })
+          .from(dUsers)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("users")
+          .select(kSql<number>`POSITION('@' IN ${kSql.ref("email")})`.as("atIdx"))
+          .compile(),
+      ),
+  },
+  {
+    name: "select-array-length",
+    // SELECT array_length("body", 1) FROM posts — PG array-family helper.
+    // The schema's "body" is text, not an array, but the bench only
+    // measures compile cost (not exec), and `typedCol<string[]>` makes
+    // the printer treat it as an array reference; the produced SQL is
+    // valid PG syntax regardless. Competitors fall back to raw since
+    // they have no typed array-builder surface.
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select({ tagCount: sarrayLength(typedCol<string[]>("body")) })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({ tagCount: drizzleSql<number>`array_length(${dPosts.body}, 1)` })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select(kSql<number>`array_length(${kSql.ref("body")}, 1)`.as("tagCount"))
+          .compile(),
+      ),
+  },
+  {
+    name: "select-power",
+    // SELECT POWER("published", $1) FROM posts — exponentiation. PG /
+    // MySQL / SQLite / MSSQL all accept the POWER spelling. sumak builds
+    // a plain function-call AST; competitors raw-template (drizzle has
+    // no typed math helpers; kysely's `fn` doesn't include POWER as a
+    // first-class shape).
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select({ sq: spower(typedCol<number>("published"), sval(2)) })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({ sq: drizzleSql<number>`POWER(${dPosts.published}, ${2})` })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select(kSql<number>`POWER(${kSql.ref("published")}, ${2})`.as("sq"))
+          .compile(),
       ),
   },
 ]

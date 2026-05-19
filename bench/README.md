@@ -23,7 +23,7 @@ pnpm vitest run bench/_scenarios.test.ts
 
 It snapshots every scenario's compiled SQL across all three libraries and asserts that WHERE-bearing queries actually carry their parameters through. It exists because for >7 months the bench was running with a silent-no-op bug where sumak's typed builder accepted `.where("col", "=", val)` (kysely's three-arg form) at runtime, dropped the operator and value, and produced SQL **without a WHERE clause** — making every WHERE scenario unfairly favorable to sumak. The smoke test would have caught that the moment it landed.
 
-## Scenarios (41 total)
+## Scenarios (48 total)
 
 Cross-library compile-throughput benchmarks. The smoke test in
 `bench/_scenarios.test.ts` asserts every scenario's SQL is structurally
@@ -68,6 +68,13 @@ like work.
 | select-is-json                    | `SELECT * FROM posts WHERE body IS JSON`                                                         |
 | select-count-any-value            | `SELECT author_id, ANY_VALUE(title) FROM posts GROUP BY author_id`                               |
 | merge-not-matched-by-source-bench | `MERGE INTO users USING comments … WHEN MATCHED … WHEN NOT MATCHED … WHEN NOT MATCHED BY SOURCE` |
+| select-regex-replace              | `SELECT REGEXP_REPLACE(name, '[^a-z]', '', 'g') FROM users`                                      |
+| select-extract-month              | `SELECT EXTRACT(MONTH FROM created_at) FROM users`                                               |
+| select-date-trunc                 | `SELECT DATE_TRUNC('day', created_at) FROM users`                                                |
+| select-stddev-group               | `SELECT author_id, STDDEV(published) FROM posts GROUP BY author_id`                              |
+| select-position                   | `SELECT POSITION('@' IN email) FROM users`                                                       |
+| select-array-length               | `SELECT array_length(body, 1) FROM posts`                                                        |
+| select-power                      | `SELECT POWER(published, 2) FROM posts`                                                          |
 
 The last seven (`select-window-rank` through `merge-not-matched-by-source-bench`)
 cover the SQL features added in PRs #142–151: SQL:2003 named WINDOW,
@@ -79,6 +86,14 @@ class API for the feature (`PERCENTILE_CONT`, named `WINDOW`, `JSON_VALUE`,
 sumak's typed builder is doing more work, but the AST it builds is more
 analyzable downstream (plugins, transformers, audit hooks). The bench
 keeps that tradeoff visible.
+
+The trailing seven (`select-regex-replace` through `select-power`) cover
+scalar / aggregate function builders shipped after the previous bench
+wave (PRs #155, #156, #162, #164, #165, #166): `REGEXP_REPLACE`,
+`EXTRACT`, `DATE_TRUNC`, `STDDEV`, `POSITION`-IN, PG `array_length`, and
+`POWER`. Each exercises a typed builder where sumak emits a dedicated
+AST node (extract-field, position-IN keyword form, inlined pattern /
+unit literals) and the competitors fall back to raw template literals.
 
 ## Plugin overhead microbench
 
