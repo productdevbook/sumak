@@ -1419,6 +1419,148 @@ export function length(expr: Expression<string>): Expression<number> {
 }
 
 /**
+ * `REGEXP_REPLACE(haystack, pattern, replacement[, flags])` — search
+ * `haystack` for matches of `pattern` and substitute `replacement`.
+ *
+ * ```ts
+ * regexpReplace(typedCol<string>("phone"), "[^0-9]", "")
+ *   // PG/MySQL: REGEXP_REPLACE("phone", '[^0-9]', '')
+ *
+ * regexpReplace(typedCol<string>("body"), "(?i)foo", "BAR", "gi")
+ *   // PG/MySQL: REGEXP_REPLACE("body", '(?i)foo', 'BAR', 'gi')
+ * ```
+ *
+ * Dialect support (via {@link REGEXP_REPLACE_FN}):
+ * - **PG** (since 7.4) — `regexp_replace(source, pattern, replacement[, flags])`
+ * - **MySQL 8** — `REGEXP_REPLACE(expr, pat, repl[, pos[, occurrence[, match_type]]])`. This builder only emits the 4-arg form (no pos / occurrence); reach for `sqlFn("REGEXP_REPLACE", …)` if you need them.
+ * - **SQLite** — requires the `regexp` extension (e.g. sqlite3 build with `SQLITE_ENABLE_REGEXP`). Flags are not supported on SQLite; passing a `flags` argument compiles fine but the engine errors at execution.
+ * - **MSSQL** — no native equivalent; the printer refuses.
+ *
+ * `pattern`, `replacement`, and `flags` are emitted as inline SQL
+ * string literals (via `rawLit`) rather than parameters. They're
+ * typically constants, and inlining keeps the statement-cache key
+ * stable when only the haystack varies row-to-row. Use
+ * `unsafeRawExpr` if you need a fully parameterised pattern.
+ */
+export function regexpReplace(
+  haystack: Expression<string>,
+  pattern: string,
+  replacement: string,
+  flags?: string,
+): Expression<string> {
+  const args: ExpressionNode[] = [(haystack as any).node, rawLit(pattern), rawLit(replacement)]
+  if (flags !== undefined) args.push(rawLit(flags))
+  return wrap(rawFn("REGEXP_REPLACE", args))
+}
+
+/**
+ * `REGEXP_LIKE(haystack, pattern[, flags])` — boolean test for
+ * regex match. Returns TRUE iff `pattern` matches somewhere in
+ * `haystack`.
+ *
+ * ```ts
+ * .where(() => regexpLike(typedCol<string>("email"), "^[^@]+@[^@]+$"))
+ *   // PG/MySQL: REGEXP_LIKE("email", '^[^@]+@[^@]+$')
+ * ```
+ *
+ * Dialect support (via {@link REGEXP_LIKE_FN}):
+ * - **PG 15+** has the standard `regexp_like(text, pattern[, flags])` function. Older PG users can write `expr ~ pattern` (or `~*` for case-insensitive) via `unsafeRawExpr`.
+ * - **MySQL 8** — `REGEXP_LIKE(expr, pat[, match_type])`.
+ * - **SQLite** — *no* `REGEXP_LIKE` function. The `REGEXP` operator (when the extension is loaded) gives the same semantics; reach for `sqlFn("REGEXP", expr, val(pattern))` or `unsafeRawExpr`.
+ * - **MSSQL** — no native equivalent.
+ *
+ * `pattern` and `flags` are emitted inline (see {@link regexpReplace}
+ * for the rationale).
+ */
+export function regexpLike(
+  haystack: Expression<string>,
+  pattern: string,
+  flags?: string,
+): Expression<boolean> {
+  const args: ExpressionNode[] = [(haystack as any).node, rawLit(pattern)]
+  if (flags !== undefined) args.push(rawLit(flags))
+  return wrap<boolean>(rawFn("REGEXP_LIKE", args))
+}
+
+/**
+ * PG `regexp_matches(haystack, pattern[, flags])` — returns the set
+ * of captured substrings as a `text[]` array. With the `g` flag, the
+ * function is set-returning and yields one row per match; without
+ * `g`, it returns at most one row per input row.
+ *
+ * ```ts
+ * regexpMatches(typedCol<string>("body"), "https?://([^\\s]+)", "g")
+ *   // REGEXP_MATCHES("body", 'https?://([^\s]+)', 'g')
+ * ```
+ *
+ * **PG-only.** MySQL / SQLite / MSSQL have no equivalent function
+ * that returns the captured groups as an array — the printer refuses
+ * via {@link REGEXP_MATCHES_FN}. For MySQL, `REGEXP_SUBSTR` returns
+ * just the matched substring (no capture-group breakdown).
+ */
+export function regexpMatches(
+  haystack: Expression<string>,
+  pattern: string,
+  flags?: string,
+): Expression<string[]> {
+  const args: ExpressionNode[] = [(haystack as any).node, rawLit(pattern)]
+  if (flags !== undefined) args.push(rawLit(flags))
+  return wrap<string[]>(rawFn("REGEXP_MATCHES", args))
+}
+
+/**
+ * `REGEXP_SUBSTR(haystack, pattern[, position[, occurrence[, flags]]])`
+ * — return the substring that matches `pattern`, or NULL if no
+ * match. `position` is 1-based (SQL convention) and defaults to 1;
+ * `occurrence` selects the Nth match and defaults to 1.
+ *
+ * ```ts
+ * regexpSubstr(typedCol<string>("body"), "https?://[^\\s]+")
+ *   // PG/MySQL: REGEXP_SUBSTR("body", 'https?://[^\s]+')
+ *
+ * regexpSubstr(typedCol<string>("body"), "\\d+", 1, 2, "i")
+ *   // PG/MySQL: REGEXP_SUBSTR("body", '\d+', 1, 2, 'i')
+ * ```
+ *
+ * Dialect support (via {@link REGEXP_SUBSTR_FN}):
+ * - **PG 15+** — `regexp_substr(string, pattern[, start[, N[, flags]]])`.
+ * - **MySQL 8** — `REGEXP_SUBSTR(expr, pat[, pos[, occurrence[, match_type]]])`.
+ * - **SQLite** — no equivalent.
+ * - **MSSQL** — no equivalent.
+ *
+ * `pattern` and `flags` are emitted inline; `position` and
+ * `occurrence` are inlined as integer literals (callers usually
+ * pass constants, and inlining keeps the plan-cache key stable).
+ */
+export function regexpSubstr(
+  haystack: Expression<string>,
+  pattern: string,
+  position?: number,
+  occurrence?: number,
+  flags?: string,
+): Expression<string> {
+  const args: ExpressionNode[] = [(haystack as any).node, rawLit(pattern)]
+  if (position !== undefined) {
+    args.push(rawLit(position))
+    if (occurrence !== undefined) {
+      args.push(rawLit(occurrence))
+      if (flags !== undefined) {
+        args.push(rawLit(flags))
+      }
+    } else if (flags !== undefined) {
+      throw new InvalidExpressionError(
+        "regexpSubstr(): flags requires occurrence to be set (pass an explicit occurrence index, e.g. 1).",
+      )
+    }
+  } else if (occurrence !== undefined || flags !== undefined) {
+    throw new InvalidExpressionError(
+      "regexpSubstr(): position must be set when passing occurrence or flags.",
+    )
+  }
+  return wrap(rawFn("REGEXP_SUBSTR", args))
+}
+
+/**
  * `NOW()` — current transaction timestamp. PG / MySQL idiom; on
  * MSSQL and SQLite use `currentTimestamp()` instead, which compiles
  * to the SQL-standard `CURRENT_TIMESTAMP` keyword.

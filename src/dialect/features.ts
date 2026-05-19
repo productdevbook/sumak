@@ -219,6 +219,49 @@ export const FEATURES = {
   FTS_SQLITE_MATCH: { label: "FTS5 MATCH", dialects: ["sqlite"] },
   FTS_MSSQL_CONTAINS: { label: "CONTAINS", dialects: ["mssql"] },
 
+  // ── Regex functions ───────────────────────────────────────────────
+  /**
+   * `REGEXP_REPLACE(haystack, pattern, replacement[, flags])` —
+   * search-and-replace by regex. PG (since 7.4) and MySQL 8 ship it
+   * under the standard name. SQLite has a `regexp_replace` only when
+   * built with the `regexp` extension (e.g. `SQLITE_ENABLE_REGEXP`);
+   * we still list SQLite as supported here because the parser
+   * accepts the call — the failure surfaces at execution if the
+   * extension is absent, which matches sumak's policy of trusting
+   * the engine for extension presence. MSSQL has no equivalent
+   * built-in (`STRING_AGG` does not regex-replace and `LIKE` is a
+   * glob, not a regex); the printer refuses.
+   */
+  REGEXP_REPLACE_FN: { label: "REGEXP_REPLACE", dialects: ["pg", "mysql", "sqlite"] },
+  /**
+   * `REGEXP_LIKE(haystack, pattern[, flags])` — boolean regex test.
+   * PG 15+ ships the standard function name (`regexp_like(text,
+   * pattern[, flags])`); older PG users have only the `~` / `~*`
+   * operators. MySQL 8 implements `REGEXP_LIKE(expr, pat[,
+   * match_type])`. SQLite exposes the same semantics through the
+   * `REGEXP` operator (only when the regexp extension is loaded) but
+   * has no `regexp_like` function — the printer refuses so callers
+   * pick the operator form explicitly. MSSQL has neither.
+   */
+  REGEXP_LIKE_FN: { label: "REGEXP_LIKE", dialects: ["pg", "mysql"] },
+  /**
+   * PG `regexp_matches(haystack, pattern[, flags])` — returns a
+   * `text[]` of captured groups (and is set-returning under the `g`
+   * flag). **PG-only**: MySQL has `REGEXP_SUBSTR` which returns just
+   * the matched substring (no group breakdown); SQLite and MSSQL
+   * have no equivalent at all.
+   */
+  REGEXP_MATCHES_FN: { label: "REGEXP_MATCHES", dialects: ["pg"] },
+  /**
+   * `REGEXP_SUBSTR(haystack, pattern[, position[, occurrence[,
+   * flags]]])` — extract the first (or Nth) regex match. PG 15+ and
+   * MySQL 8 both ship the function with the same shape (PG calls it
+   * `regexp_substr`; both engines accept the standard name and
+   * argument order). SQLite has no `REGEXP_SUBSTR`; MSSQL likewise
+   * has no native equivalent.
+   */
+  REGEXP_SUBSTR_FN: { label: "REGEXP_SUBSTR", dialects: ["pg", "mysql"] },
+
   // ── Date/time functions ───────────────────────────────────────────
   /**
    * SQL standard `EXTRACT(<field> FROM <expr>)`. All four dialects

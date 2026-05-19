@@ -638,6 +638,24 @@ export class MssqlPrinter extends BasePrinter {
     ) {
       assertFeature("mssql", "LINEAR_REGRESSION_AGG")
     }
+    // MSSQL has no native regex functions at all — `LIKE` is a glob,
+    // and the closest thing in T-SQL is the (separate) CLR-hosted
+    // user function or the SQL Server 2025+ preview of regex
+    // functions. Refuse all four standard names so the failure
+    // points at the builder, not a generic "no such function" at
+    // execution.
+    if (upper === "REGEXP_REPLACE") {
+      assertFeature("mssql", "REGEXP_REPLACE_FN")
+    }
+    if (upper === "REGEXP_LIKE") {
+      assertFeature("mssql", "REGEXP_LIKE_FN")
+    }
+    if (upper === "REGEXP_MATCHES") {
+      assertFeature("mssql", "REGEXP_MATCHES_FN")
+    }
+    if (upper === "REGEXP_SUBSTR") {
+      assertFeature("mssql", "REGEXP_SUBSTR_FN")
+    }
     return super.printFunctionCall(node)
   }
 

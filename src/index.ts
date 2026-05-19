@@ -126,6 +126,12 @@ export { excluded } from "./builder/eb.ts"
 export { now, currentTimestamp, extract, dateTrunc, age, dateAdd, dateSub } from "./builder/eb.ts"
 export type { DateIntervalUnit } from "./builder/eb.ts"
 
+// ─── Regex helpers ─────────────────────────────────────────────────────────
+// Typed regex string functions. Dialect support varies — `regexpMatches`
+// is PG-only, `regexpLike` is PG/MySQL, `regexpReplace` is PG/MySQL/
+// SQLite (with the regexp extension), `regexpSubstr` is PG/MySQL.
+export { regexpReplace, regexpLike, regexpMatches, regexpSubstr } from "./builder/eb.ts"
+
 // ─── Full-text search & JSON helpers (stable subset) ───────────────────────
 export {
   textSearch,

@@ -397,6 +397,14 @@ export class MysqlPrinter extends BasePrinter {
     ) {
       assertFeature("mysql", "LINEAR_REGRESSION_AGG")
     }
+    // MySQL ships `REGEXP_REPLACE`, `REGEXP_LIKE`, `REGEXP_SUBSTR`
+    // (8.0+) — let those pass through to the base printer. There is
+    // no `REGEXP_MATCHES` analogue: MySQL's regex functions return
+    // the matched substring, not the array of capture groups. Refuse
+    // so the failure points at the builder.
+    if (upper === "REGEXP_MATCHES") {
+      assertFeature("mysql", "REGEXP_MATCHES_FN")
+    }
     return super.printFunctionCall(node)
   }
 
