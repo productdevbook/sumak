@@ -903,6 +903,113 @@ export interface DropExtensionNode {
   restrict?: boolean
 }
 
+// ── CREATE TYPE AS ENUM ──
+
+/**
+ * `CREATE TYPE name AS ENUM ('val1', 'val2', ...)`.
+ *
+ * PostgreSQL-only DDL — declares a static enumerated label type usable
+ * anywhere a base type would be (column data type, function argument,
+ * domain base). Unlike the inline `enum(...)` column shape produced by
+ * `enumType()`, this creates a *named* type that survives across
+ * tables. The declared label order is also the sort order, which is
+ * occasionally load-bearing in queries (`ORDER BY status` ordering by
+ * the enum values' declared sequence rather than lexicographic text).
+ *
+ * MySQL has inline `ENUM(...)` as a column shape only (no `CREATE TYPE`
+ * grammar); SQLite has no enum type at all; MSSQL's `CREATE TYPE` is a
+ * different shape (`AS TABLE` or `FROM existing_type`). The printer
+ * refuses on every non-PG dialect.
+ *
+ * - `name`: the enum type identifier (validated as a SQL identifier).
+ * - `values`: declared label set. The order is preserved verbatim and
+ *   becomes the sort order in PG. Each label is escaped via
+ *   `escapeStringLiteral` before being spliced into the emitted DDL.
+ */
+export interface CreateTypeEnumNode {
+  type: "create_type_enum"
+  name: string
+  values: string[]
+}
+
+// ── DROP TYPE ──
+
+/**
+ * `DROP TYPE [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`.
+ *
+ * PostgreSQL-only DDL — removes one or more named types (enum, domain,
+ * composite, range, base). The grammar permits a comma-separated list
+ * of names; we preserve that. `CASCADE` drops dependent objects
+ * automatically (rare in practice — a column that uses the type would
+ * have to be dropped or altered too); `RESTRICT` (the default) refuses
+ * if anything depends on the type. The two flags are mutually
+ * exclusive and the printer rejects emitting both.
+ */
+export interface DropTypeNode {
+  type: "drop_type"
+  names: string[]
+  ifExists?: boolean
+  cascade?: boolean
+  restrict?: boolean
+}
+
+// ── CREATE DOMAIN ──
+
+/**
+ * `CREATE DOMAIN name AS data_type [DEFAULT expr]
+ *   [[CONSTRAINT cname] { NOT NULL | CHECK (expr) }]`.
+ *
+ * PostgreSQL-only DDL — declares a typed constraint wrapper around an
+ * existing type. Domains let you bundle a base type with a validation
+ * rule (CHECK) and an optional default, and reuse that bundle as a
+ * column type across many tables — e.g. `CREATE DOMAIN positive_int AS
+ * integer CHECK (VALUE > 0)` once, then `salary positive_int NOT NULL`
+ * in every table that needs it.
+ *
+ * - `name`: the domain identifier (validated as a SQL identifier).
+ * - `dataType`: the underlying base type (validated via `validateDataType`).
+ * - `defaultExpression`: optional `DEFAULT <expr>` clause. Renders
+ *   through the same DDL expression printer as `CHECK` does.
+ * - `notNull`: emits `NOT NULL` — PG treats this as a separate
+ *   constraint kind, distinct from the column-level NOT NULL.
+ * - `check`: optional `CHECK (<expr>)`. Inside the expression, the
+ *   special identifier `VALUE` refers to the value being checked —
+ *   render that via a `column_ref` to `"VALUE"` or `sql\`VALUE > 0\``.
+ * - `checkConstraintName`: optional `CONSTRAINT <name>` prefix for the
+ *   CHECK clause (lets you reference it later for `ALTER DOMAIN`).
+ *
+ * MySQL `CREATE DOMAIN` is parsed but treated as `CREATE TYPE` (no
+ * domain semantics); SQLite has no domain grammar; MSSQL has alias
+ * types (`CREATE TYPE name FROM base`) which is a different surface.
+ * The printer refuses on every non-PG dialect.
+ */
+export interface CreateDomainNode {
+  type: "create_domain"
+  name: string
+  dataType: string
+  defaultExpression?: ExpressionNode
+  notNull?: boolean
+  check?: ExpressionNode
+  checkConstraintName?: string
+}
+
+// ── DROP DOMAIN ──
+
+/**
+ * `DROP DOMAIN [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`.
+ *
+ * PostgreSQL-only DDL — removes one or more domains. Like `DROP TYPE`,
+ * the grammar permits a comma-separated list. `CASCADE` and `RESTRICT`
+ * are mutually exclusive and the printer rejects emitting both.
+ */
+export interface DropDomainNode {
+  type: "drop_domain"
+  names: string[]
+  ifExists?: boolean
+  cascade?: boolean
+  restrict?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -928,3 +1035,7 @@ export type DDLNode =
   | DropPolicyNode
   | CreateExtensionNode
   | DropExtensionNode
+  | CreateTypeEnumNode
+  | DropTypeNode
+  | CreateDomainNode
+  | DropDomainNode

@@ -4,20 +4,24 @@ import type {
   AnalyzeNode,
   ColumnDefinitionNode,
   CommentNode,
+  CreateDomainNode,
   CreateExtensionNode,
   CreateIndexNode,
   CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
   CreateTableNode,
+  CreateTypeEnumNode,
   CreateViewNode,
   DDLNode,
+  DropDomainNode,
   DropExtensionNode,
   DropIndexNode,
   DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
   DropTableNode,
+  DropTypeNode,
   DropViewNode,
   ExcludeConstraintNode,
   ForeignKeyConstraintNode,
@@ -111,6 +115,14 @@ export class DDLPrinter {
         return this.printCreateExtension(node)
       case "drop_extension":
         return this.printDropExtension(node)
+      case "create_type_enum":
+        return this.printCreateTypeEnum(node)
+      case "drop_type":
+        return this.printDropType(node)
+      case "create_domain":
+        return this.printCreateDomain(node)
+      case "drop_domain":
+        return this.printDropDomain(node)
     }
   }
 
@@ -192,6 +204,86 @@ export class DDLPrinter {
     }
     for (const n of node.names) validateExtensionName(n)
     const parts: string[] = ["DROP EXTENSION"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(node.names.map((n) => quoteIdentifier(n, this.dialect)).join(", "))
+    if (node.cascade) parts.push("CASCADE")
+    if (node.restrict) parts.push("RESTRICT")
+    return parts.join(" ")
+  }
+
+  private printCreateTypeEnum(node: CreateTypeEnumNode): string {
+    // Only PG has `CREATE TYPE … AS ENUM`. MySQL only has the inline
+    // column shape (no `CREATE TYPE` grammar); SQLite has no enum
+    // type; MSSQL's `CREATE TYPE` is an entirely different shape
+    // (`AS TABLE` or `FROM existing_type`). Refuse up front rather
+    // than emit DDL the engine will reject.
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    // Names land in the identifier slot — quoted by `quoteIdentifier`,
+    // but we still gate via the stricter `validateFunctionName` regex
+    // (alphanumerics + underscore, no hyphens) since enum type names
+    // don't have the legacy hyphen carve-out that `validateExtensionName`
+    // does. Anything outside the regex is rejected as injection.
+    validateFunctionName(node.name)
+    const escaped = node.values.map((v) => `'${escapeStringLiteral(v)}'`).join(", ")
+    return `CREATE TYPE ${quoteIdentifier(node.name, this.dialect)} AS ENUM (${escaped})`
+  }
+
+  private printDropType(node: DropTypeNode): string {
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (node.names.length === 0) {
+      throw new Error("DROP TYPE requires at least one type name.")
+    }
+    if (node.cascade && node.restrict) {
+      throw new Error("DROP TYPE: CASCADE and RESTRICT are mutually exclusive.")
+    }
+    for (const n of node.names) validateFunctionName(n)
+    const parts: string[] = ["DROP TYPE"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(node.names.map((n) => quoteIdentifier(n, this.dialect)).join(", "))
+    if (node.cascade) parts.push("CASCADE")
+    if (node.restrict) parts.push("RESTRICT")
+    return parts.join(" ")
+  }
+
+  private printCreateDomain(node: CreateDomainNode): string {
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (!node.dataType) {
+      throw new Error(
+        `CREATE DOMAIN "${node.name}" requires a base data type — call .dataType(...) before compiling.`,
+      )
+    }
+    validateFunctionName(node.name)
+    validateDataType(node.dataType)
+    const parts: string[] = [
+      "CREATE DOMAIN",
+      quoteIdentifier(node.name, this.dialect),
+      "AS",
+      node.dataType,
+    ]
+    if (node.defaultExpression !== undefined) {
+      parts.push("DEFAULT", this.printExpr(node.defaultExpression))
+    }
+    if (node.notNull) parts.push("NOT NULL")
+    if (node.check !== undefined) {
+      if (node.checkConstraintName !== undefined) {
+        validateFunctionName(node.checkConstraintName)
+        parts.push("CONSTRAINT", quoteIdentifier(node.checkConstraintName, this.dialect))
+      }
+      parts.push("CHECK", `(${this.printExpr(node.check)})`)
+    }
+    return parts.join(" ")
+  }
+
+  private printDropDomain(node: DropDomainNode): string {
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (node.names.length === 0) {
+      throw new Error("DROP DOMAIN requires at least one domain name.")
+    }
+    if (node.cascade && node.restrict) {
+      throw new Error("DROP DOMAIN: CASCADE and RESTRICT are mutually exclusive.")
+    }
+    for (const n of node.names) validateFunctionName(n)
+    const parts: string[] = ["DROP DOMAIN"]
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(node.names.map((n) => quoteIdentifier(n, this.dialect)).join(", "))
     if (node.cascade) parts.push("CASCADE")

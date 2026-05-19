@@ -429,6 +429,99 @@ const plan = [
 
 ---
 
+## Custom types (PostgreSQL — `CREATE TYPE AS ENUM` / `CREATE DOMAIN`)
+
+PostgreSQL exposes a full first-class catalog for user-defined types — the two shapes sumak surfaces are the ones that come up in real schemas: named **enum** types and **domain** wrappers around an existing type. Both let you push validation rules from the application into the database itself, where they're enforced regardless of the client.
+
+(Composite, range, and base types are deliberately deferred — they need a wider AST surface and rarely show up in code-driven migrations.)
+
+### Named enum types
+
+Unlike the inline `enumType()` column helper (which embeds `enum(...)` into a single column), `createTypeEnum` declares a _named_ type usable across many tables, functions, and domains. The declared label order is also the sort order — `ORDER BY status` orders by the declared sequence, not lexicographic text.
+
+```ts
+db.schema.createTypeEnum("order_status").values("pending", "paid", "shipped").build()
+// CREATE TYPE "order_status" AS ENUM ('pending', 'paid', 'shipped')
+
+// Sourcing the labels from a TS const tuple is the common case:
+const ORDER_STATUSES = ["pending", "paid", "shipped"] as const
+db.schema
+  .createTypeEnum("order_status")
+  .values([...ORDER_STATUSES])
+  .build()
+```
+
+Once the type exists, use it as a column type in the usual way — sumak's `defineTable` doesn't model named enums yet, so reach for raw SQL on the table creation or pair with `unsafeRawExpr` until that lands:
+
+```sql
+CREATE TABLE orders (
+  id   serial PRIMARY KEY,
+  status order_status NOT NULL  -- references the named enum
+);
+```
+
+Drop with the symmetric `dropType` — comma-separated lists and `CASCADE` / `RESTRICT` flags work like `dropExtension`:
+
+```ts
+db.schema.dropType("order_status").ifExists().build()
+// DROP TYPE IF EXISTS "order_status"
+
+db.schema.dropType(["order_status", "priority"]).cascade().build()
+// DROP TYPE "order_status", "priority" CASCADE
+```
+
+`CASCADE` and `RESTRICT` are mutually exclusive in PG; the builder treats "last call wins" — `.cascade().restrict()` flips back to `RESTRICT`. A hand-rolled AST with both flags throws at print time rather than emitting unexecutable SQL.
+
+Label values are escaped through `escapeStringLiteral` before splicing — so `O'Brien` lands as `'O''Brien'` and a backslash doubles to `\\\\`. Type names go through `validateFunctionName`, which rejects any non-identifier shape.
+
+### CHECK domains
+
+A _domain_ in PG is a typed constraint wrapper around an existing type. Declare it once, reference it everywhere — every column declared with the domain inherits its `CHECK`, `DEFAULT`, and `NOT NULL`:
+
+```ts
+import { createDomain, sql } from "sumak"
+
+createDomain("positive_int", "integer")
+  .notNull()
+  .check(sql<boolean>`VALUE > 0`, "positive_int_check")
+  .build()
+// CREATE DOMAIN "positive_int" AS integer
+//   NOT NULL CONSTRAINT "positive_int_check" CHECK ((VALUE > 0))
+```
+
+Inside the `CHECK` predicate, the magic identifier `VALUE` refers to the value being checked — that's a PG-specific quirk, not a sumak invention. Write it via a `sql` template literal (or any other `Expression<boolean>`).
+
+A `DEFAULT` on the domain fires when an insert omits the column:
+
+```ts
+createDomain("age_dom", "integer")
+  .defaultTo(sql`18`)
+  .build()
+// CREATE DOMAIN "age_dom" AS integer DEFAULT 18
+```
+
+The `dataType` argument can be supplied in the constructor (`createDomain("d", "integer")`) or via the `.dataType(t)` chain — both work the same way. The data-type string is gated through `validateDataType`, which permits the standard SQL shapes (`integer`, `varchar(120)`, `timestamp with time zone`, `text[]`) but rejects injection-shaped input.
+
+Drop the symmetric way:
+
+```ts
+db.schema.dropDomain("positive_int").ifExists().build()
+// DROP DOMAIN IF EXISTS "positive_int"
+
+db.schema.dropDomain(["positive_int", "age_dom"]).cascade().build()
+// DROP DOMAIN "positive_int", "age_dom" CASCADE
+```
+
+### Why domains over inline CHECK?
+
+A column-level `CHECK (salary > 0)` repeats in every table. A `positive_int` domain centralizes the rule — every column declared `positive_int` enforces it. Adding a new constraint via `ALTER DOMAIN … ADD CONSTRAINT` propagates to every column at once. The named constraint (`CONSTRAINT positive_int_check`) is what makes that addressable later.
+
+### Dialect support
+
+PostgreSQL only. The other three engines have either no equivalent surface (SQLite has no enum or domain), an entirely different one (MSSQL's `CREATE TYPE … AS TABLE` / `FROM existing_type`), or only the inline column shape (MySQL `ENUM(...)`). `compileDDL` throws `UnsupportedDialectFeatureError` (`CUSTOM_TYPES` feature flag) on every non-PG dialect for all four statement shapes — `CREATE TYPE AS ENUM`, `DROP TYPE`, `CREATE DOMAIN`, `DROP DOMAIN`.
+
+---
+
 ## Schema comments
 
 Schema-level prose lives in the database, not just the code. PostgreSQL and MySQL both expose comments on tables and columns; sumak surfaces both via the schema DSL and threads the value through `diffSchemas` so a comment edit shows up as a normal additive migration step.
