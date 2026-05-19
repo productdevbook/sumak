@@ -2,6 +2,7 @@ import type { DDLNode } from "./ast/ddl-nodes.ts"
 import type { ASTNode, ExpressionNode, SelectNode, SubqueryNode } from "./ast/nodes.ts"
 import type { TclNode } from "./ast/tcl-nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
+import { AlterSequenceBuilder } from "./builder/ddl/alter-sequence.ts"
 import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
 import { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
 import { CreateSequenceBuilder, DropSequenceBuilder } from "./builder/ddl/create-sequence.ts"
@@ -841,6 +842,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "comment_on",
   "create_sequence",
   "drop_sequence",
+  "alter_sequence",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -983,6 +985,34 @@ export class SchemaBuilder {
    */
   dropSequence(name: string, schema?: string): DropSequenceBuilder {
     return new DropSequenceBuilder(name, schema)
+  }
+
+  /**
+   * `ALTER SEQUENCE [IF EXISTS] <name> [AS …] [INCREMENT …] [RESTART …] …`.
+   * PG and MSSQL only — the same dialect support and feature gate as
+   * `CREATE SEQUENCE`.
+   *
+   * Most common workflows:
+   *
+   * ```ts
+   * // Reset a counter back to 1 without dropping & recreating.
+   * db.compileDDL(db.schema.alterSequence("order_no").restartWith(1).build())
+   * // PG/MSSQL: ALTER SEQUENCE "order_no" RESTART WITH 1
+   *
+   * // Retune the cache and the step.
+   * db.compileDDL(
+   *   db.schema.alterSequence("order_no").cache(100).increment(2).build()
+   * )
+   * // PG/MSSQL: ALTER SEQUENCE "order_no" INCREMENT BY 2 CACHE 100
+   * ```
+   *
+   * The printer refuses MSSQL-incompatible clauses (`AS`, `START WITH`,
+   * `OWNED BY`, `IF EXISTS`) up front so a portable migration that
+   * needs to run on both dialects fails at compile time rather than at
+   * the database.
+   */
+  alterSequence(name: string, schema?: string): AlterSequenceBuilder {
+    return new AlterSequenceBuilder(name, schema)
   }
 }
 
