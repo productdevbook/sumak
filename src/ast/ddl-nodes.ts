@@ -87,11 +87,59 @@ export interface ForeignKeyConstraintNode {
   }
 }
 
+/**
+ * Single element of a PG `EXCLUDE` constraint — a column reference (or
+ * arbitrary expression) paired with the operator that must NOT hold
+ * between the row's value and any other row's value. The classic
+ * range-overlap case uses `column WITH &&`; the equality use case (a
+ * UNIQUE that names its index method explicitly) uses `column WITH =`.
+ *
+ * `expr` is an arbitrary {@link ExpressionNode}; the schema-DSL layer
+ * always materializes a `column_ref` node for the simple "named column"
+ * case, but plain expressions (function calls, casts) flow through too.
+ */
+export interface ExcludeElement {
+  expr: ExpressionNode
+  operator: string
+}
+
+/**
+ * PG-only table-level constraint. Generalizes UNIQUE — instead of
+ * equality, each element pairs a column (or expression) with a
+ * commutative operator. The classic case is range-overlap exclusion
+ * for booking systems: `EXCLUDE USING gist (room WITH =, during WITH
+ * &&)`. The constraint is backed by an index whose access method is
+ * controlled by `method` (defaults to `gist`).
+ *
+ * The optional `where` predicate makes this a **partial exclude**:
+ * the constraint only applies to rows where the predicate is true,
+ * mirroring `CREATE INDEX … WHERE` semantics.
+ *
+ * Refused on MySQL / SQLite / MSSQL via `EXCLUDE_CONSTRAINTS` —
+ * none have an equivalent table-constraint grammar. See
+ * {@link FEATURES.EXCLUDE_CONSTRAINTS}.
+ */
+export interface ExcludeConstraintNode {
+  type: "exclude_constraint"
+  name?: string
+  /** Index access method. Defaults to `gist` at print time when unset. */
+  method?: string
+  elements: ExcludeElement[]
+  /**
+   * Optional partial-exclude predicate. Same grammar as a partial-index
+   * `WHERE` clause — limits the constraint to rows matching the
+   * predicate. Useful for "at most one active row per priority" via
+   * `EXCLUDE (priority WITH =) WHERE (active = true)`.
+   */
+  where?: ExpressionNode
+}
+
 export type TableConstraintNode =
   | PrimaryKeyConstraintNode
   | UniqueConstraintNode
   | CheckConstraintNode
   | ForeignKeyConstraintNode
+  | ExcludeConstraintNode
 
 // ── CREATE TABLE ──
 

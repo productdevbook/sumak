@@ -8,6 +8,7 @@ import type {
   DDLNode,
   DropIndexNode,
   DropTableNode,
+  ExcludeConstraintNode,
   TableConstraintNode,
   UniqueConstraintNode,
 } from "../ast/ddl-nodes.ts"
@@ -16,12 +17,14 @@ import { tableRef } from "../ast/nodes.ts"
 import type { ColumnBuilder, ColumnDef } from "../schema/column.ts"
 import {
   isTableDefinition,
+  normalizeExcludeDef,
   normalizeKeyDef,
   normalizeUniqueDef,
   resolveCheckExpression,
 } from "../schema/table.ts"
 import type {
   CheckDef,
+  ExcludeDef,
   ForeignKeyDef,
   IndexDef,
   NormalizedTable,
@@ -712,6 +715,7 @@ function materializeConstraints(constraints: TableConstraints | undefined): Tabl
   for (const u of constraints.uniques ?? []) out.push(materializeUnique(u))
   for (const c of constraints.checks ?? []) out.push(materializeCheck(c))
   for (const fk of constraints.foreignKeys ?? []) out.push(materializeForeignKey(fk))
+  for (const ex of constraints.excludes ?? []) out.push(materializeExclude(ex))
   return out
 }
 
@@ -750,6 +754,33 @@ function materializeForeignKey(def: ForeignKeyDef): TableConstraintNode {
 }
 
 /**
+ * Lower an {@link ExcludeDef} to an {@link ExcludeConstraintNode}.
+ * Each element's `expr` is resolved to an {@link ExpressionNode} —
+ * bare column names lower to a `column_ref`; pre-built sumak
+ * `Expression<T>` values keep their AST node verbatim so the printer's
+ * dialect-aware quoting still applies. Method and where clauses are
+ * carried through unchanged.
+ */
+function materializeExclude(def: ExcludeDef): ExcludeConstraintNode {
+  const norm = normalizeExcludeDef(def)
+  const elements = norm.elements.map((e) => {
+    const expr: ExpressionNode =
+      typeof e.expr === "string"
+        ? { type: "column_ref", column: e.expr }
+        : (e.expr as unknown as { node: ExpressionNode }).node
+    return { expr, operator: e.operator }
+  })
+  const out: ExcludeConstraintNode = { type: "exclude_constraint", elements }
+  if (norm.name !== undefined) out.name = norm.name
+  if (norm.method !== undefined) out.method = norm.method
+  if (norm.where !== undefined) {
+    const resolved = resolveCheckExpression(norm.where)
+    out.where = resolved.node ?? { type: "raw", sql: resolved.sql, params: [] }
+  }
+  return out
+}
+
+/**
  * Deep-compare two constraint sets and split the delta into "to drop"
  * and "to add". We key each constraint by a canonical signature; any
  * rename, column-set edit, or CHECK body change manifests as
@@ -785,11 +816,17 @@ function signConstraint(node: TableConstraintNode): string {
   if (node.name) {
     // Named UNIQUE constraints mix the `nullsNotDistinct` flag into the
     // signature so a flip of the flag on a same-named constraint
-    // surfaces as drop + add. Other named constraints still key on name
-    // alone — same name in both before & after is treated as the same
-    // logical constraint regardless of body changes.
+    // surfaces as drop + add. Named EXCLUDE constraints fold the body
+    // (method + elements + where) into the signature for the same
+    // reason — a change to any of those is a different constraint and
+    // must replay as drop + add. Other named constraints still key on
+    // name alone — same name in both before & after is treated as the
+    // same logical constraint regardless of body changes.
     if (node.type === "unique_constraint" && node.nullsNotDistinct) {
       return `${node.type}:${node.name}|nnd`
+    }
+    if (node.type === "exclude_constraint") {
+      return `${node.type}:${node.name}|${signExcludeBody(node)}`
     }
     return `${node.type}:${node.name}`
   }
@@ -802,7 +839,23 @@ function signConstraint(node: TableConstraintNode): string {
       return `check:${JSON.stringify(node.expression)}`
     case "fk_constraint":
       return `fk:${node.columns.join(",")}->${node.references.table}(${node.references.columns.join(",")})`
+    case "exclude_constraint":
+      return `exclude:${signExcludeBody(node)}`
   }
+}
+
+/**
+ * Canonical signature for the body of an EXCLUDE constraint —
+ * method + each element's expression node + operator + the optional
+ * WHERE predicate. Captures everything the DDL printer would observe
+ * so changes to any field surface as drop + add through the diff
+ * engine.
+ */
+function signExcludeBody(node: ExcludeConstraintNode): string {
+  const method = node.method ?? ""
+  const elems = node.elements.map((e) => `${JSON.stringify(e.expr)}@${e.operator}`).join(";")
+  const where = node.where === undefined ? "" : JSON.stringify(node.where)
+  return `m:${method}|e:${elems}|w:${where}`
 }
 
 // ── Input normalization ────────────────────────────────────────────────
