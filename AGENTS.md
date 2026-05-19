@@ -155,6 +155,18 @@ test/
 
 ~88 named value exports / ~146 total named exports (down from ~208 / ~313 in v0.0.x). Internals (low-level AST factories, visitor, document algebra, printer classes, DDL builder classes, normalize/optimize rule internals, legacy plugin classes, deprecated Col methods) are no longer re-exported. v0.0.12 adds `Driver`, `diffSchemas`/`applyMigration`, `introspect`/`generateSchemaCode`, `subjectType` / `ResultContext`, and `FEATURES` / `assertFeature` to the public surface — strictly additive.
 
+**v0.0.13 additions:** `caslAuthz` plugin and `caslToSumakWhere` helper for CASL → AST WHERE injection. `subjectType` plugin became DB-generic.
+
+**v0.0.15 additions:**
+
+- **Runtime predicate guard** on `where` / `orWhere` / `having` — a kysely-style `.where("col", "=", val)` typo previously dropped the predicate silently (a row-scoped DELETE could become a table wipe). The guard turns that into a loud `TypeError`. See ADR 002.
+- **Three-arg `.where(col, op, val)` overload** on `TypedSelectBuilder.where / orWhere / having`, `TypedUpdateBuilder.where`, `TypedDeleteBuilder.where`. Per-operator RHS narrowing via `WhereValueForOp<Op, ColType>` — `like` only accepts a string, `is` only `null`, etc.
+- **`InferSelectModel` / `InferInsertModel` / `InferUpdateModel`** — drizzle-style row-type helpers that alias `Selectable<T>` / `Insertable<T>` / `Updateable<T>`.
+- **`caslAuthz` ability factory** — `caslAuthz({ ability: () => …, … })` for per-request authz (AsyncLocalStorage pattern). Static-instance form unchanged.
+- **Better callback-returns-undefined diagnostic** — names the missing-`return` footgun directly.
+- **Identity-preserving `recurse` in normalize** — `normalizeExpression(normalize(x))` is now strictly idempotent (the property fuzzer enforces it). See ADR 003.
+- **Vitest `maxWorkers: 4`** — fixes the PGlite parallel-flake in `pnpm vitest run`.
+
 ### Setup (single step)
 
 ```typescript
