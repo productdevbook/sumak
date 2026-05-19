@@ -5,12 +5,14 @@ import type {
   ColumnDefinitionNode,
   CommentNode,
   CreateIndexNode,
+  CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
   CreateTableNode,
   CreateViewNode,
   DDLNode,
   DropIndexNode,
+  DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
   DropTableNode,
@@ -97,6 +99,10 @@ export class DDLPrinter {
         return this.printAnalyze(node)
       case "reindex":
         return this.printReindex(node)
+      case "create_policy":
+        return this.printCreatePolicy(node)
+      case "drop_policy":
+        return this.printDropPolicy(node)
     }
   }
 
@@ -426,6 +432,28 @@ export class DDLPrinter {
         case "drop_constraint":
           clauses.push(`DROP CONSTRAINT ${quoteIdentifier(action.name, this.dialect)}`)
           break
+        case "set_rls": {
+          // PG only — no other dialect has equivalent grammar for
+          // toggling per-row access control on a table. Refuse early
+          // so the error points at the builder call rather than
+          // surfacing as a parse failure at the engine.
+          assertFeature(this.dialect, "ROW_LEVEL_SECURITY")
+          switch (action.mode) {
+            case "enable":
+              clauses.push("ENABLE ROW LEVEL SECURITY")
+              break
+            case "disable":
+              clauses.push("DISABLE ROW LEVEL SECURITY")
+              break
+            case "force":
+              clauses.push("FORCE ROW LEVEL SECURITY")
+              break
+            case "no_force":
+              clauses.push("NO FORCE ROW LEVEL SECURITY")
+              break
+          }
+          break
+        }
       }
     }
 
@@ -1202,6 +1230,119 @@ export class DDLPrinter {
     if (node.concurrently) parts.push("CONCURRENTLY")
     parts.push(quoteIdentifier(node.name, this.dialect))
     return parts.join(" ")
+  }
+
+  /**
+   * Emit `CREATE POLICY <name> ON <table>
+   *   [AS PERMISSIVE | RESTRICTIVE]
+   *   [FOR { ALL | SELECT | INSERT | UPDATE | DELETE }]
+   *   [TO role [, ...]]
+   *   [USING (<expr>)]
+   *   [WITH CHECK (<expr>)]`.
+   *
+   * PG only — refuses on every non-PG dialect via the
+   * `ROW_LEVEL_SECURITY` feature gate.
+   *
+   * Mutually-exclusive flags:
+   *
+   *  - `permissive` + `restrictive` — set only one; PG accepts at most
+   *    one `AS …` token. We refuse early when both are true.
+   *
+   * `forCommand` is type-restricted to the five PG keywords; the
+   * `default` arm guards against hand-crafted ASTs that try to smuggle
+   * other tokens through. Roles list passes through `quoteIdentifier`
+   * except for the three reserved tokens `PUBLIC` / `CURRENT_USER` /
+   * `SESSION_USER`, which PG accepts as bare keywords.
+   */
+  private printCreatePolicy(node: CreatePolicyNode): string {
+    assertFeature(this.dialect, "ROW_LEVEL_SECURITY")
+    if (node.permissive && node.restrictive) {
+      throw new Error(
+        "CREATE POLICY: permissive and restrictive are mutually exclusive — set only one.",
+      )
+    }
+    if (!node.table) {
+      throw new Error(
+        `CREATE POLICY "${node.name}" requires a target table — call .on(table) before compiling.`,
+      )
+    }
+
+    const parts: string[] = [
+      "CREATE POLICY",
+      quoteIdentifier(node.name, this.dialect),
+      "ON",
+      this.qualifiedName(node.table, node.schema),
+    ]
+
+    if (node.restrictive) parts.push("AS RESTRICTIVE")
+    else if (node.permissive) parts.push("AS PERMISSIVE")
+
+    if (node.forCommand !== undefined) {
+      switch (node.forCommand) {
+        case "ALL":
+        case "SELECT":
+        case "INSERT":
+        case "UPDATE":
+        case "DELETE":
+          parts.push("FOR", node.forCommand)
+          break
+        default:
+          throw new Error(
+            `CREATE POLICY: forCommand must be one of ALL / SELECT / INSERT / UPDATE / DELETE — got "${String(
+              (node as { forCommand: string }).forCommand,
+            )}".`,
+          )
+      }
+    }
+
+    if (node.roles && node.roles.length > 0) {
+      const rendered = node.roles.map((r) => this.renderPolicyRole(r))
+      parts.push("TO", rendered.join(", "))
+    }
+
+    if (node.using !== undefined) {
+      parts.push("USING", `(${this.printExpr(node.using)})`)
+    }
+
+    if (node.withCheck !== undefined) {
+      parts.push("WITH CHECK", `(${this.printExpr(node.withCheck)})`)
+    }
+
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `DROP POLICY [IF EXISTS] <name> ON <table> [CASCADE]`. PG
+   * only.
+   */
+  private printDropPolicy(node: DropPolicyNode): string {
+    assertFeature(this.dialect, "ROW_LEVEL_SECURITY")
+    if (!node.table) {
+      throw new Error(
+        `DROP POLICY "${node.name}" requires a target table — call .on(table) before compiling.`,
+      )
+    }
+
+    const parts: string[] = ["DROP POLICY"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(quoteIdentifier(node.name, this.dialect))
+    parts.push("ON", this.qualifiedName(node.table, node.schema))
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
+  /**
+   * Render a single entry in a CREATE POLICY `TO` list. The three
+   * reserved keywords `PUBLIC` / `CURRENT_USER` / `SESSION_USER` pass
+   * through verbatim (uppercased for stable output); anything else is
+   * treated as a role identifier and quoted accordingly.
+   */
+  private renderPolicyRole(role: string): string {
+    const upper = role.toUpperCase()
+    if (upper === "PUBLIC" || upper === "CURRENT_USER" || upper === "SESSION_USER") {
+      return upper
+    }
+    return quoteIdentifier(role, this.dialect)
   }
 
   private printExpr(node: import("../ast/nodes.ts").ExpressionNode): string {

@@ -15,6 +15,7 @@ import {
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
 import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
+import { CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
 import { TruncateBuilder, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 import { Col } from "./builder/eb.ts"
@@ -847,6 +848,8 @@ const DDL_NODE_TYPES = new Set<string>([
   "vacuum",
   "analyze",
   "reindex",
+  "create_policy",
+  "drop_policy",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1068,6 +1071,42 @@ export class SchemaBuilder {
    */
   reindex(target: ReindexNode["target"], name: string): ReindexBuilder {
     return new ReindexBuilder(target, name)
+  }
+
+  /**
+   * PostgreSQL Row Level Security — `CREATE POLICY <name> ON <table>
+   * [AS PERMISSIVE | RESTRICTIVE] [FOR …] [TO …] [USING (…)] [WITH
+   * CHECK (…)]`. PG only — the DDL printer refuses on every non-PG
+   * dialect via the `ROW_LEVEL_SECURITY` feature gate.
+   *
+   * Pair with `db.schema.alterTable(...).enableRowLevelSecurity()` to
+   * turn the per-row machinery on before any policy can take effect.
+   *
+   * ```ts
+   * db.compileDDL(
+   *   db.schema.alterTable("orders").enableRowLevelSecurity().build(),
+   * )
+   * db.compileDDL(
+   *   db.schema
+   *     .createPolicy("tenant_isolation")
+   *     .on("orders")
+   *     .for("ALL")
+   *     .using(sql`tenant_id = current_setting('app.tenant_id')::int`)
+   *     .withCheck(sql`tenant_id = current_setting('app.tenant_id')::int`)
+   *     .build(),
+   * )
+   * ```
+   */
+  createPolicy(name: string): CreatePolicyBuilder {
+    return new CreatePolicyBuilder(name)
+  }
+
+  /**
+   * `DROP POLICY [IF EXISTS] <name> ON <table> [CASCADE]`. PG only;
+   * pairs with {@link createPolicy}.
+   */
+  dropPolicy(name: string): DropPolicyBuilder {
+    return new DropPolicyBuilder(name)
   }
 }
 

@@ -163,6 +163,22 @@ export type AlterTableAction =
   | { kind: "alter_column"; column: string; set: AlterColumnSet }
   | { kind: "add_constraint"; constraint: TableConstraintNode }
   | { kind: "drop_constraint"; name: string }
+  /**
+   * Toggle PostgreSQL Row Level Security on this table. PG only — the
+   * DDL printer refuses on MySQL / SQLite / MSSQL via the
+   * `ROW_LEVEL_SECURITY` feature gate.
+   *
+   *  - `enable` → `ENABLE ROW LEVEL SECURITY` — turns the policy
+   *    machinery on. Without policies the default is "deny all" for
+   *    non-owner roles.
+   *  - `disable` → `DISABLE ROW LEVEL SECURITY` — RLS is off and the
+   *    table behaves as a plain table again.
+   *  - `force` → `FORCE ROW LEVEL SECURITY` — RLS also applies to the
+   *    table owner (by default owners bypass RLS).
+   *  - `no_force` → `NO FORCE ROW LEVEL SECURITY` — back to the
+   *    default owner-bypass behaviour.
+   */
+  | { kind: "set_rls"; mode: "enable" | "disable" | "force" | "no_force" }
 
 export type AlterColumnSet =
   | { type: "set_not_null" }
@@ -741,6 +757,103 @@ export interface ReindexNode {
   verbose?: boolean
 }
 
+// ── CREATE POLICY / DROP POLICY (PG Row Level Security) ──
+
+/**
+ * PostgreSQL `CREATE POLICY <name> ON <table> [AS PERMISSIVE | RESTRICTIVE]
+ * [FOR { ALL | SELECT | INSERT | UPDATE | DELETE }] [TO role[, ...]]
+ * [USING (expr)] [WITH CHECK (expr)]`.
+ *
+ * Row Level Security policies attach per-row access predicates to a
+ * table — once RLS is enabled (`ALTER TABLE … ENABLE ROW LEVEL
+ * SECURITY`), the policies' `USING` clauses filter what existing rows
+ * are visible, and the `WITH CHECK` clauses gate which rows can be
+ * written. Multiple policies layer:
+ *
+ *  - PERMISSIVE policies (the default) are OR'd together — a row is
+ *    visible if *any* permissive policy allows it.
+ *  - RESTRICTIVE policies are AND'd with the OR'd permissive set — a
+ *    row is visible only if *every* restrictive policy allows it.
+ *
+ * Common multi-tenant pattern:
+ *
+ *     -- after ALTER TABLE orders ENABLE ROW LEVEL SECURITY
+ *     CREATE POLICY tenant_isolation ON orders
+ *       FOR ALL
+ *       USING (tenant_id = current_setting('app.tenant_id')::int)
+ *       WITH CHECK (tenant_id = current_setting('app.tenant_id')::int);
+ *
+ * Dialect support: **PG only.** MySQL / SQLite / MSSQL have no
+ * equivalent row-policy grammar (MSSQL's "Row-Level Security" feature
+ * is implemented via security policy objects + predicate functions,
+ * not via per-table CREATE POLICY statements; surfacing it cleanly
+ * needs a dedicated AST node). The DDL printer refuses on every
+ * non-PG dialect.
+ */
+export interface CreatePolicyNode {
+  type: "create_policy"
+  name: string
+  table: string
+  schema?: string
+  /**
+   * Policy kind. `permissive` (the default in PG; `AS PERMISSIVE` is
+   * the explicit form) means the policy contributes to the OR-set;
+   * `restrictive` (`AS RESTRICTIVE`) means it AND-joins the
+   * permissive set. Setting both is a builder-side mistake — the
+   * printer refuses.
+   */
+  permissive?: boolean
+  restrictive?: boolean
+  /**
+   * `FOR { ALL | SELECT | INSERT | UPDATE | DELETE }` — which DML
+   * commands the policy applies to. Default (`undefined`) is `ALL`
+   * which PG omits from the emitted DDL.
+   */
+  forCommand?: "ALL" | "SELECT" | "INSERT" | "UPDATE" | "DELETE"
+  /**
+   * `TO role_name [, ...]` — roles the policy applies to. Each entry
+   * is emitted via `quoteIdentifier`, except for the three reserved
+   * keywords `PUBLIC` / `CURRENT_USER` / `SESSION_USER` (case-
+   * insensitive match) which are passed through verbatim. Omitting
+   * the slot (or passing an empty array) skips the `TO` clause — PG
+   * defaults to `PUBLIC` in that case.
+   */
+  roles?: string[]
+  /**
+   * `USING (<expr>)` — predicate applied to existing rows (for
+   * SELECT, UPDATE, DELETE). When the predicate evaluates to TRUE the
+   * row is visible / mutable through this policy.
+   */
+  using?: ExpressionNode
+  /**
+   * `WITH CHECK (<expr>)` — predicate applied to new / updated rows
+   * (for INSERT, UPDATE). When the predicate evaluates to FALSE the
+   * write is rejected. If omitted on a policy that allows writes, PG
+   * falls back to the USING predicate.
+   */
+  withCheck?: ExpressionNode
+}
+
+/**
+ * PostgreSQL `DROP POLICY [IF EXISTS] <name> ON <table> [CASCADE |
+ * RESTRICT]`. Same dialect story as {@link CreatePolicyNode} — PG
+ * only; the DDL printer refuses on every non-PG dialect.
+ */
+export interface DropPolicyNode {
+  type: "drop_policy"
+  name: string
+  table: string
+  schema?: string
+  ifExists?: boolean
+  /**
+   * `CASCADE` — PG accepts it on `DROP POLICY` though there are no
+   * dependent objects in the standard graph; the keyword is a
+   * compatibility no-op. The printer emits it when set so the AST
+   * round-trips through introspection cleanly.
+   */
+  cascade?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -762,3 +875,5 @@ export type DDLNode =
   | VacuumNode
   | AnalyzeNode
   | ReindexNode
+  | CreatePolicyNode
+  | DropPolicyNode

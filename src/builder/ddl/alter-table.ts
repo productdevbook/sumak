@@ -96,6 +96,41 @@ export class AlterTableBuilder {
     return this.withAction({ kind: "drop_constraint", name })
   }
 
+  /**
+   * `ENABLE ROW LEVEL SECURITY` — PG only. Turns the per-row policy
+   * machinery on for this table; without any policies, non-owner roles
+   * see and write zero rows.
+   */
+  enableRowLevelSecurity(): AlterTableBuilder {
+    return this.withAction({ kind: "set_rls", mode: "enable" })
+  }
+
+  /**
+   * `DISABLE ROW LEVEL SECURITY` — PG only. Turns RLS off and reverts
+   * the table to plain unrestricted access (subject to GRANTs).
+   */
+  disableRowLevelSecurity(): AlterTableBuilder {
+    return this.withAction({ kind: "set_rls", mode: "disable" })
+  }
+
+  /**
+   * `FORCE ROW LEVEL SECURITY` — PG only. Forces RLS to apply even
+   * to the table owner. Default PG behaviour is owner-bypass; this
+   * flag closes the gap (useful for "even the migration role
+   * doesn't get to read your tenant data" guarantees).
+   */
+  forceRowLevelSecurity(): AlterTableBuilder {
+    return this.withAction({ kind: "set_rls", mode: "force" })
+  }
+
+  /**
+   * `NO FORCE ROW LEVEL SECURITY` — PG only. Reverts the force flag;
+   * RLS goes back to owner-bypass.
+   */
+  noForceRowLevelSecurity(): AlterTableBuilder {
+    return this.withAction({ kind: "set_rls", mode: "no_force" })
+  }
+
   build(): AlterTableNode {
     return { ...this.node, actions: [...this.node.actions] }
   }

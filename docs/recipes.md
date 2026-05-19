@@ -817,6 +817,87 @@ db.selectFrom("users")
 
 ---
 
+## Row Level Security (PostgreSQL)
+
+PostgreSQL's row-level security (RLS) enforces per-row access predicates at the **database** layer — independent of your application code. Pair it with the `multiTenant` plugin (above): the plugin is your builder-layer net (so SELECTs never even ask for cross-tenant rows), and RLS is the second line of defence (so a forgotten plugin scope, raw SQL escape hatch, or compromised app role still can't read another tenant's data).
+
+```ts
+import { sql, sumak, pgDialect, createPolicy } from "sumak"
+
+const db = sumak({ dialect: pgDialect(), tables: { orders } })
+
+// 1. Turn the RLS machinery on.
+db.compileDDL(db.schema.alterTable("orders").enableRowLevelSecurity().build())
+// → ALTER TABLE "orders" ENABLE ROW LEVEL SECURITY
+
+// 2. Attach a per-tenant policy.
+db.compileDDL(
+  db.schema
+    .createPolicy("tenant_isolation")
+    .on("orders")
+    .for("ALL")
+    .using(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+    .withCheck(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+    .build(),
+)
+// → CREATE POLICY "tenant_isolation" ON "orders" FOR ALL
+//     USING (tenant_id = current_setting('app.tenant_id')::int)
+//     WITH CHECK (tenant_id = current_setting('app.tenant_id')::int)
+```
+
+Once the policy is attached, your app sets the tenant context per request (typical pattern: a connection pool middleware that runs `SET LOCAL app.tenant_id = '...'` at the start of each transaction). Every SELECT, UPDATE, and DELETE the connection runs now sees only the rows whose `tenant_id` matches the setting — even raw SQL submitted outside the typed builder.
+
+### Toggling RLS
+
+The four `ALTER TABLE … {ENABLE | DISABLE | FORCE | NO FORCE} ROW LEVEL SECURITY` forms each map to a single builder method on `alterTable(...)`:
+
+```ts
+db.schema.alterTable("orders").enableRowLevelSecurity().build()
+db.schema.alterTable("orders").disableRowLevelSecurity().build()
+db.schema.alterTable("orders").forceRowLevelSecurity().build()
+db.schema.alterTable("orders").noForceRowLevelSecurity().build()
+```
+
+`FORCE` makes RLS apply to the table owner too — by default owners (and superusers) bypass policies. `FORCE` covers the "even the migration role doesn't get to read your tenant data" case. Superusers always bypass RLS regardless of `FORCE`; use a non-superuser role for your app connections.
+
+### Policy options
+
+```ts
+createPolicy("read_own_posts")
+  .on("posts")
+  .permissive() // default; or .restrictive()
+  .for("SELECT") // ALL | SELECT | INSERT | UPDATE | DELETE
+  .to("app_user", "PUBLIC") // role names; PUBLIC / CURRENT_USER / SESSION_USER pass through as keywords
+  .using(sql<boolean>`author_id = current_setting('app.user_id')::int`)
+  .withCheck(sql<boolean>`author_id = current_setting('app.user_id')::int`)
+  .build()
+```
+
+Permissive and restrictive policies layer differently:
+
+- **Permissive** (the PG default; `AS PERMISSIVE` is the explicit form) — multiple permissive policies on the same `(table, command)` are **OR-ed** together. A row is visible if _any_ permissive policy allows it.
+- **Restrictive** (`AS RESTRICTIVE`) — restrictive policies are **AND-ed** with the OR-set of permissive policies. A row passes only if _every_ restrictive policy allows it. Tenant isolation is the canonical restrictive use case: "no matter what other policies say, never show me another tenant's rows."
+
+The `USING` predicate filters existing rows (SELECT / UPDATE / DELETE); `WITH CHECK` gates new and updated rows (INSERT / UPDATE). If `WITH CHECK` is omitted on a write-allowing policy, PG falls back to the `USING` predicate.
+
+### Dropping a policy
+
+```ts
+db.compileDDL(db.schema.dropPolicy("tenant_isolation").on("orders").ifExists().build())
+// → DROP POLICY IF EXISTS "tenant_isolation" ON "orders"
+```
+
+### Feature matrix
+
+| Dialect | Status                                                                   |
+| ------- | ------------------------------------------------------------------------ |
+| pg      | ✅ Full grammar — `CREATE POLICY` / `DROP POLICY` / RLS toggles          |
+| mysql   | ❌ No equivalent; printer refuses                                        |
+| sqlite  | ❌ No equivalent; printer refuses                                        |
+| mssql   | ❌ Different surface (`CREATE SECURITY POLICY` + predicate fns); refused |
+
+---
+
 ## Normalize string columns on write
 
 `normalizeStrings` rewrites configured string columns before the INSERT / UPDATE / MERGE hits the wire. The rewrite runs on the value, not the SQL — the generated SQL stays clean (no `LOWER(?)` wrapping) and indexes on the column still apply.
