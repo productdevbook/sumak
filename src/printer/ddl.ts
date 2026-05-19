@@ -1,6 +1,7 @@
 import type {
   AlterSequenceNode,
   AlterTableNode,
+  AlterTypeAddValueNode,
   AnalyzeNode,
   ColumnDefinitionNode,
   CommentNode,
@@ -124,6 +125,8 @@ export class DDLPrinter {
         return this.printCreateDomain(node)
       case "drop_domain":
         return this.printDropDomain(node)
+      case "alter_type_add_value":
+        return this.printAlterTypeAddValue(node)
       case "lock_table":
         return this.printLockTable(node)
     }
@@ -291,6 +294,30 @@ export class DDLPrinter {
     parts.push(node.names.map((n) => quoteIdentifier(n, this.dialect)).join(", "))
     if (node.cascade) parts.push("CASCADE")
     if (node.restrict) parts.push("RESTRICT")
+    return parts.join(" ")
+  }
+
+  private printAlterTypeAddValue(node: AlterTypeAddValueNode): string {
+    // Shares the `CUSTOM_TYPES` feature gate with `CREATE TYPE AS ENUM`
+    // — the statement only exists on PG and only makes sense on a type
+    // created via that shape.
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (node.value === "") {
+      // Builders seed `value: ""` and require `.value(...)`; refuse with a
+      // pointer at the missing call rather than emit `ADD VALUE ''` (which
+      // PG would accept as a literal empty-string label — almost
+      // certainly not what the caller meant).
+      throw new Error(
+        `ALTER TYPE "${node.name}" ADD VALUE requires a non-empty value — call .value(...) before compiling.`,
+      )
+    }
+    validateFunctionName(node.name)
+    const parts: string[] = ["ALTER TYPE", quoteIdentifier(node.name, this.dialect), "ADD VALUE"]
+    if (node.ifNotExists) parts.push("IF NOT EXISTS")
+    parts.push(`'${escapeStringLiteral(node.value)}'`)
+    if (node.position) {
+      parts.push(node.position.kind, `'${escapeStringLiteral(node.position.existing)}'`)
+    }
     return parts.join(" ")
   }
 

@@ -9,6 +9,7 @@ import { CreateSequenceBuilder, DropSequenceBuilder } from "./builder/ddl/create
 import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
 import { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
 import {
+  AlterTypeAddValueBuilder,
   CreateDomainBuilder,
   CreateTypeEnumBuilder,
   DropDomainBuilder,
@@ -864,6 +865,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "drop_type",
   "create_domain",
   "drop_domain",
+  "alter_type_add_value",
   "lock_table",
 ])
 
@@ -1183,6 +1185,32 @@ export class SchemaBuilder {
    */
   dropDomain(name: string | string[]): DropDomainBuilder {
     return new DropDomainBuilder(name)
+  }
+
+  /**
+   * `ALTER TYPE <name> ADD VALUE [IF NOT EXISTS] '<v>'
+   *   [BEFORE | AFTER '<existing>']`. PostgreSQL-only.
+   *
+   * Extends a previously-created enum with a new label, optionally
+   * positioned relative to an existing label. Without `.before(...)` /
+   * `.after(...)` PG appends the new label at the end (which is the
+   * sort order too).
+   *
+   * ```ts
+   * db.compileDDL(
+   *   db.schema.alterTypeAddValue("order_status").value("refunded").build(),
+   * )
+   * // ALTER TYPE "order_status" ADD VALUE 'refunded'
+   * ```
+   *
+   * **Migration caveat**: ADD VALUE is incompatible with normal
+   * transactional migration tooling — emit it as a standalone step
+   * (no surrounding BEGIN/COMMIT) on PG 11 and earlier, and on PG 12+
+   * still don't use the new value in the same transaction. See
+   * {@link AlterTypeAddValueBuilder} for the full quirk list.
+   */
+  alterTypeAddValue(name: string): AlterTypeAddValueBuilder {
+    return new AlterTypeAddValueBuilder(name)
   }
 
   /**
