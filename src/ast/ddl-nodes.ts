@@ -1349,6 +1349,90 @@ export interface CopyOptions {
   encoding?: string
 }
 
+// ── LISTEN / UNLISTEN / NOTIFY (PG asynchronous pubsub) ──
+
+/**
+ * PostgreSQL `LISTEN <channel_name>`. Subscribes the current session to
+ * notifications sent on the named channel via {@link NotifyNode}.
+ * Subsequent NOTIFY events arrive through the driver's async-notice
+ * callback (in `node-postgres` that's `client.on('notification', cb)`).
+ *
+ * The channel name is a plain SQL identifier — not a string literal — so
+ * it's quoted via {@link quoteIdentifier} at print time. Channel
+ * subscriptions are scoped to the *session*, not the transaction; they
+ * survive across `COMMIT` and `ROLLBACK` but disappear when the session
+ * disconnects.
+ *
+ * Dialect support: **PG only.** MySQL / SQLite / MSSQL have nothing
+ * comparable in core — MySQL `Channel`-style pubsub lives in plugins
+ * (X Protocol notifications) and SQLite + MSSQL have no built-in
+ * per-channel async notification mechanism at all. The DDL printer
+ * refuses on every non-PG dialect via the `PUBSUB` feature gate.
+ */
+export interface ListenNode {
+  type: "listen"
+  channel: string
+}
+
+/**
+ * PostgreSQL `UNLISTEN <channel_name>` or `UNLISTEN *`.
+ *
+ * Cancels a previous {@link ListenNode} subscription. The wildcard form
+ * (`UNLISTEN *`) drops every channel the session is currently listening
+ * on in a single statement — useful from a connection-release hook in a
+ * pooled driver, so the next caller doesn't inherit a polluted
+ * subscription set.
+ *
+ * Set `channel: "*"` for the wildcard form; everything else is treated
+ * as a named identifier and quoted accordingly.
+ *
+ * Dialect support: **PG only.** Same `PUBSUB` feature gate as
+ * {@link ListenNode}.
+ */
+export interface UnlistenNode {
+  type: "unlisten"
+  /**
+   * Channel name to unsubscribe from, or the literal `"*"` to drop every
+   * current subscription on the session. Named channels are validated
+   * via `validateFunctionName` and quoted at print time; `"*"` is
+   * emitted verbatim as the wildcard token.
+   */
+  channel: string
+}
+
+/**
+ * PostgreSQL `NOTIFY <channel_name> [, '<payload>']`.
+ *
+ * Sends an asynchronous notification on the named channel. Any session
+ * currently `LISTEN`-ing on that channel receives the notification with
+ * the optional payload string. Notifications are delivered at COMMIT
+ * time of the sender's transaction (or immediately if there's no
+ * surrounding transaction); duplicate identical notifications inside
+ * one transaction are coalesced by PG so listeners only see one.
+ *
+ * The channel name is a plain SQL identifier — quoted via
+ * `quoteIdentifier`. The payload (when set) is a SQL string literal —
+ * escaped via `escapeStringLiteral` before being spliced into the
+ * `'…'` slot. PG enforces an 8 KB upper bound on the payload (the
+ * `NOTIFY_PAYLOAD_LIMIT` server constant); we don't pre-check the size
+ * because that limit is a build-time tunable and surfacing it here
+ * would diverge from what the engine reports.
+ *
+ * Dialect support: **PG only.** Same `PUBSUB` feature gate as
+ * {@link ListenNode}.
+ */
+export interface NotifyNode {
+  type: "notify"
+  channel: string
+  /**
+   * Optional `, '<payload>'` clause. When undefined PG sends a
+   * notification with an empty payload; when set the string is
+   * escaped via `escapeStringLiteral` at print time so single quotes
+   * and backslashes survive verbatim through the SQL literal slot.
+   */
+  payload?: string
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -1382,3 +1466,6 @@ export type DDLNode =
   | AlterTypeAddValueNode
   | LockTableNode
   | CopyNode
+  | ListenNode
+  | UnlistenNode
+  | NotifyNode
