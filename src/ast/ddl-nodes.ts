@@ -315,11 +315,76 @@ export interface RefreshMaterializedViewNode {
 
 // ── TRUNCATE TABLE ──
 
+/**
+ * `TRUNCATE [TABLE] [ONLY] <tab1>[, <tab2>...] [RESTART IDENTITY | CONTINUE
+ * IDENTITY] [CASCADE | RESTRICT]`.
+ *
+ * PostgreSQL has the richest grammar — it accepts the full SQL standard
+ * form: multiple tables in one statement, `ONLY` to skip table inheritance
+ * children, `RESTART IDENTITY` to reset attached sequences, and
+ * `CASCADE` / `RESTRICT` for foreign-key handling. MySQL and SQL Server
+ * accept only the simple `TRUNCATE TABLE <name>` form — no multi-table,
+ * no identity reset (use `ALTER TABLE … AUTO_INCREMENT` / `DBCC
+ * CHECKIDENT` instead), no cascade. SQLite has no `TRUNCATE` at all; the
+ * printer refuses with a pointer at `DELETE FROM <table>` as the
+ * workaround.
+ *
+ * `cascade` and `restrict` are mutually exclusive — set only one. The
+ * SQL default when neither is set is `RESTRICT`; the printer omits the
+ * keyword in that case (the engine applies the default).
+ *
+ * `restartIdentity` and `continueIdentity` are mutually exclusive too;
+ * `CONTINUE IDENTITY` is the SQL standard default and the printer omits
+ * it for compactness when set. Setting `restartIdentity` true emits the
+ * `RESTART IDENTITY` keyword.
+ */
 export interface TruncateTableNode {
   type: "truncate_table"
-  table: TableRefNode
-  cascade?: boolean
+  /**
+   * One or more tables to truncate. PostgreSQL accepts multiple in a
+   * single statement (atomic — all-or-nothing); MySQL and MSSQL accept
+   * exactly one. The printer refuses if `tables.length > 1` on a
+   * non-PG dialect.
+   */
+  tables: TableRefNode[]
+  /**
+   * PG only — emit `ONLY` to skip inheritance descendants. Without it
+   * PG truncates the named table *and* every table that inherits from
+   * it; with it only the named relation is truncated. MySQL / MSSQL
+   * have no table inheritance and the printer refuses if set there.
+   */
+  only?: boolean
+  /**
+   * PG only — emit `RESTART IDENTITY`. Restarts the sequences attached
+   * to any of the truncated tables' identity columns. MySQL / MSSQL
+   * have separate mechanisms (`ALTER TABLE … AUTO_INCREMENT = 1` /
+   * `DBCC CHECKIDENT (table, RESEED, 0)`); the printer refuses if set
+   * there.
+   */
   restartIdentity?: boolean
+  /**
+   * PG only — emit `CONTINUE IDENTITY` explicitly. This is the SQL
+   * standard default behaviour and the printer normally omits the
+   * keyword, but the slot exists so the builder can distinguish "user
+   * asked for default" from "user asked for restart". Mutually
+   * exclusive with {@link restartIdentity}.
+   */
+  continueIdentity?: boolean
+  /**
+   * PG only — emit `CASCADE`. Without it the engine refuses to
+   * truncate a table that is referenced by another table's foreign
+   * key (the default `RESTRICT` behaviour). MySQL / MSSQL have no
+   * cascade form on TRUNCATE and the printer refuses if set there.
+   * Mutually exclusive with {@link restrict}.
+   */
+  cascade?: boolean
+  /**
+   * PG only — emit `RESTRICT` explicitly. This is the SQL standard
+   * default behaviour; the printer normally omits the keyword, but
+   * the slot exists for symmetry with {@link cascade}. Mutually
+   * exclusive with {@link cascade}.
+   */
+  restrict?: boolean
 }
 
 // ── CREATE SCHEMA ──

@@ -14,6 +14,7 @@ import {
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
+import { TruncateBuilder, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 import { Col } from "./builder/eb.ts"
 import { GraphTableBuilder, graphTable } from "./builder/graph-table.ts"
 import { SelectBuilder } from "./builder/select.ts"
@@ -925,6 +926,30 @@ export class SchemaBuilder {
 
   truncateTable(table: string, schema?: string): TruncateTableBuilder {
     return new TruncateTableBuilder(table, schema)
+  }
+
+  /**
+   * Multi-table TRUNCATE entry point — exposes the full PG grammar
+   * (`ONLY`, `RESTART IDENTITY` / `CONTINUE IDENTITY`, `CASCADE` /
+   * `RESTRICT`, comma-separated table list). On MySQL / MSSQL only the
+   * simple form is supported; the printer refuses any PG-specific
+   * modifier and any multi-table list. SQLite has no TRUNCATE — the
+   * printer refuses with a pointer at `db.deleteFrom(t).allRows()` as
+   * the workaround.
+   *
+   * Pass a single table name (string) for the common case, or an array
+   * to truncate several tables atomically (PG only).
+   *
+   * ```ts
+   * db.compileDDL(db.schema.truncate("users").build())
+   *   // PG / MySQL / MSSQL: TRUNCATE TABLE "users"
+   *
+   * db.compileDDL(db.schema.truncate(["users", "orders"]).cascade().build())
+   *   // PG only: TRUNCATE TABLE "users", "orders" CASCADE
+   * ```
+   */
+  truncate(tables: TruncateTableArg | TruncateTableArg[]): TruncateBuilder {
+    return new TruncateBuilder(tables)
   }
 
   createSchema(name: string): CreateSchemaBuilder {

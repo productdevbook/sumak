@@ -97,17 +97,25 @@ export class DropViewBuilder {
 }
 
 // ── TRUNCATE TABLE ──
+//
+// The richer multi-table / `ONLY` / `CONTINUE IDENTITY` / `RESTRICT`
+// surface lives in {@link ../truncate.ts}'s `TruncateBuilder`. The
+// thin builder kept here is the legacy single-table entry point exposed
+// via `db.schema.truncateTable(name)` — it stays for backwards
+// compatibility, and forwards to the same AST node shape (`tables` is
+// always a single-element array).
 
 export class TruncateTableBuilder {
   private readonly node: TruncateTableNode
 
   constructor(table: string, schema?: string) {
     const ref: TableRefNode = { type: "table_ref", name: table, schema }
-    this.node = { type: "truncate_table", table: ref }
+    this.node = { type: "truncate_table", tables: [ref] }
   }
 
   private clone(patch: Partial<TruncateTableNode>): TruncateTableBuilder {
-    const next = new TruncateTableBuilder(this.node.table.name, this.node.table.schema)
+    const first = this.node.tables[0]!
+    const next = new TruncateTableBuilder(first.name, first.schema)
     return Object.assign(next, { node: { ...this.node, ...patch } }) as TruncateTableBuilder
   }
 
@@ -120,7 +128,7 @@ export class TruncateTableBuilder {
   }
 
   build(): TruncateTableNode {
-    return { ...this.node }
+    return { ...this.node, tables: this.node.tables.map((t) => ({ ...t })) }
   }
 }
 

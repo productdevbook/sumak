@@ -422,6 +422,28 @@ export const FEATURES = {
    * pass. For the first cut we expose only the PG forms.
    */
   SEQUENCE_FNS: { label: "nextval / currval / setval", dialects: ["pg"] },
+  /**
+   * `TRUNCATE [TABLE] <name>` — fast row-removal DDL. PG, MySQL, and
+   * MSSQL all ship it; SQLite has no TRUNCATE at all (DELETE FROM is
+   * the workaround, with different semantics — DELETE fires row
+   * triggers and is fully transactional, while TRUNCATE on PG/MySQL is
+   * DDL with looser durability and trigger semantics). The printer
+   * refuses on SQLite via this flag.
+   */
+  TRUNCATE_TABLE: { label: "TRUNCATE TABLE", dialects: ["pg", "mysql", "mssql"] },
+  /**
+   * PostgreSQL-specific TRUNCATE modifiers — multi-table list, `ONLY`,
+   * `RESTART IDENTITY` / `CONTINUE IDENTITY`, `CASCADE` / `RESTRICT`.
+   * MySQL and MSSQL accept only the simple `TRUNCATE TABLE <name>`
+   * form and refuse every option here at print time (the equivalents
+   * live in dialect-specific surfaces — `ALTER TABLE …
+   * AUTO_INCREMENT = 1` on MySQL, `DBCC CHECKIDENT (t, RESEED, 0)` on
+   * MSSQL).
+   */
+  TRUNCATE_PG_OPTIONS: {
+    label: "TRUNCATE multi-table / ONLY / RESTART IDENTITY / CASCADE",
+    dialects: ["pg"],
+  },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {
