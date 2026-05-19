@@ -268,6 +268,34 @@ export class Col<T> {
   }
 
   /**
+   * `IS [NOT] JSON [VALUE|SCALAR|ARRAY|OBJECT]` — SQL:2016 JSON
+   * validity predicate. Use to filter rows whose JSON-string column
+   * contains a well-formed JSON value (and optionally constrain the
+   * kind: scalar literal, array, or object).
+   *
+   * ```ts
+   * .where(({ payload }) => payload.isJson())                          // any valid JSON
+   * .where(({ payload }) => payload.isJson({ kind: "object" }))        // object only
+   * .where(({ payload }) => payload.isJson({ negate: true }))          // IS NOT JSON
+   * ```
+   *
+   * Supported on PG 16+, MySQL 8, MSSQL. The SQLite printer throws
+   * `UnsupportedDialectFeatureError` — use `json_valid(expr)` on
+   * SQLite if you need a runtime check.
+   */
+  isJson(opts?: {
+    kind?: "value" | "scalar" | "array" | "object"
+    negate?: boolean
+  }): Expression<boolean> {
+    return wrap({
+      type: "is_json",
+      expr: this._node,
+      kind: opts?.kind,
+      negated: opts?.negate === true,
+    })
+  }
+
+  /**
    * `BETWEEN low AND high`. The bounds are inclusive on both ends.
    * Pass `{ negate: true }` for `NOT BETWEEN`; `{ symmetric: true }`
    * for PG's `BETWEEN SYMMETRIC` (swaps low/high if `low > high`).
@@ -672,6 +700,39 @@ export function notExists(query: SelectNode): Expression<boolean> {
 /** CAST(expr AS type) */
 export function cast<T>(expr: Expression<any>, dataType: string): Expression<T> {
   return wrap<T>(rawCast((expr as any).node, dataType))
+}
+
+/**
+ * `expr IS [NOT] JSON [VALUE|SCALAR|ARRAY|OBJECT]` — SQL:2016
+ * predicate that asserts the value is well-formed JSON, optionally
+ * constraining the kind. Useful for filtering ETL staging tables
+ * where a `TEXT` column carries JSON encoded as a string.
+ *
+ * ```ts
+ * isJson(col.payload)                                    // (payload IS JSON)
+ * isJson(col.payload, { kind: "object" })                // (payload IS JSON OBJECT)
+ * isJson(col.payload, { negate: true })                  // (payload IS NOT JSON)
+ * isJson(col.payload, { kind: "array", negate: true })   // (payload IS NOT JSON ARRAY)
+ * ```
+ *
+ * Dialect support: PG 16+, MySQL 8, MSSQL. The SQLite printer
+ * refuses — there's no direct equivalent (json_valid has different
+ * semantics).
+ */
+export function isJson(
+  expr: Expression<any> | Col<any>,
+  opts?: {
+    kind?: "value" | "scalar" | "array" | "object"
+    negate?: boolean
+  },
+): Expression<boolean> {
+  const node = expr instanceof Col ? expr._node : (expr as Expression<any>).node
+  return wrap({
+    type: "is_json",
+    expr: node,
+    kind: opts?.kind,
+    negated: opts?.negate === true,
+  })
 }
 
 /**

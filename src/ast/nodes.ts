@@ -34,6 +34,7 @@ export type ExpressionNode =
   | BetweenNode
   | InNode
   | IsNullNode
+  | IsJsonNode
   | CaseNode
   | CastNode
   | ExistsNode
@@ -120,6 +121,23 @@ export interface InNode {
 export interface IsNullNode {
   type: "is_null"
   expr: ExpressionNode
+  negated: boolean
+}
+
+/**
+ * `expr IS [NOT] JSON [VALUE | SCALAR | ARRAY | OBJECT]` — SQL:2016
+ * predicate that tests whether a string-or-JSON expression is valid
+ * JSON, optionally constraining the JSON kind. `kind` undefined emits
+ * the bare `IS JSON` form (any JSON value).
+ *
+ * Dialect-gated: PG 16+, MySQL 8+, MSSQL all support every variant.
+ * SQLite has no equivalent and the SQLite printer refuses.
+ */
+export interface IsJsonNode {
+  type: "is_json"
+  expr: ExpressionNode
+  /** Omit for bare `IS JSON`. */
+  kind?: "value" | "scalar" | "array" | "object"
   negated: boolean
 }
 

@@ -51,6 +51,7 @@ export function normalizeQuery(node: ASTNode, opts?: NormalizeOptions): ASTNode 
     case "between":
     case "in":
     case "is_null":
+    case "is_json":
     case "case":
     case "cast":
     case "exists":

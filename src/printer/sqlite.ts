@@ -88,6 +88,17 @@ export class SqlitePrinter extends BasePrinter {
     )
   }
 
+  /**
+   * SQLite has no SQL:2016 `IS JSON` predicate. The `json_valid(expr)`
+   * function tests for *string* validity but has different semantics
+   * (no kind constraint, doesn't accept native JSON inputs) so we
+   * refuse rather than silently rewrite.
+   */
+  protected override printIsJson(_node: import("../ast/nodes.ts").IsJsonNode): string {
+    assertFeature("sqlite", "IS_JSON_PREDICATE")
+    return "" // unreachable — assertFeature throws
+  }
+
   /** SQLite has no ANY/ALL quantified comparison. */
   protected override printQuantified(_node: QuantifiedExprNode): string {
     assertFeature("sqlite", "QUANTIFIED_SUBQUERY")

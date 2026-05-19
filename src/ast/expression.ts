@@ -7,6 +7,7 @@ import type {
   ExpressionNode,
   FunctionCallNode,
   InNode,
+  IsJsonNode,
   IsNullNode,
   LiteralNode,
   ParamNode,
@@ -116,6 +117,13 @@ export function inList(
 
 export function isNull(expr: ExpressionNode, negated = false): IsNullNode {
   return { type: "is_null", expr, negated }
+}
+
+export function isJson(
+  expr: ExpressionNode,
+  opts?: { kind?: "value" | "scalar" | "array" | "object"; negated?: boolean },
+): IsJsonNode {
+  return { type: "is_json", expr, kind: opts?.kind, negated: opts?.negated === true }
 }
 
 export function cast(expr: ExpressionNode, dataType: string): CastNode {

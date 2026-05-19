@@ -17,6 +17,7 @@ import type {
   FunctionCallNode,
   InNode,
   InsertNode,
+  IsJsonNode,
   IsNullNode,
   JoinNode,
   JsonAccessNode,
@@ -98,6 +99,7 @@ export class BasePrinter implements Printer {
       case "between":
       case "in":
       case "is_null":
+      case "is_json":
       case "case":
       case "cast":
       case "exists":
@@ -403,6 +405,8 @@ export class BasePrinter implements Printer {
         return this.printIn(node)
       case "is_null":
         return this.printIsNull(node)
+      case "is_json":
+        return this.printIsJson(node)
       case "cast":
         return this.printCast(node)
       case "exists":
@@ -698,6 +702,31 @@ export class BasePrinter implements Printer {
   protected printIsNull(node: IsNullNode): string {
     const neg = node.negated ? " NOT" : ""
     return `(${this.printExpression(node.expr)} IS${neg} NULL)`
+  }
+
+  /**
+   * `(expr IS [NOT] JSON [VALUE|SCALAR|ARRAY|OBJECT])` — SQL:2016
+   * predicate. PG 16+, MySQL 8, MSSQL all accept every form. SQLite
+   * has no equivalent — the SQLite printer overrides this method to
+   * throw `UnsupportedDialectFeatureError`.
+   *
+   * Bare `IS JSON` (no `kind`) is equivalent to `IS JSON VALUE` per
+   * the standard. We emit the bare form when `kind` is undefined so
+   * dialects free to interpret it (and to keep snapshots compact).
+   */
+  protected printIsJson(node: IsJsonNode): string {
+    const neg = node.negated ? " NOT" : ""
+    const kind =
+      node.kind === undefined
+        ? ""
+        : node.kind === "value"
+          ? " VALUE"
+          : node.kind === "scalar"
+            ? " SCALAR"
+            : node.kind === "array"
+              ? " ARRAY"
+              : " OBJECT"
+    return `(${this.printExpression(node.expr)} IS${neg} JSON${kind})`
   }
 
   protected printCase(node: CaseNode): string {

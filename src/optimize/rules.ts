@@ -212,6 +212,7 @@ function collectTableRefs(expr: ExpressionNode, refs: Set<string>): void {
       collectTableRefs(expr.operand, refs)
       break
     case "is_null":
+    case "is_json":
     case "cast":
       collectTableRefs(expr.expr, refs)
       break

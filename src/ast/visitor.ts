@@ -49,6 +49,7 @@ export function visitNode<R>(node: ASTNode, visitor: ASTVisitor<R>): R {
     case "between":
     case "in":
     case "is_null":
+    case "is_json":
     case "case":
     case "cast":
     case "exists":
