@@ -102,6 +102,55 @@ describe("table-level constraints — pglite roundtrip", () => {
     ).rejects.toThrow(/duplicate key|uq_tc_members|unique/i)
   })
 
+  it("PG 15+ column-level UNIQUE NULLS NOT DISTINCT prevents two NULL rows", async () => {
+    const driver = pgliteDriver(pg)
+    const schema = {
+      tc_nnd_col: defineTable("tc_nnd_col", {
+        id: integer().primaryKey(),
+        email: text().nullable().unique({ nullsNotDistinct: true }),
+      }),
+    }
+    const db = sumak({ dialect: pgDialect(), driver, tables: schema })
+    await applyMigration(db, {}, schema)
+
+    // First NULL row goes in.
+    await db.insertInto("tc_nnd_col").values({ id: 1, email: null }).exec()
+    // Second NULL row must fail under NULLS NOT DISTINCT.
+    await expect(db.insertInto("tc_nnd_col").values({ id: 2, email: null }).exec()).rejects.toThrow(
+      /duplicate key|unique/i,
+    )
+    // Distinct non-NULL values are still allowed.
+    await db.insertInto("tc_nnd_col").values({ id: 3, email: "a@b" }).exec()
+    await db.insertInto("tc_nnd_col").values({ id: 4, email: "c@d" }).exec()
+  })
+
+  it("PG 15+ table-level UNIQUE NULLS NOT DISTINCT prevents two NULL composite rows", async () => {
+    const driver = pgliteDriver(pg)
+    const schema = {
+      tc_nnd_tbl: defineTable(
+        "tc_nnd_tbl",
+        { orgId: integer().notNull(), userId: integer().nullable() },
+        {
+          constraints: {
+            uniques: [
+              { name: "uq_tc_nnd_tbl", columns: ["orgId", "userId"], nullsNotDistinct: true },
+            ],
+          },
+        },
+      ),
+    }
+    const db = sumak({ dialect: pgDialect(), driver, tables: schema })
+    await applyMigration(db, {}, schema)
+
+    await db.insertInto("tc_nnd_tbl").values({ orgId: 1, userId: null }).exec()
+    // Second (1, NULL) must fail.
+    await expect(
+      db.insertInto("tc_nnd_tbl").values({ orgId: 1, userId: null }).exec(),
+    ).rejects.toThrow(/duplicate key|uq_tc_nnd_tbl|unique/i)
+    // (2, NULL) is fine — different orgId.
+    await db.insertInto("tc_nnd_tbl").values({ orgId: 2, userId: null }).exec()
+  })
+
   it("enforces a named composite FOREIGN KEY with ON DELETE CASCADE", async () => {
     const driver = pgliteDriver(pg)
     const schema = {

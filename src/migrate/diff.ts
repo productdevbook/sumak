@@ -8,11 +8,17 @@ import type {
   DropIndexNode,
   DropTableNode,
   TableConstraintNode,
+  UniqueConstraintNode,
 } from "../ast/ddl-nodes.ts"
 import type { ExpressionNode } from "../ast/nodes.ts"
 import { tableRef } from "../ast/nodes.ts"
 import type { ColumnBuilder, ColumnDef } from "../schema/column.ts"
-import { isTableDefinition, normalizeKeyDef, resolveCheckExpression } from "../schema/table.ts"
+import {
+  isTableDefinition,
+  normalizeKeyDef,
+  normalizeUniqueDef,
+  resolveCheckExpression,
+} from "../schema/table.ts"
 import type {
   CheckDef,
   ForeignKeyDef,
@@ -538,6 +544,7 @@ function columnDefinitionFromBuilder(
   if (def.isNotNull) node.notNull = true
   if (def.isPrimaryKey) node.primaryKey = true
   if (def.isUnique) node.unique = true
+  if (def.uniqueNullsNotDistinct) node.uniqueNullsNotDistinct = true
   if (def.references) node.references = { ...def.references }
   if (def.check) {
     // Prefer a pre-built Expression node if the caller used `sql\`...\``;
@@ -617,10 +624,11 @@ function materializePrimaryKey(def: PrimaryKeyDef): TableConstraintNode {
 }
 
 function materializeUnique(def: UniqueDef): TableConstraintNode {
-  const { name, columns } = normalizeKeyDef(def)
-  return name === undefined
-    ? { type: "unique_constraint", columns }
-    : { type: "unique_constraint", name, columns }
+  const { name, columns, nullsNotDistinct } = normalizeUniqueDef(def)
+  const out: UniqueConstraintNode = { type: "unique_constraint", columns }
+  if (name !== undefined) out.name = name
+  if (nullsNotDistinct) out.nullsNotDistinct = true
+  return out
 }
 
 function materializeCheck(def: CheckDef): TableConstraintNode {
@@ -675,12 +683,22 @@ function diffConstraints(
  * `JSON.stringify` on the expression node — good enough for diff.
  */
 function signConstraint(node: TableConstraintNode): string {
-  if (node.name) return `${node.type}:${node.name}`
+  if (node.name) {
+    // Named UNIQUE constraints mix the `nullsNotDistinct` flag into the
+    // signature so a flip of the flag on a same-named constraint
+    // surfaces as drop + add. Other named constraints still key on name
+    // alone — same name in both before & after is treated as the same
+    // logical constraint regardless of body changes.
+    if (node.type === "unique_constraint" && node.nullsNotDistinct) {
+      return `${node.type}:${node.name}|nnd`
+    }
+    return `${node.type}:${node.name}`
+  }
   switch (node.type) {
     case "pk_constraint":
       return `pk:${node.columns.join(",")}`
     case "unique_constraint":
-      return `unique:${node.columns.join(",")}`
+      return `unique:${node.columns.join(",")}${node.nullsNotDistinct ? "|nnd" : ""}`
     case "check_constraint":
       return `check:${JSON.stringify(node.expression)}`
     case "fk_constraint":

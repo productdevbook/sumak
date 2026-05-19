@@ -50,6 +50,15 @@ export interface ColumnDef {
   readonly defaultExpression?: ExpressionNode
   readonly isPrimaryKey: boolean
   readonly isUnique: boolean
+  /**
+   * PG 15+ `UNIQUE NULLS NOT DISTINCT` on the column. Set via
+   * `.unique({ nullsNotDistinct: true })`. Only meaningful when
+   * {@link isUnique} is true — the diff engine threads this onto
+   * `ColumnDefinitionNode.uniqueNullsNotDistinct` and the DDL printer
+   * emits `NULLS NOT DISTINCT` on PG and throws on
+   * MySQL/SQLite/MSSQL.
+   */
+  readonly uniqueNullsNotDistinct?: boolean
   readonly isGenerated: boolean
   /**
    * `GENERATED ALWAYS AS (<expr>) [STORED]` descriptor. When set, the
@@ -178,7 +187,28 @@ export class ColumnBuilder<S, I = S, U = I> {
     })
   }
 
-  unique(): ColumnBuilder<S, I, U> {
+  /**
+   * Mark the column as `UNIQUE`. By default, PostgreSQL treats NULLs as
+   * distinct — multiple rows may share NULL in a unique column. Pass
+   * `{ nullsNotDistinct: true }` to opt into PG 15+ `UNIQUE NULLS NOT
+   * DISTINCT`, which treats NULLs as equal (at most one row with NULL).
+   *
+   * The flag is only emitted on PG; MySQL, SQLite, and MSSQL throw
+   * `UnsupportedDialectFeatureError` at print time.
+   *
+   * ```ts
+   * text().unique()                              // default — NULLs distinct
+   * text().nullable().unique({ nullsNotDistinct: true }) // at most one NULL row
+   * ```
+   */
+  unique(opts?: { nullsNotDistinct?: boolean }): ColumnBuilder<S, I, U> {
+    if (opts?.nullsNotDistinct) {
+      return new ColumnBuilder(this._def.dataType, {
+        ...this._def,
+        isUnique: true,
+        uniqueNullsNotDistinct: true,
+      })
+    }
     return new ColumnBuilder(this._def.dataType, { ...this._def, isUnique: true })
   }
 

@@ -12,6 +12,15 @@ export interface ColumnDefinitionNode {
   defaultTo?: ExpressionNode
   primaryKey?: boolean
   unique?: boolean
+  /**
+   * PG 15+ `UNIQUE NULLS NOT DISTINCT` modifier on the column-level
+   * UNIQUE constraint. Treats NULLs as equal for uniqueness — i.e. at
+   * most one row may have NULL in this column. Default behavior (NULLS
+   * DISTINCT) lets multiple rows share NULL. Only meaningful when
+   * {@link unique} is true; printers throw
+   * `UnsupportedDialectFeatureError` on MySQL/SQLite/MSSQL when set.
+   */
+  uniqueNullsNotDistinct?: boolean
   check?: ExpressionNode
   autoIncrement?: boolean
   references?: {
@@ -38,6 +47,14 @@ export interface UniqueConstraintNode {
   type: "unique_constraint"
   name?: string
   columns: string[]
+  /**
+   * PG 15+ `UNIQUE NULLS NOT DISTINCT` modifier. Treats NULLs as equal
+   * for uniqueness — at most one row may have a NULL in any of the
+   * constraint's columns. Default behavior (NULLS DISTINCT) lets
+   * multiple rows share NULL. Printers throw
+   * `UnsupportedDialectFeatureError` on MySQL/SQLite/MSSQL when set.
+   */
+  nullsNotDistinct?: boolean
 }
 
 export interface CheckConstraintNode {

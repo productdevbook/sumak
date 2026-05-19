@@ -52,7 +52,7 @@ These are all standardized but uniformly opt-in across DB engines — adding bui
 
 ## Other 2023-flavor features
 
-- **`UNIQUE NULLS [NOT] DISTINCT`** in unique constraints — PG 15+ supports it, sumak's migrate doesn't model the `nulls_distinct` flag on `UniqueConstraintNode`.
+- **`UNIQUE NULLS NOT DISTINCT`** in unique constraints — PG 15+. Sumak supports it on column-level (`text().unique({ nullsNotDistinct: true })`) and table-level (`{ uniques: [{ columns, nullsNotDistinct: true }] }`) constraints. The diff engine threads the flag onto `ColumnDefinitionNode.uniqueNullsNotDistinct` / `UniqueConstraintNode.nullsNotDistinct`; the DDL printer emits `UNIQUE NULLS NOT DISTINCT` on PG and throws `UnsupportedDialectFeatureError` on MySQL/SQLite/MSSQL. ✅
 - **`ANY_VALUE(expr)`** aggregate — accepted on PG 16+; not in the allowlist (would just need adding to `KNOWN_FUNCTIONS`).
 - **`STRING_AGG` ordering inside the aggregate** — sumak has this via `aggOrderBy`, but the SQL:2023 syntax is `STRING_AGG(expr, sep ORDER BY …)` which our printer already emits correctly. ✅
 - **`GROUPING SETS` / `CUBE` / `ROLLUP`** — pre-2023 but recently added on the sumak side; present in `groupBy`. ✅
