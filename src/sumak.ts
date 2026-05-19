@@ -15,6 +15,7 @@ import {
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
 import { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/extension.ts"
+import { LockTableBuilder } from "./builder/ddl/lock-table.ts"
 import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
 import { CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
@@ -853,6 +854,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "drop_policy",
   "create_extension",
   "drop_extension",
+  "lock_table",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1142,6 +1144,38 @@ export class SchemaBuilder {
    */
   dropExtension(name: string | string[]): DropExtensionBuilder {
     return new DropExtensionBuilder(name)
+  }
+
+  /**
+   * PostgreSQL `LOCK [TABLE] [ONLY] name [, …] [IN lock_mode MODE]
+   * [NOWAIT]` — take an explicit table-level lock inside the current
+   * transaction. Used to serialize critical sections that can't tolerate
+   * optimistic concurrency (the typical case is "read totals → check
+   * invariant → write" patterns where a concurrent INSERT would
+   * invalidate the check).
+   *
+   * Accepts either a single name or a `string[]` — PG applies the same
+   * mode + nowait flag to every table in the list, so the multi-table
+   * form lets a transaction acquire the locks atomically (no
+   * deadlock-by-ordering risk between sibling lock statements).
+   *
+   * ```ts
+   * db.compileDDL(db.schema.lockTable("orders").exclusive().build())
+   * // PG: LOCK TABLE "orders" IN EXCLUSIVE MODE
+   *
+   * db.compileDDL(
+   *   db.schema.lockTable(["orders", "order_lines"]).share().noWait().build(),
+   * )
+   * // PG: LOCK TABLE "orders", "order_lines" IN SHARE MODE NOWAIT
+   * ```
+   *
+   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL via
+   * the `LOCK_TABLE_STMT` feature gate. MySQL's `LOCK TABLES name
+   * READ|WRITE` is a different statement with different transactional
+   * semantics; bridging it cleanly needs a dedicated AST node.
+   */
+  lockTable(tables: string | string[]): LockTableBuilder {
+    return new LockTableBuilder(tables)
   }
 }
 
