@@ -14,6 +14,7 @@ import type {
   CaseNode,
   ExpressionNode,
   FrameBound,
+  FrameExclude,
   FrameKind,
   FrameSpec,
   FullTextSearchMode,
@@ -1067,7 +1068,51 @@ export class WindowBuilder {
     const b = new WindowBuilder()
     b.#partitionBy = this.#partitionBy
     b.#orderBy = this.#orderBy
-    b.#frame = { kind, start, end }
+    // Preserve any previously-set EXCLUDE so the call order
+    // `.exclude("group").rows(...)` doesn't silently drop the modifier.
+    // The SQL grammar puts EXCLUDE *after* the frame bounds, but the
+    // builder API doesn't enforce a single legal call order.
+    b.#frame = { kind, start, end, exclude: this.#frame?.exclude }
+    return b
+  }
+
+  /**
+   * `EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }` — SQL:2011
+   * frame-exclude clause that trims rows out of an already-computed
+   * frame. Must be called *after* one of `.rows()` / `.range()` /
+   * `.groups()`; without a frame, EXCLUDE has nothing to attach to and
+   * we throw an explicit error rather than silently emitting the
+   * modifier on a default frame.
+   *
+   * - `"current_row"` — drop the current row from the frame.
+   * - `"group"` — drop the current row and its peers (rows with the
+   *   same `ORDER BY` keys).
+   * - `"ties"` — drop peers but keep the current row.
+   * - `"no_others"` — the implicit default; emitted explicitly only if
+   *   the user asks for it (harmless on PG/SQLite).
+   *
+   * Supported on PG and SQLite. MySQL 8 and MSSQL throw at print time
+   * via the `FRAME_EXCLUDE` feature flag.
+   *
+   * ```ts
+   * // Running total of *other* rows in the partition
+   * over(sum(col("amount")), w =>
+   *   w.orderBy("id")
+   *    .rows({ type: "unbounded_preceding" }, { type: "unbounded_following" })
+   *    .exclude("current_row"),
+   * )
+   * ```
+   */
+  exclude(option: FrameExclude): WindowBuilder {
+    if (this.#frame === undefined) {
+      throw new InvalidExpressionError(
+        "WindowBuilder.exclude() requires a frame — call .rows(), .range(), or .groups() first.",
+      )
+    }
+    const b = new WindowBuilder()
+    b.#partitionBy = this.#partitionBy
+    b.#orderBy = this.#orderBy
+    b.#frame = { ...this.#frame, exclude: option }
     return b
   }
 

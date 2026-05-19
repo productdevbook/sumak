@@ -1024,10 +1024,32 @@ export class BasePrinter implements Printer {
 
   protected printFrameSpec(frame: FrameSpec): string {
     const start = this.printFrameBound(frame.start)
-    if (frame.end) {
-      return `${frame.kind} BETWEEN ${start} AND ${this.printFrameBound(frame.end)}`
+    const base = frame.end
+      ? `${frame.kind} BETWEEN ${start} AND ${this.printFrameBound(frame.end)}`
+      : `${frame.kind} ${start}`
+    if (frame.exclude === undefined) {
+      return base
     }
-    return `${frame.kind} ${start}`
+    return `${base} ${this.printFrameExclude(frame.exclude)}`
+  }
+
+  /**
+   * Render a SQL:2011 `EXCLUDE` modifier. Dialects that reject the
+   * grammar (MySQL, MSSQL) override `printWindowFunction` and refuse
+   * before reaching the frame, so this method is reachable only on
+   * dialects that actually support it.
+   */
+  protected printFrameExclude(exclude: NonNullable<FrameSpec["exclude"]>): string {
+    switch (exclude) {
+      case "no_others":
+        return "EXCLUDE NO OTHERS"
+      case "current_row":
+        return "EXCLUDE CURRENT ROW"
+      case "group":
+        return "EXCLUDE GROUP"
+      case "ties":
+        return "EXCLUDE TIES"
+    }
   }
 
   protected printFrameBound(bound: FrameBound): string {

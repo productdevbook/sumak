@@ -142,10 +142,15 @@ export class MysqlPrinter extends BasePrinter {
   /**
    * MySQL does not support the `GROUPS` window frame mode (it's a PG 11+
    * / SQLite 3.28+ feature). Refuse instead of emitting invalid SQL.
+   * It also rejects the SQL:2011 `EXCLUDE` clause; the matrix entry
+   * `FRAME_EXCLUDE` is the single source of truth for that guard.
    */
   protected override printFrameSpec(frame: FrameSpec): string {
     if (frame.kind === "GROUPS") {
       throw new UnsupportedDialectFeatureError("mysql", "GROUPS window frame (use ROWS or RANGE)")
+    }
+    if (frame.exclude !== undefined) {
+      assertFeature("mysql", "FRAME_EXCLUDE")
     }
     return super.printFrameSpec(frame)
   }
