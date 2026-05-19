@@ -296,11 +296,14 @@ export function withinGroup<T>(
 // ─── Statistical / regression aggregates ──────────────────────────────
 //
 // Univariate dispersion (`STDDEV`, `VARIANCE`, plus the explicit `_POP`
-// and `_SAMP` forms) is supported on every relational dialect we care
-// about — PG, MySQL, SQLite, MSSQL. Bivariate / linear-regression
-// aggregates (`CORR`, `COVAR_*`, `REGR_*`) are SQL standard but only PG
-// and MSSQL implement the full set; MySQL and SQLite refuse via the
-// dialect printers using the `LINEAR_REGRESSION_AGG` feature flag.
+// and `_SAMP` forms) is supported on PG, MySQL, and SQLite under the
+// SQL-standard names. MSSQL's T-SQL has no `STDDEV_*` / `VARIANCE_*`
+// aliases — it spells them `STDEV` / `STDEVP` / `VAR` / `VARP` — and
+// the printer refuses these standard names on MSSQL (use `sqlFn` with
+// the T-SQL names if you need MSSQL coverage). Bivariate /
+// linear-regression aggregates (`CORR`, `COVAR_*`, `REGR_*`) are
+// SQL-standard but only PG implements them natively; MSSQL/MySQL/SQLite
+// all refuse via the `LINEAR_REGRESSION_AGG` feature flag.
 //
 // Every function returns `NULL` for an empty input set per SQL three-
 // valued logic. Sample-vs-population variants follow the standard:
@@ -314,7 +317,7 @@ export function withinGroup<T>(
 
 /**
  * `STDDEV(expr)` — sample standard deviation (`STDDEV_SAMP`). Supported
- * on PG, MySQL, SQLite, MSSQL. Returns `NULL` for an empty set; on
+ * on PG, MySQL, and SQLite. Returns `NULL` for an empty set; on
  * SQLite the sample variants also return `NULL` for fewer than two
  * rows (the n−1 denominator would be zero).
  *
@@ -331,7 +334,7 @@ export function stddev(expr: Expression<number>): Expression<number> {
  * `STDDEV_SAMP(expr)` — sample standard deviation, explicit name.
  * Aliased to {@link stddev} on most dialects but emitted as the SQL
  * standard spelling so the intent is unambiguous in generated SQL.
- * PG, MySQL, SQLite, MSSQL accept the spelling.
+ * PG, MySQL, and SQLite accept the spelling; MSSQL's T-SQL has no `STDDEV_*` / `VARIANCE_*` aliases (it uses `STDEV` / `STDEVP` / `VAR` / `VARP`) so the printer refuses on MSSQL — reach for `sqlFn(...)` with the T-SQL names.
  */
 export function stddevSamp(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("STDDEV_SAMP", [exprNode(expr)]))
@@ -340,7 +343,7 @@ export function stddevSamp(expr: Expression<number>): Expression<number> {
 /**
  * `STDDEV_POP(expr)` — population standard deviation. Divides by `n`
  * rather than `n − 1`. Use this when the data is the entire population
- * (not a sample). PG, MySQL, SQLite, MSSQL accept the spelling.
+ * (not a sample). PG, MySQL, and SQLite accept the spelling; MSSQL's T-SQL has no `STDDEV_*` / `VARIANCE_*` aliases (it uses `STDEV` / `STDEVP` / `VAR` / `VARP`) so the printer refuses on MSSQL — reach for `sqlFn(...)` with the T-SQL names.
  */
 export function stddevPop(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("STDDEV_POP", [exprNode(expr)]))
@@ -348,8 +351,10 @@ export function stddevPop(expr: Expression<number>): Expression<number> {
 
 /**
  * `VARIANCE(expr)` — sample variance (`VAR_SAMP`). Supported on PG,
- * MySQL, SQLite, MSSQL. Returns `NULL` for an empty set; on SQLite the
- * sample variants also return `NULL` for fewer than two rows.
+ * MySQL, and SQLite. MSSQL is excluded — its T-SQL uses `VAR` / `VARP`
+ * with no `VARIANCE_*` alias. Returns `NULL` for an empty set; on
+ * SQLite the sample variants also return `NULL` for fewer than two
+ * rows.
  *
  * ```ts
  * db.selectFrom("requests").select({ jitterSq: variance(typedCol("latency_ms")) })
@@ -363,7 +368,7 @@ export function variance(expr: Expression<number>): Expression<number> {
 /**
  * `VAR_SAMP(expr)` — sample variance, explicit name. Aliased to
  * {@link variance} on most dialects but emitted as the SQL standard
- * spelling. PG, MySQL, SQLite, MSSQL accept the spelling.
+ * spelling. PG, MySQL, and SQLite accept the spelling; MSSQL's T-SQL has no `STDDEV_*` / `VARIANCE_*` aliases (it uses `STDEV` / `STDEVP` / `VAR` / `VARP`) so the printer refuses on MSSQL — reach for `sqlFn(...)` with the T-SQL names.
  */
 export function varianceSamp(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("VAR_SAMP", [exprNode(expr)]))
@@ -381,8 +386,9 @@ export function variancePop(expr: Expression<number>): Expression<number> {
 /**
  * `CORR(y, x)` — Pearson correlation coefficient between two
  * expressions. Returns a value in `[-1, 1]`, or `NULL` for an empty
- * set / single-row input. **PG and MSSQL only**; MySQL and SQLite have
- * no equivalent and the printers throw at compile time.
+ * set / single-row input. **PG only**. MSSQL has no built-in
+ * regression aggregates either (only `STDEV`/`VARP` univariate ones);
+ * MySQL and SQLite likewise lack them. All three throw at compile time.
  *
  * The argument order is `(dependent, independent)` per the SQL
  * standard — the same order PG's docs use. Swapping has no effect on
@@ -399,8 +405,7 @@ export function corr(y: Expression<number>, x: Expression<number>): Expression<n
 }
 
 /**
- * `COVAR_POP(y, x)` — population covariance. Divides by `n`. **PG and
- * MSSQL only**; refuses on MySQL/SQLite. See {@link corr} for argument
+ * `COVAR_POP(y, x)` — population covariance. Divides by `n`. **PG only**; refuses on MSSQL/MySQL/SQLite. See {@link corr} for argument
  * ordering.
  */
 export function covarPop(y: Expression<number>, x: Expression<number>): Expression<number> {
@@ -408,8 +413,7 @@ export function covarPop(y: Expression<number>, x: Expression<number>): Expressi
 }
 
 /**
- * `COVAR_SAMP(y, x)` — sample covariance. Divides by `n − 1`. **PG and
- * MSSQL only**; refuses on MySQL/SQLite.
+ * `COVAR_SAMP(y, x)` — sample covariance. Divides by `n − 1`. **PG only**; refuses on MSSQL/MySQL/SQLite.
  */
 export function covarSamp(y: Expression<number>, x: Expression<number>): Expression<number> {
   return wrap(rawFn("COVAR_SAMP", [exprNode(y), exprNode(x)]))
@@ -417,8 +421,7 @@ export function covarSamp(y: Expression<number>, x: Expression<number>): Express
 
 /**
  * `REGR_SLOPE(y, x)` — slope of the least-squares linear regression
- * line fit to the `(x, y)` pairs. **PG and MSSQL only**; refuses on
- * MySQL/SQLite.
+ * line fit to the `(x, y)` pairs. **PG only**; refuses on MSSQL/MySQL/SQLite.
  *
  * Argument order matches the SQL standard: `(dependent, independent)`,
  * which is the opposite of the `y = mx + b` notation but matches the
@@ -430,7 +433,7 @@ export function regrSlope(y: Expression<number>, x: Expression<number>): Express
 
 /**
  * `REGR_INTERCEPT(y, x)` — y-intercept of the least-squares regression
- * line. **PG and MSSQL only**; refuses on MySQL/SQLite.
+ * line. **PG only**; refuses on MSSQL/MySQL/SQLite.
  */
 export function regrIntercept(y: Expression<number>, x: Expression<number>): Expression<number> {
   return wrap(rawFn("REGR_INTERCEPT", [exprNode(y), exprNode(x)]))
@@ -438,8 +441,7 @@ export function regrIntercept(y: Expression<number>, x: Expression<number>): Exp
 
 /**
  * `REGR_R2(y, x)` — coefficient of determination (R²) of the
- * least-squares regression. Returns a value in `[0, 1]`. **PG and
- * MSSQL only**; refuses on MySQL/SQLite.
+ * least-squares regression. Returns a value in `[0, 1]`. **PG only**; refuses on MSSQL/MySQL/SQLite.
  */
 export function regrR2(y: Expression<number>, x: Expression<number>): Expression<number> {
   return wrap(rawFn("REGR_R2", [exprNode(y), exprNode(x)]))

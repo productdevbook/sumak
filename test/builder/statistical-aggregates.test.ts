@@ -140,13 +140,52 @@ describe("Univariate statistical aggregates — cross-dialect", () => {
     expect(q.sql).toContain('STDDEV("latency_ms")')
   })
 
-  it("MSSQL emits STDDEV(expr)", () => {
+  it("MSSQL throws on STDDEV (T-SQL spelling is STDEV / STDEVP, no STDDEV_*)", () => {
     const db = sumak({ dialect: mssqlDialect(), tables })
-    const q = db
-      .selectFrom("metrics")
-      .select({ s: stddev(latency) })
-      .compile(db.printer())
-    expect(q.sql).toContain("STDDEV([latency_ms])")
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ s: stddev(latency) })
+        .compile(db.printer()),
+    ).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MSSQL throws on STDDEV_POP / STDDEV_SAMP — none exist as built-ins", () => {
+    const db = sumak({ dialect: mssqlDialect(), tables })
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ s: stddevPop(latency) })
+        .compile(db.printer()),
+    ).toThrow(UnsupportedDialectFeatureError)
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ s: stddevSamp(latency) })
+        .compile(db.printer()),
+    ).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MSSQL throws on VARIANCE / VAR_POP / VAR_SAMP — T-SQL has VAR / VARP only", () => {
+    const db = sumak({ dialect: mssqlDialect(), tables })
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ v: variance(latency) })
+        .compile(db.printer()),
+    ).toThrow(UnsupportedDialectFeatureError)
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ v: variancePop(latency) })
+        .compile(db.printer()),
+    ).toThrow(UnsupportedDialectFeatureError)
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ v: varianceSamp(latency) })
+        .compile(db.printer()),
+    ).toThrow(UnsupportedDialectFeatureError)
   })
 
   it("MySQL emits VAR_POP(expr) with backtick quoting", () => {
@@ -249,24 +288,59 @@ describe("Linear-regression aggregates — PG", () => {
   })
 })
 
-describe("Linear-regression aggregates — MSSQL", () => {
+describe("Linear-regression aggregates — MSSQL refusal", () => {
+  // MSSQL has no built-in linear-regression aggregates. T-SQL exposes
+  // STDEV / STDEVP / VAR / VARP for univariate dispersion only;
+  // CORR / COVAR_POP / COVAR_SAMP / REGR_* don't exist and must be
+  // hand-rolled via SUM/AVG with the variance/covariance identities.
+  // The printer refuses rather than emit SQL the engine will reject
+  // at parse time.
   const db = sumak({ dialect: mssqlDialect(), tables })
   const p = db.printer()
 
-  it("emits CORR with MSSQL bracket quoting", () => {
-    const q = db
-      .selectFrom("metrics")
-      .select({ r: corr(ctr, spend) })
-      .compile(p)
-    expect(q.sql).toContain("CORR([ctr], [spend])")
+  it("CORR throws UnsupportedDialectFeatureError on MSSQL", () => {
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ r: corr(ctr, spend) })
+        .compile(p),
+    ).toThrow(UnsupportedDialectFeatureError)
   })
 
-  it("emits REGR_SLOPE with MSSQL bracket quoting", () => {
-    const q = db
-      .selectFrom("metrics")
-      .select({ m: regrSlope(ctr, spend) })
-      .compile(p)
-    expect(q.sql).toContain("REGR_SLOPE([ctr], [spend])")
+  it("COVAR_POP / COVAR_SAMP throw on MSSQL", () => {
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ c: covarPop(ctr, spend) })
+        .compile(p),
+    ).toThrow(UnsupportedDialectFeatureError)
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ c: covarSamp(ctr, spend) })
+        .compile(p),
+    ).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("REGR_SLOPE / REGR_INTERCEPT / REGR_R2 throw on MSSQL", () => {
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ m: regrSlope(ctr, spend) })
+        .compile(p),
+    ).toThrow(UnsupportedDialectFeatureError)
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ b: regrIntercept(ctr, spend) })
+        .compile(p),
+    ).toThrow(UnsupportedDialectFeatureError)
+    expect(() =>
+      db
+        .selectFrom("metrics")
+        .select({ r2: regrR2(ctr, spend) })
+        .compile(p),
+    ).toThrow(UnsupportedDialectFeatureError)
   })
 })
 

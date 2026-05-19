@@ -126,7 +126,7 @@ db.selectFrom("posts")
 
 ## Statistics and regression aggregates
 
-Univariate dispersion (`stddev`, `variance`, plus the explicit `_pop` / `_samp` variants) is portable across PG, MySQL, SQLite, and MSSQL. Use them for dashboard variance bands or sanity checks on a numeric column:
+Univariate dispersion (`stddev`, `variance`, plus the explicit `_pop` / `_samp` variants) emits the SQL-standard names on PG, MySQL, and SQLite. **MSSQL is excluded** — T-SQL's native spellings are `STDEV` / `STDEVP` / `VAR` / `VARP` with no `STDDEV_*` / `VARIANCE_*` aliases, so the standard name is a parse error there; reach for `sqlFn("STDEV", expr)` / `sqlFn("VARP", expr)` directly if you need MSSQL coverage. Use them for dashboard variance bands or sanity checks on a numeric column:
 
 ```ts
 import { avg, stddev, stddevPop, typedCol, variance } from "sumak"
@@ -150,7 +150,7 @@ db.selectFrom("requests")
 // FROM "requests" GROUP BY "region"
 ```
 
-Bivariate / linear-regression aggregates (`corr`, `covarPop`, `covarSamp`, `regrSlope`, `regrIntercept`, `regrR2`) are SQL standard but only **PG and MSSQL** implement them natively. MySQL and SQLite throw `UnsupportedDialectFeatureError` at compile time.
+Bivariate / linear-regression aggregates (`corr`, `covarPop`, `covarSamp`, `regrSlope`, `regrIntercept`, `regrR2`) are SQL standard but only **PG** implements them natively. MSSQL, MySQL, and SQLite have no built-in equivalents (hand-rolling with `SUM`/`AVG` and the variance/covariance identities is the workaround); the printer refuses on all three with `UnsupportedDialectFeatureError`.
 
 Use them for quick correlation matrices, ad-spend ROI slopes, or ANOVA-style feature ranking without round-tripping through application code:
 

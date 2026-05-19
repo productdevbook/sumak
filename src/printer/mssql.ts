@@ -525,6 +525,34 @@ export class MssqlPrinter extends BasePrinter {
     if (upper === "AGE") {
       assertFeature("mssql", "AGE_FN")
     }
+    // MSSQL's T-SQL spellings are `STDEV` / `STDEVP` / `VAR` / `VARP`
+    // — there is no `STDDEV`, `STDDEV_POP`, `STDDEV_SAMP`, `VARIANCE`,
+    // `VAR_POP`, or `VAR_SAMP` built-in. Emitting the standard name
+    // would produce SQL the engine rejects at parse time. Refuse via
+    // the feature flag and point the caller at the T-SQL names through
+    // `sqlFn("STDEV", expr)` / `sqlFn("STDEVP", expr)` / `sqlFn("VAR",
+    // expr)` / `sqlFn("VARP", expr)`.
+    if (upper === "STDDEV" || upper === "STDDEV_POP" || upper === "STDDEV_SAMP") {
+      assertFeature("mssql", "STDDEV_FN")
+    }
+    if (upper === "VARIANCE" || upper === "VAR_POP" || upper === "VAR_SAMP") {
+      assertFeature("mssql", "VARIANCE_FN")
+    }
+    // MSSQL has no built-in linear-regression aggregates (`CORR`,
+    // `COVAR_POP`, `COVAR_SAMP`, `REGR_*`). The pieces can be
+    // hand-rolled from SUM/AVG with the variance/covariance identities
+    // but with worse numerical stability. Refuse rather than emit a
+    // function the engine doesn't know.
+    if (
+      upper === "CORR" ||
+      upper === "COVAR_POP" ||
+      upper === "COVAR_SAMP" ||
+      upper === "REGR_SLOPE" ||
+      upper === "REGR_INTERCEPT" ||
+      upper === "REGR_R2"
+    ) {
+      assertFeature("mssql", "LINEAR_REGRESSION_AGG")
+    }
     return super.printFunctionCall(node)
   }
 
