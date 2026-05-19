@@ -28,11 +28,14 @@ import type {
   DropViewNode,
   ExcludeConstraintNode,
   ForeignKeyConstraintNode,
+  ListenNode,
   LockTableNode,
+  NotifyNode,
   RefreshMaterializedViewNode,
   ReindexNode,
   TableConstraintNode,
   TruncateTableNode,
+  UnlistenNode,
   VacuumNode,
 } from "../ast/ddl-nodes.ts"
 import type { SelectNode } from "../ast/nodes.ts"
@@ -135,6 +138,12 @@ export class DDLPrinter {
         return this.printLockTable(node)
       case "copy":
         return this.printCopy(node)
+      case "listen":
+        return this.printListen(node)
+      case "unlisten":
+        return this.printUnlisten(node)
+      case "notify":
+        return this.printNotify(node)
     }
   }
 
@@ -1662,6 +1671,51 @@ export class DDLPrinter {
     }
 
     return out
+  }
+
+  /**
+   * Emit `LISTEN <channel>`. PG only; refuses on every other dialect
+   * via the `PUBSUB` feature gate. Channel name flows through
+   * `validateFunctionName` first (rejecting anything that isn't a plain
+   * SQL identifier) and is then quoted via `quoteIdentifier` so mixed
+   * case and reserved keywords survive.
+   */
+  private printListen(node: ListenNode): string {
+    assertFeature(this.dialect, "PUBSUB")
+    validateFunctionName(node.channel)
+    return `LISTEN ${quoteIdentifier(node.channel, this.dialect)}`
+  }
+
+  /**
+   * Emit `UNLISTEN <channel>` or `UNLISTEN *`. PG only.
+   *
+   * The wildcard form (`"*"`) drops every current subscription on the
+   * session in one statement; everything else is treated as a named
+   * channel, gated by `validateFunctionName`, and quoted via
+   * `quoteIdentifier`.
+   */
+  private printUnlisten(node: UnlistenNode): string {
+    assertFeature(this.dialect, "PUBSUB")
+    if (node.channel === "*") return "UNLISTEN *"
+    validateFunctionName(node.channel)
+    return `UNLISTEN ${quoteIdentifier(node.channel, this.dialect)}`
+  }
+
+  /**
+   * Emit `NOTIFY <channel> [, '<payload>']`. PG only.
+   *
+   * Channel name flows through `validateFunctionName` then
+   * `quoteIdentifier`; the optional payload is escaped through
+   * `escapeStringLiteral` (which doubles `'` and escapes `\` for the
+   * MySQL `BACKSLASH_ESCAPES` defence — irrelevant on PG, but uniform
+   * with every other string-literal slot in the printer).
+   */
+  private printNotify(node: NotifyNode): string {
+    assertFeature(this.dialect, "PUBSUB")
+    validateFunctionName(node.channel)
+    const head = `NOTIFY ${quoteIdentifier(node.channel, this.dialect)}`
+    if (node.payload === undefined) return head
+    return `${head}, '${escapeStringLiteral(node.payload)}'`
   }
 
   /**

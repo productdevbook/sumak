@@ -331,10 +331,13 @@ export type {
   DropSequenceNode,
   DropTypeNode,
   DropViewNode,
+  ListenNode,
   LockTableNode,
+  NotifyNode,
   RefreshMaterializedViewNode,
   ReindexNode,
   TruncateTableNode,
+  UnlistenNode,
   VacuumNode,
 } from "./ast/ddl-nodes.ts"
 
@@ -380,6 +383,14 @@ export {
 } from "./builder/ddl/custom-types.ts"
 export { LockTableBuilder, type LockMode, lockTable } from "./builder/ddl/lock-table.ts"
 export { CopyFromBuilder, CopyToBuilder, copyFrom, copyTo } from "./builder/ddl/copy.ts"
+export {
+  ListenBuilder,
+  listen,
+  NotifyBuilder,
+  notify,
+  UnlistenBuilder,
+  unlisten,
+} from "./builder/ddl/pubsub.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"

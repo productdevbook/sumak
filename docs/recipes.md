@@ -1360,6 +1360,90 @@ db.compileDDL(db.schema.dropPolicy("tenant_isolation").on("orders").ifExists().b
 
 ---
 
+## PostgreSQL pubsub — LISTEN / NOTIFY / UNLISTEN
+
+PostgreSQL ships a per-channel asynchronous pubsub primitive built straight into the database. A session subscribes to one or more channels with `LISTEN`; any session can publish on a channel with `NOTIFY`; subscriptions live until the session disconnects or the listener explicitly drops them with `UNLISTEN`. Notifications are delivered at COMMIT time of the publisher's transaction (or immediately if there's no surrounding transaction) and PG coalesces duplicate identical notifications inside one transaction so listeners see one delivery per distinct `(channel, payload)` pair.
+
+Typical use cases: cache invalidation ("a row in `users` changed; drop the cached profile"), real-time UI updates ("push a websocket event to the connected client"), and database-coordinated worker wakeups ("a job landed in the queue; pick it up"). All three patterns avoid a separate message broker for app traffic that already touches the database — the cost is being tied to PG.
+
+```ts
+import { sumak, pgDialect } from "sumak"
+
+const db = sumak({ dialect: pgDialect(), tables: {} })
+
+// 1) Subscribe — typically right after the connection is acquired.
+db.compileDDL(db.schema.listen("cache_invalidation").build())
+// → LISTEN "cache_invalidation"
+
+// 2) Publish — usually inside the transaction that just changed the data.
+db.compileDDL(db.schema.notify("cache_invalidation").payload("users:42").build())
+// → NOTIFY "cache_invalidation", 'users:42'
+
+// 3) Unsubscribe — on connection release or shutdown.
+db.compileDDL(db.schema.unlisten("cache_invalidation").build())
+// → UNLISTEN "cache_invalidation"
+```
+
+The payload is optional. When unset PG sends a notification with an empty string payload; when set the value is escaped via `escapeStringLiteral` at print time so single quotes (`O'Brien`) and backslashes (`C:\\path`) survive verbatim through the SQL literal slot. PG caps the payload at 8 KB by default (the `NOTIFY_PAYLOAD_LIMIT` server constant; build-time tunable). For larger payloads, store the body elsewhere (a row in a `notifications` table, a key in Redis) and ship just the lookup key over the channel.
+
+### Wildcard unsubscribe
+
+`UNLISTEN *` drops every active subscription on the session in one statement — useful from a connection pool's release hook so the next caller doesn't inherit a polluted subscription set:
+
+```ts
+db.compileDDL(db.schema.unlisten("*").build())
+// → UNLISTEN *
+```
+
+### Plumbing in the driver
+
+LISTEN / UNLISTEN are session-scoped DDL — sumak compiles the SQL, but receiving notifications requires the driver's async callback. With `node-postgres`:
+
+```ts
+import { Client } from "pg"
+
+const client = new Client(/* … */)
+await client.connect()
+
+// Compile + execute the LISTEN.
+const { sql } = db.compileDDL(db.schema.listen("cache_invalidation").build())
+await client.query(sql)
+
+// Wire the notification listener.
+client.on("notification", (msg) => {
+  // msg.channel === "cache_invalidation"
+  // msg.payload === the string from `NOTIFY ... , '<payload>'`
+})
+```
+
+On the publish side, you typically NOTIFY from inside the same transaction that changed the data — PG holds the notification until COMMIT, so listeners see it only after the change is durable:
+
+```ts
+await db.transaction(async (tx) => {
+  await tx.updateTable("users").set({ name: "Ada" }).where("id", "=", 42).exec()
+  const { sql } = db.compileDDL(db.schema.notify("cache_invalidation").payload("users:42").build())
+  await tx.execute(sql)
+})
+// Listener fires on a different connection after the COMMIT lands.
+```
+
+### Channel naming
+
+Channel names are SQL identifiers, not string literals — they're quoted via `quoteIdentifier` at print time. sumak also gates them through `validateFunctionName`, which refuses anything outside `[A-Za-z_][A-Za-z0-9_]*`. This prevents injection through the unquoted-identifier slot if a channel name reaches the builder from user-controlled input — pick a fixed-shape token (e.g. `cache_${tenantId}` with `tenantId: number`), not a free-form string.
+
+### Feature matrix
+
+| Dialect | Status                                                                     |
+| ------- | -------------------------------------------------------------------------- |
+| pg      | ✅ Full grammar — `LISTEN` / `UNLISTEN` (named + `*`) / `NOTIFY` ± payload |
+| mysql   | ❌ No equivalent in core; printer refuses                                  |
+| sqlite  | ❌ No equivalent; printer refuses                                          |
+| mssql   | ❌ No equivalent; printer refuses                                          |
+
+For MySQL / SQLite / MSSQL use an external message broker (Redis Pub/Sub, RabbitMQ, NATS, Kafka) instead of the database for the same patterns.
+
+---
+
 ## Normalize string columns on write
 
 `normalizeStrings` rewrites configured string columns before the INSERT / UPDATE / MERGE hits the wire. The rewrite runs on the value, not the SQL — the generated SQL stays clean (no `LOWER(?)` wrapping) and indexes on the column still apply.

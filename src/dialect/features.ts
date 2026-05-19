@@ -557,6 +557,16 @@ export const FEATURES = {
    * `ENCODING`).
    */
   COPY_STMT: { label: "COPY", dialects: ["pg"] },
+  /**
+   * `LISTEN <channel>` / `UNLISTEN <channel | *>` / `NOTIFY <channel> [,
+   * payload]` — PostgreSQL's per-channel async pubsub. Used for cache
+   * invalidation, real-time UI updates, and "wake up the worker" signals
+   * coordinated through the database itself rather than a separate
+   * broker. PG only — MySQL / SQLite / MSSQL have no equivalent
+   * primitive in core (MySQL's X Protocol notifications live in a
+   * plugin layer with different surface).
+   */
+  PUBSUB: { label: "LISTEN / NOTIFY / UNLISTEN", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {

@@ -26,6 +26,7 @@ import { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/exte
 import { LockTableBuilder } from "./builder/ddl/lock-table.ts"
 import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
 import { AlterPolicyBuilder, CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
+import { ListenBuilder, NotifyBuilder, UnlistenBuilder } from "./builder/ddl/pubsub.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
 import { TruncateBuilder, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 import { Col } from "./builder/eb.ts"
@@ -870,6 +871,9 @@ const DDL_NODE_TYPES = new Set<string>([
   "alter_type_add_value",
   "lock_table",
   "copy",
+  "listen",
+  "unlisten",
+  "notify",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1304,6 +1308,57 @@ export class SchemaBuilder {
    */
   copyTo(table: string): CopyToBuilder {
     return new CopyToBuilder(table)
+  }
+
+  /**
+   * PostgreSQL `LISTEN <channel>` — subscribe the current session to a
+   * pubsub channel. Notifications sent on the channel via `NOTIFY`
+   * arrive through the driver's async notification callback.
+   *
+   * ```ts
+   * db.compileDDL(db.schema.listen("cache_invalidation").build())
+   * // PG: LISTEN "cache_invalidation"
+   * ```
+   *
+   * Refused on MySQL / SQLite / MSSQL via the `PUBSUB` feature gate —
+   * none have a comparable built-in async-pubsub primitive in core.
+   */
+  listen(channel: string): ListenBuilder {
+    return new ListenBuilder(channel)
+  }
+
+  /**
+   * PostgreSQL `UNLISTEN <channel | *>` — cancel a previous `LISTEN`.
+   * Pass `"*"` to drop every active subscription on the session in one
+   * statement (useful from a pool's connection-release hook).
+   *
+   * ```ts
+   * db.compileDDL(db.schema.unlisten("cache_invalidation").build())
+   * // PG: UNLISTEN "cache_invalidation"
+   *
+   * db.compileDDL(db.schema.unlisten("*").build())
+   * // PG: UNLISTEN *
+   * ```
+   */
+  unlisten(channel: string): UnlistenBuilder {
+    return new UnlistenBuilder(channel)
+  }
+
+  /**
+   * PostgreSQL `NOTIFY <channel> [, '<payload>']` — send an async
+   * notification on a channel. The payload is optional; when set it's
+   * escaped via `escapeStringLiteral` at print time so arbitrary UTF-8
+   * is safe to splice through.
+   *
+   * ```ts
+   * db.compileDDL(db.schema.notify("orders_changed").payload("123").build())
+   * // PG: NOTIFY "orders_changed", '123'
+   * ```
+   *
+   * PG only — same `PUBSUB` feature gate as LISTEN / UNLISTEN.
+   */
+  notify(channel: string): NotifyBuilder {
+    return new NotifyBuilder(channel)
   }
 }
 
