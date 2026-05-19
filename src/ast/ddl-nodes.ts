@@ -1010,6 +1010,80 @@ export interface DropDomainNode {
   restrict?: boolean
 }
 
+// ── LOCK TABLE (PG advisory locking) ──
+
+/**
+ * PostgreSQL `LOCK [TABLE] [ONLY] name [*] [, ...] [IN lock_mode MODE]
+ * [NOWAIT]`. Standalone statement used inside an explicit transaction
+ * to take a named table-level lock on one or more tables — the
+ * "explicit advisory locking" pattern for serializing critical sections
+ * that can't tolerate optimistic concurrency.
+ *
+ * The eight valid `lock_mode` values map 1:1 to the PG keywords:
+ *
+ *  - `ACCESS SHARE` — implicit lock on `SELECT`. Conflicts only with
+ *    `ACCESS EXCLUSIVE`.
+ *  - `ROW SHARE` — implicit lock on `SELECT … FOR UPDATE / SHARE`.
+ *  - `ROW EXCLUSIVE` — implicit lock on `INSERT / UPDATE / DELETE`.
+ *  - `SHARE UPDATE EXCLUSIVE` — implicit lock on `VACUUM (without FULL)`,
+ *    `ANALYZE`, `CREATE INDEX CONCURRENTLY`, …
+ *  - `SHARE` — implicit lock on `CREATE INDEX (without CONCURRENTLY)`.
+ *    Mutually exclusive with itself across sessions — used to block
+ *    concurrent writes while reads continue.
+ *  - `SHARE ROW EXCLUSIVE` — like `SHARE` but also self-conflicting.
+ *  - `EXCLUSIVE` — blocks all locks except `ACCESS SHARE`.
+ *  - `ACCESS EXCLUSIVE` — implicit lock on `DROP TABLE`, `TRUNCATE`,
+ *    `REINDEX`, `ALTER TABLE`, `VACUUM FULL`, `REFRESH MATERIALIZED
+ *    VIEW (without CONCURRENTLY)`. The default when no `IN … MODE` is
+ *    given — `LOCK TABLE foo;` and `LOCK TABLE foo IN ACCESS EXCLUSIVE
+ *    MODE;` are equivalent. Blocks every other lock.
+ *
+ * `NOWAIT` makes the statement fail immediately rather than wait if the
+ * lock can't be acquired right away — useful for "try-lock" patterns
+ * where the caller would rather report failure than block.
+ *
+ * PG only. MSSQL has no equivalent statement (uses table hints like
+ * `WITH (TABLOCK)` on individual queries). MySQL has `LOCK TABLES name
+ * READ|WRITE` with a different grammar (no `IN … MODE`, no `NOWAIT`)
+ * and different transaction semantics — refused for the first cut.
+ * SQLite has no equivalent at all.
+ */
+export interface LockTableNode {
+  type: "lock_table"
+  /**
+   * One or more tables to lock. PG accepts a comma-separated list in a
+   * single statement and applies the same mode + nowait flag to each.
+   */
+  tables: string[]
+  /**
+   * `ONLY` — skip table inheritance descendants. Without it PG locks
+   * the named table *and* every table that inherits from it; with it
+   * only the named relation is locked. Applies uniformly to every name
+   * in the table list (the per-name `ONLY` form isn't surfaced here for
+   * the first cut).
+   */
+  only?: boolean
+  /**
+   * Lock mode keyword. When undefined the printer emits no `IN … MODE`
+   * clause, which means PG falls back to its default `ACCESS EXCLUSIVE`.
+   */
+  mode?:
+    | "ACCESS SHARE"
+    | "ROW SHARE"
+    | "ROW EXCLUSIVE"
+    | "SHARE UPDATE EXCLUSIVE"
+    | "SHARE"
+    | "SHARE ROW EXCLUSIVE"
+    | "EXCLUSIVE"
+    | "ACCESS EXCLUSIVE"
+  /**
+   * `NOWAIT` — fail immediately if the lock can't be taken instead of
+   * waiting. Useful for opportunistic try-lock patterns where the
+   * caller prefers a fast error over an indefinite wait.
+   */
+  noWait?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -1039,3 +1113,4 @@ export type DDLNode =
   | DropTypeNode
   | CreateDomainNode
   | DropDomainNode
+  | LockTableNode

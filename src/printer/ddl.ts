@@ -25,6 +25,7 @@ import type {
   DropViewNode,
   ExcludeConstraintNode,
   ForeignKeyConstraintNode,
+  LockTableNode,
   RefreshMaterializedViewNode,
   ReindexNode,
   TableConstraintNode,
@@ -123,6 +124,8 @@ export class DDLPrinter {
         return this.printCreateDomain(node)
       case "drop_domain":
         return this.printDropDomain(node)
+      case "lock_table":
+        return this.printLockTable(node)
     }
   }
 
@@ -1380,6 +1383,60 @@ export class DDLPrinter {
     parts.push(node.target)
     if (node.concurrently) parts.push("CONCURRENTLY")
     parts.push(quoteIdentifier(node.name, this.dialect))
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `LOCK TABLE [ONLY] <name> [, ...] [IN <mode> MODE] [NOWAIT]`.
+   *
+   * PG-only — refuses on MySQL / SQLite / MSSQL via the
+   * `LOCK_TABLE_STMT` feature gate (MySQL's `LOCK TABLES` is a
+   * different statement entirely; MSSQL uses table hints; SQLite has
+   * no equivalent).
+   *
+   * Defensive guards beyond the type system:
+   *
+   *  - `tables` must be non-empty. The builder constructor seeds at
+   *    least one name, but a hand-rolled AST could land here.
+   *  - `mode` is type-restricted to the eight PG keywords; the switch
+   *    surface guards against `as unknown` smuggling other tokens
+   *    into the unquoted SQL slot.
+   *
+   * The emitted shape always uses the `LOCK TABLE` long form rather
+   * than the `LOCK` short form — both are valid PG, but `LOCK TABLE`
+   * reads cleaner in audit trails and matches what `pg_dump` emits.
+   */
+  private printLockTable(node: LockTableNode): string {
+    assertFeature(this.dialect, "LOCK_TABLE_STMT")
+    if (node.tables.length === 0) {
+      throw new Error("LOCK TABLE requires at least one table name.")
+    }
+    if (node.mode !== undefined) {
+      switch (node.mode) {
+        case "ACCESS SHARE":
+        case "ROW SHARE":
+        case "ROW EXCLUSIVE":
+        case "SHARE UPDATE EXCLUSIVE":
+        case "SHARE":
+        case "SHARE ROW EXCLUSIVE":
+        case "EXCLUSIVE":
+        case "ACCESS EXCLUSIVE":
+          break
+        default:
+          throw new Error(
+            `LOCK TABLE: mode must be one of ACCESS SHARE / ROW SHARE / ROW EXCLUSIVE / SHARE UPDATE EXCLUSIVE / SHARE / SHARE ROW EXCLUSIVE / EXCLUSIVE / ACCESS EXCLUSIVE — got "${String(
+              (node as { mode: string }).mode,
+            )}".`,
+          )
+      }
+    }
+    const parts: string[] = ["LOCK TABLE"]
+    if (node.only) parts.push("ONLY")
+    parts.push(node.tables.map((t) => quoteIdentifier(t, this.dialect)).join(", "))
+    if (node.mode !== undefined) {
+      parts.push("IN", node.mode, "MODE")
+    }
+    if (node.noWait) parts.push("NOWAIT")
     return parts.join(" ")
   }
 

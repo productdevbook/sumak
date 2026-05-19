@@ -21,6 +21,7 @@ import {
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
 import { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/extension.ts"
+import { LockTableBuilder } from "./builder/ddl/lock-table.ts"
 import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
 import { CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
@@ -863,6 +864,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "drop_type",
   "create_domain",
   "drop_domain",
+  "lock_table",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1155,68 +1157,42 @@ export class SchemaBuilder {
   }
 
   /**
-   * `CREATE TYPE <name> AS ENUM ('v1', 'v2', ...)` — declare a named
-   * enum type usable across many columns and functions. The label
-   * order is also the sort order in PG.
-   *
-   * ```ts
-   * db.schema.createTypeEnum("order_status").values("pending", "paid").build()
-   * // CREATE TYPE "order_status" AS ENUM ('pending', 'paid')
-   * ```
-   *
-   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL.
+   * `CREATE TYPE <name> AS ENUM (...)`. PostgreSQL-only.
    */
   createTypeEnum(name: string): CreateTypeEnumBuilder {
     return new CreateTypeEnumBuilder(name)
   }
 
   /**
-   * `DROP TYPE [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`. Accepts
-   * either a single name or an array — PG permits a comma-separated
-   * list.
-   *
-   * ```ts
-   * db.schema.dropType("order_status").ifExists().build()
-   * // DROP TYPE IF EXISTS "order_status"
-   * ```
-   *
-   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL.
+   * `DROP TYPE [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`. PG-only.
    */
   dropType(name: string | string[]): DropTypeBuilder {
     return new DropTypeBuilder(name)
   }
 
   /**
-   * `CREATE DOMAIN <name> AS <type> [DEFAULT <expr>]
-   *   [[CONSTRAINT <cname>] { NOT NULL | CHECK (<expr>) }]`.
-   *
-   * Domains wrap an existing type with a default + validation rule
-   * (CHECK) that you can reuse across many columns.
-   *
-   * ```ts
-   * db.schema.createDomain("positive_int", "integer")
-   *   .check(sql<boolean>`VALUE > 0`)
-   *   .notNull()
-   *   .build()
-   * ```
-   *
-   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL.
+   * `CREATE DOMAIN <name> AS <type>` with optional DEFAULT / NOT NULL /
+   * CHECK. PostgreSQL-only.
    */
   createDomain(name: string, dataType?: string): CreateDomainBuilder {
     return new CreateDomainBuilder(name, dataType)
   }
 
   /**
-   * `DROP DOMAIN [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`.
-   *
-   * ```ts
-   * db.schema.dropDomain("positive_int").ifExists().build()
-   * ```
-   *
-   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL.
+   * `DROP DOMAIN [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`. PG-only.
    */
   dropDomain(name: string | string[]): DropDomainBuilder {
     return new DropDomainBuilder(name)
+  }
+
+  /**
+   * PostgreSQL `LOCK [TABLE] [ONLY] name [, …] [IN lock_mode MODE]
+   * [NOWAIT]` — explicit table-level lock inside the current transaction.
+   *
+   * PostgreSQL-only. Throws on MySQL/SQLite/MSSQL via `LOCK_TABLE_STMT`.
+   */
+  lockTable(tables: string | string[]): LockTableBuilder {
+    return new LockTableBuilder(tables)
   }
 }
 

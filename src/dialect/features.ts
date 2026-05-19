@@ -534,18 +534,14 @@ export const FEATURES = {
   EXTENSIONS: { label: "CREATE/DROP EXTENSION", dialects: ["pg"] },
   /**
    * `CREATE TYPE … AS ENUM`, `DROP TYPE`, `CREATE DOMAIN`, `DROP
-   * DOMAIN` — named user-defined enum and domain types. PostgreSQL has
-   * a full first-class surface for both; we cover the enum and domain
-   * shapes here (composite, range, and base types are deliberately
-   * deferred — wider AST surface). MySQL has only the inline
-   * `ENUM(...)` column shape and no `CREATE TYPE` / `CREATE DOMAIN`
-   * grammar; SQLite has no enum type or domain concept at all; MSSQL's
-   * `CREATE TYPE` shape is incompatible (`AS TABLE` or `FROM
-   * existing_type`, no `AS ENUM`, no `CHECK` on the DDL form). The
-   * printer refuses on every non-PG dialect for all four statement
-   * shapes rather than emit DDL the engine will reject.
+   * DOMAIN` — named user-defined enum and domain types. PostgreSQL-only.
    */
   CUSTOM_TYPES: { label: "CREATE TYPE / CREATE DOMAIN", dialects: ["pg"] },
+  /**
+   * `LOCK TABLE [ONLY] name [, …] [IN lock_mode MODE] [NOWAIT]` —
+   * PostgreSQL only. MySQL has a different statement; MSSQL uses table hints.
+   */
+  LOCK_TABLE_STMT: { label: "LOCK TABLE", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {

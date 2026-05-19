@@ -325,6 +325,7 @@ export type {
   DropSequenceNode,
   DropTypeNode,
   DropViewNode,
+  LockTableNode,
   RefreshMaterializedViewNode,
   ReindexNode,
   TruncateTableNode,
@@ -367,6 +368,7 @@ export {
   DropTypeBuilder,
   dropType,
 } from "./builder/ddl/custom-types.ts"
+export { LockTableBuilder, type LockMode, lockTable } from "./builder/ddl/lock-table.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"
