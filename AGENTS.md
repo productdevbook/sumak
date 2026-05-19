@@ -138,6 +138,7 @@ test/
   migrate/                  # diff, runner
   introspect/               # pg/mysql/sqlite/mssql catalog readers + generate
   integration/              # pglite-driver + roundtrip tests (plugins, introspect, CTEs, window fns)
+                              #   - mysql.test.ts is env-gated; set MYSQL_URL to run it
   normalize/                # expression, query
   optimize/                 # rules, optimizer
   printer/                  # base, pg, mysql, sqlite, mssql, formatter, document, new-nodes
