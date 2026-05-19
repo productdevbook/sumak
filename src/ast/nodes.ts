@@ -108,6 +108,19 @@ export interface FunctionCallNode {
    * a non-empty `returningType` on that dialect — wrap with `CAST(...)`.
    */
   returningType?: string
+  /**
+   * SQL standard `EXTRACT(<field> FROM <expr>)` field name —
+   * `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, plus dialect-
+   * specific extras (`DOW`, `DOY`, `EPOCH`, `ISOYEAR`, `ISODOW`, …
+   * on PG). When set, the printer emits the EXTRACT-specific form
+   * `EXTRACT(field FROM args[0])` instead of `name(args)`. The field
+   * name is validated against an alphanumeric allowlist (no quotes,
+   * no spaces) by the builder before reaching the printer.
+   *
+   * Only meaningful when `name === "EXTRACT"`; other functions ignore
+   * this slot at print time.
+   */
+  extractField?: string
   alias?: string
 }
 

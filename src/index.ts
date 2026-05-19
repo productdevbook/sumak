@@ -110,7 +110,7 @@ export {
 export { excluded } from "./builder/eb.ts"
 
 // ─── Date/time helpers ─────────────────────────────────────────────────────
-export { now, currentTimestamp } from "./builder/eb.ts"
+export { now, currentTimestamp, extract, dateTrunc, age } from "./builder/eb.ts"
 
 // ─── Full-text search & JSON helpers (stable subset) ───────────────────────
 export {

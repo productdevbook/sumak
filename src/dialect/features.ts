@@ -180,6 +180,33 @@ export const FEATURES = {
   FTS_SQLITE_MATCH: { label: "FTS5 MATCH", dialects: ["sqlite"] },
   FTS_MSSQL_CONTAINS: { label: "CONTAINS", dialects: ["mssql"] },
 
+  // ── Date/time functions ───────────────────────────────────────────
+  /**
+   * SQL standard `EXTRACT(<field> FROM <expr>)`. All four dialects
+   * accept the standard form for the common fields (YEAR, MONTH, DAY,
+   * HOUR, MINUTE, SECOND), but the *recognized* field set differs:
+   * PG has the richest list (DOW, DOY, EPOCH, ISOYEAR, ISODOW, etc.);
+   * SQLite implements EXTRACT via strftime-equivalents and accepts a
+   * narrower subset; MSSQL maps it to DATEPART; MySQL accepts the
+   * standard fields. Unrecognised fields fail at parse — the printer
+   * does not gate per-field, only per-presence.
+   */
+  EXTRACT_FN: { label: "EXTRACT", dialects: ["pg", "mysql", "sqlite", "mssql"] },
+  /**
+   * PG `DATE_TRUNC(unit, ts)` — round a timestamp down to the named
+   * unit ('year', 'month', 'day', …). PG only; MSSQL has `DATETRUNC`
+   * with a different shape and reversed argument types (identifier
+   * field, not a string literal). MySQL/SQLite have no equivalent.
+   */
+  DATE_TRUNC_FN: { label: "DATE_TRUNC", dialects: ["pg"] },
+  /**
+   * PG `AGE(end, start)` / `AGE(now, start)` — returns an interval
+   * difference between two timestamps. PG only — no portable
+   * equivalent on the other dialects (MySQL's `TIMESTAMPDIFF` returns
+   * a numeric in chosen units; MSSQL's `DATEDIFF` similarly).
+   */
+  AGE_FN: { label: "AGE", dialects: ["pg"] },
+
   // ── Temporal ──────────────────────────────────────────────────────
   TEMPORAL_FOR_SYSTEM_TIME: {
     label: "FOR SYSTEM_TIME (SQL:2011 temporal tables)",

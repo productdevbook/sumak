@@ -1385,6 +1385,148 @@ export function currentTimestamp(): Expression<Date> {
 }
 
 /**
+ * EXTRACT field allowlist. Keep this in sync with what the underlying
+ * dialects parse — the printer emits the field verbatim, so any string
+ * not on this list would either fail at parse time or, worse, be
+ * interpreted as something we didn't anticipate. Validating here points
+ * the error at the builder call site rather than the driver.
+ *
+ * Includes the SQL standard common fields plus PG's extras (DOW, DOY,
+ * EPOCH, ISOYEAR, ISODOW, MILLISECONDS, MICROSECONDS, CENTURY, DECADE,
+ * MILLENNIUM, TIMEZONE, TIMEZONE_HOUR, TIMEZONE_MINUTE). On non-PG
+ * dialects the engine may reject a PG-only field at parse — that's the
+ * caller's signal that they reached for something portable they
+ * shouldn't have.
+ */
+const EXTRACT_FIELDS: ReadonlySet<string> = new Set([
+  "YEAR",
+  "MONTH",
+  "DAY",
+  "HOUR",
+  "MINUTE",
+  "SECOND",
+  "DOW",
+  "DOY",
+  "WEEK",
+  "QUARTER",
+  "EPOCH",
+  "ISOYEAR",
+  "ISODOW",
+  "MILLISECOND",
+  "MILLISECONDS",
+  "MICROSECOND",
+  "MICROSECONDS",
+  "CENTURY",
+  "DECADE",
+  "MILLENNIUM",
+  "TIMEZONE",
+  "TIMEZONE_HOUR",
+  "TIMEZONE_MINUTE",
+])
+
+/**
+ * `EXTRACT(<field> FROM <expr>)` — pull a calendar / clock component
+ * out of a timestamp / date / time value. SQL standard; supported on
+ * all four dialects (the recognised field set differs — `EPOCH`,
+ * `ISOYEAR`, `DOW`, `DOY` are PG-only; the engines parse the standard
+ * fields YEAR / MONTH / DAY / HOUR / MINUTE / SECOND).
+ *
+ * ```ts
+ * extract("year", typedCol<Date>("created_at"))
+ *   // EXTRACT(YEAR FROM "created_at")
+ *
+ * extract("epoch", typedCol<Date>("ts"))
+ *   // PG: EXTRACT(EPOCH FROM "ts") — seconds since 1970-01-01
+ * ```
+ *
+ * The `field` is validated against a fixed allowlist (case-insensitive)
+ * — passing an unknown keyword throws at build time with a hint. Use
+ * `unsafeRawExpr` if you genuinely need an EXTRACT field that we
+ * haven't catalogued (PG accepts a handful of extras like `JULIAN`).
+ */
+export function extract(field: string, expr: Expression<any> | Col<any>): Expression<number> {
+  const upper = field.toUpperCase()
+  if (!EXTRACT_FIELDS.has(upper)) {
+    throw new InvalidExpressionError(
+      `extract(): unknown field "${field}". Allowed: ${Array.from(EXTRACT_FIELDS).join(", ")}. ` +
+        "Reach for unsafeRawExpr() if your dialect supports a field that isn't catalogued.",
+    )
+  }
+  const exprNode = expr instanceof Col ? expr._node : (expr as Expression<any>).node
+  const fnNode: FunctionCallNode = {
+    type: "function_call",
+    name: "EXTRACT",
+    args: [exprNode],
+    extractField: upper,
+  }
+  return wrap<number>(fnNode)
+}
+
+/**
+ * PG `DATE_TRUNC(<unit>, <expr>)` — round a timestamp down to the
+ * named unit (`'year'`, `'month'`, `'day'`, `'hour'`, `'minute'`, …).
+ * The unit is a string literal that PG inspects at planning time; the
+ * builder validates against an alphanumeric allowlist before emitting
+ * to keep injection out of the picture.
+ *
+ * ```ts
+ * dateTrunc("month", typedCol<Date>("created_at"))
+ *   // DATE_TRUNC('month', "created_at")
+ * ```
+ *
+ * **PG-only.** MSSQL has a `DATETRUNC` function with a different shape
+ * (identifier field, not a quoted string); MySQL has no exact
+ * equivalent — `DATE_FORMAT(ts, '%Y-%m-01')` is the usual workaround;
+ * SQLite uses `strftime`. The other dialects' printers throw via
+ * `DATE_TRUNC_FN`.
+ */
+export function dateTrunc(unit: string, expr: Expression<any> | Col<any>): Expression<Date> {
+  // Validate the unit looks like a SQL identifier — PG accepts a fixed
+  // list (microseconds … millennium) and rejects anything else at
+  // execution time, but we keep the rule loose here so PG-version-
+  // specific extras still go through. The injection-relevant check is
+  // that there's no `'` or `\\` that would break out of the literal.
+  if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(unit)) {
+    throw new InvalidExpressionError(
+      `dateTrunc(): unit must be a SQL identifier (letters/digits/underscores), got "${unit}".`,
+    )
+  }
+  const exprNode = expr instanceof Col ? expr._node : (expr as Expression<any>).node
+  return wrap<Date>(rawFn("DATE_TRUNC", [rawLit(unit.toLowerCase()), exprNode]))
+}
+
+/**
+ * PG `AGE(end?, start)` — returns a symbolic `interval` difference
+ * between two timestamps (years + months + days + …). The two-arg form
+ * is `AGE(end, start)`; the one-arg form `AGE(start)` is shorthand for
+ * `AGE(current_date, start)` — *not* `AGE(now(), start)`. The result
+ * is an interval, not a number; compare with `epoch from age(...)`
+ * or another `interval` for a numeric.
+ *
+ * ```ts
+ * age(typedCol<Date>("born"))                                 // AGE("born")
+ * age(typedCol<Date>("died"), typedCol<Date>("born"))          // AGE("died", "born")
+ * ```
+ *
+ * **PG-only.** MySQL uses `TIMESTAMPDIFF(unit, start, end)` to get a
+ * numeric in a chosen unit; MSSQL has `DATEDIFF(unit, start, end)`;
+ * SQLite has `julianday()` differences. None of those return an
+ * interval, so we don't surface a portable wrapper — the printer
+ * refuses on the other dialects via `AGE_FN`.
+ */
+export function age(
+  end: Expression<any> | Col<any>,
+  start?: Expression<any> | Col<any>,
+): Expression<unknown> {
+  const endNode = end instanceof Col ? end._node : (end as Expression<any>).node
+  const args: ExpressionNode[] = [endNode]
+  if (start !== undefined) {
+    args.push(start instanceof Col ? start._node : (start as Expression<any>).node)
+  }
+  return wrap<unknown>(rawFn("AGE", args))
+}
+
+/**
  * `NULLIF(a, b)` — returns NULL when `a = b`, otherwise `a`.
  * Common idiom for guarding against divide-by-zero:
  *

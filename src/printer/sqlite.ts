@@ -199,6 +199,17 @@ export class SqlitePrinter extends BasePrinter {
     if (upper === "JSON_EXISTS") {
       assertFeature("sqlite", "JSON_EXISTS_FN")
     }
+    // SQLite has no `DATE_TRUNC` / `AGE` — `strftime('%Y-%m-01', ts)`
+    // is the truncation idiom, and interval-style differences are
+    // computed via `julianday()`. Refuse the standard names so the
+    // failure points at the builder call, not a generic SQLite
+    // "no such function" at execution.
+    if (upper === "DATE_TRUNC") {
+      assertFeature("sqlite", "DATE_TRUNC_FN")
+    }
+    if (upper === "AGE") {
+      assertFeature("sqlite", "AGE_FN")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently
