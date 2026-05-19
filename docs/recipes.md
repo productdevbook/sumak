@@ -387,6 +387,106 @@ Single quotes in the comment text are escaped automatically (doubled `''`), so `
 
 ---
 
+## Views (CREATE VIEW / DROP VIEW / MATERIALIZED)
+
+Views are stored named queries — `SELECT … FROM v` evaluates the saved query and projects the result. sumak surfaces the standard `CREATE VIEW`, `DROP VIEW`, and (on PostgreSQL) `MATERIALIZED VIEW` + `REFRESH` forms via the schema-builder DSL, with full dialect-aware rewriting. The embedded SELECT body runs through the same `compile()` pipeline as a top-level query, so any registered plugins (multi-tenant scoping, soft-delete filtering, CASL authz, …) apply automatically — `CREATE VIEW tenant_orders AS SELECT * FROM orders` will not silently leak rows across tenants.
+
+```ts
+const sel = db
+  .selectFrom("orders")
+  .where(({ status }) => status.eq("paid"))
+  .select("id", "userId", "total")
+  .build()
+
+const ddl = db.compileDDL(db.schema.createView("paid_orders").asSelect(sel).build())
+// PG / SQLite : CREATE VIEW "paid_orders" AS SELECT ...
+// MySQL       : CREATE VIEW `paid_orders` AS SELECT ...
+// MSSQL       : CREATE VIEW [paid_orders] AS SELECT ...
+```
+
+### Replacing a view
+
+PostgreSQL and MySQL both accept `CREATE OR REPLACE VIEW`. SQL Server has no `OR REPLACE` keyword but ships an analogous `CREATE OR ALTER VIEW` (since 2016 SP1). SQLite has neither — you must `DROP VIEW IF EXISTS` first. sumak exposes the two spellings as separate builder methods because they're not interchangeable and a single `.orReplace()` that quietly swapped to `CREATE OR ALTER` on MSSQL would obscure dialect-portability mistakes.
+
+```ts
+// PG / MySQL
+db.schema.createView("v").orReplace().asSelect(sel).build()
+// → CREATE OR REPLACE VIEW "v" AS …
+
+// MSSQL only
+db.schema.createView("v").orAlter().asSelect(sel).build()
+// → CREATE OR ALTER VIEW [v] AS …
+```
+
+Calling `.orReplace()` on MSSQL throws `UnsupportedDialectFeatureError` with a pointer at `.orAlter()`. Calling `.orAlter()` on PG/MySQL/SQLite throws likewise. Setting both at once also throws — they're mutually exclusive. `IF NOT EXISTS` and either of the replace flags are mutually exclusive too: `OR REPLACE` / `OR ALTER` overwrite, `IF NOT EXISTS` leaves the existing view, so combining them makes no sense.
+
+For SQLite the idiomatic replace flow is two statements:
+
+```ts
+db.compileDDL(db.schema.dropView("v").ifExists().build())
+db.compileDDL(db.schema.createView("v").asSelect(sel).build())
+```
+
+### Materialized views (PostgreSQL only)
+
+A materialized view caches its query result on disk and stays stale until explicitly refreshed. PostgreSQL is the only one of the four dialects with a first-class `MATERIALIZED VIEW` grammar (Oracle has it too, but isn't in sumak's matrix); MySQL, SQLite, and MSSQL have no equivalent — sumak throws `UnsupportedDialectFeatureError` on those dialects rather than silently emit a plain `VIEW` that would re-execute the query on every read.
+
+```ts
+// Populate at creation (default).
+db.compileDDL(db.schema.createView("daily_sales").materialized().asSelect(sel).build())
+// → CREATE MATERIALIZED VIEW "daily_sales" AS SELECT …
+
+// Create empty — the view is unqueryable until the first REFRESH.
+db.compileDDL(
+  db.schema.createView("daily_sales").materialized().withData(false).asSelect(sel).build(),
+)
+// → CREATE MATERIALIZED VIEW "daily_sales" AS SELECT … WITH NO DATA
+```
+
+Refresh with `db.schema.refreshMaterializedView(...)`:
+
+```ts
+// Locks the view exclusively while the query runs.
+db.compileDDL(db.schema.refreshMaterializedView("daily_sales").build())
+// → REFRESH MATERIALIZED VIEW "daily_sales"
+
+// Swap-on-finish; readers see old data until done. Requires a
+// UNIQUE index on the view's projected rows — PG raises at refresh
+// time if that's missing.
+db.compileDDL(db.schema.refreshMaterializedView("daily_sales").concurrently().build())
+// → REFRESH MATERIALIZED VIEW CONCURRENTLY "daily_sales"
+```
+
+Drop with `.materialized()` on the drop builder, otherwise PG rejects the statement (a materialized view and a regular view live in the same namespace but require different `DROP` keywords):
+
+```ts
+db.compileDDL(db.schema.dropView("daily_sales").materialized().ifExists().build())
+// → DROP MATERIALIZED VIEW IF EXISTS "daily_sales"
+```
+
+### Param-bound view bodies
+
+The SELECT embedded in `CREATE VIEW` is rendered by the dialect's full SELECT pipeline, so any `where(({ col }) => col.eq(value))` placeholders bind exactly the way they would in a top-level query — the bound values land in the outer `compileDDL` result's `params`. PostgreSQL accepts bound parameters in view bodies (the value is captured at creation time), but most production deployments use a literal in the view definition instead. If you need a literal, pass it through `val(...)`-then-`unsafeRawExpr` or write the constant directly in the SELECT — sumak doesn't second-guess whether your bound value should be inlined.
+
+### Feature matrix
+
+| Feature                     | PG  | MySQL | SQLite | MSSQL |
+| --------------------------- | --- | ----- | ------ | ----- |
+| `CREATE VIEW`               | yes | yes   | yes    | yes   |
+| `CREATE OR REPLACE VIEW`    | yes | yes   | —      | —     |
+| `CREATE OR ALTER VIEW`      | —   | —     | —      | yes   |
+| `CREATE VIEW IF NOT EXISTS` | yes | yes   | yes    | —     |
+| `TEMPORARY VIEW`            | yes | yes   | yes    | —     |
+| `CREATE MATERIALIZED VIEW`  | yes | —     | —      | —     |
+| `WITH NO DATA`              | yes | —     | —      | —     |
+| `REFRESH MATERIALIZED VIEW` | yes | —     | —      | —     |
+| `REFRESH … CONCURRENTLY`    | yes | —     | —      | —     |
+| `DROP VIEW IF EXISTS`       | yes | yes   | yes    | —     |
+| `DROP VIEW … CASCADE`       | yes | —     | —      | —     |
+| `DROP MATERIALIZED VIEW`    | yes | —     | —      | —     |
+
+---
+
 ## Multi-tenant scoping
 
 ```ts

@@ -5,7 +5,7 @@ import type { Expression } from "./ast/typed-expression.ts"
 import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
 import { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
 import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
-import { CreateViewBuilder } from "./builder/ddl/create-view.ts"
+import { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
 import {
   DropIndexBuilder,
   DropTableBuilder,
@@ -832,6 +832,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "drop_index",
   "create_view",
   "drop_view",
+  "refresh_materialized_view",
   "truncate_table",
   "create_schema",
   "drop_schema",
@@ -901,6 +902,22 @@ export class SchemaBuilder {
 
   dropView(name: string): DropViewBuilder {
     return new DropViewBuilder(name)
+  }
+
+  /**
+   * PG-only — `REFRESH MATERIALIZED VIEW [CONCURRENTLY] <name>
+   * [WITH NO DATA]`. Rebuilds the cached result of a MATERIALIZED VIEW
+   * created via `createView(...).materialized()`. Throws on MySQL /
+   * SQLite / MSSQL at print time via the `MATERIALIZED_VIEW` feature
+   * flag.
+   *
+   * ```ts
+   * // Rebuild in the background — readers see old data until done.
+   * db.compileDDL(db.schema.refreshMaterializedView("daily_stats").concurrently().build())
+   * ```
+   */
+  refreshMaterializedView(name: string, schema?: string): RefreshMaterializedViewBuilder {
+    return new RefreshMaterializedViewBuilder(name, schema)
   }
 
   truncateTable(table: string, schema?: string): TruncateTableBuilder {

@@ -246,10 +246,39 @@ export interface CreateViewNode {
   columns?: string[]
   /** Required at print time. Builder returns a node without it set; `.asSelect(...)` populates it. */
   asSelect?: SelectNode
+  /**
+   * `CREATE OR REPLACE VIEW` — PG / MySQL. Mutually exclusive with
+   * {@link ifNotExists}. MSSQL has no `OR REPLACE` keyword (use
+   * {@link orAlter} for the closest equivalent); SQLite has neither
+   * form. The printer refuses on those dialects.
+   */
   orReplace?: boolean
+  /**
+   * MSSQL-only `CREATE OR ALTER VIEW` (2016 SP1+). Replaces the view
+   * if it exists, creates it otherwise — semantically equivalent to
+   * `OR REPLACE` on PG / MySQL, but spelled differently. The printer
+   * refuses on PG / MySQL / SQLite (each has its own form: PG/MySQL
+   * use `OR REPLACE`; SQLite needs DROP+CREATE). Mutually exclusive
+   * with {@link ifNotExists}.
+   */
+  orAlter?: boolean
   temporary?: boolean
+  /**
+   * PG only — emit `MATERIALIZED VIEW`. Materialized views cache the
+   * query result on disk and must be refreshed explicitly (via
+   * {@link RefreshMaterializedViewNode}). The printer refuses on MySQL /
+   * SQLite / MSSQL, which have no MATERIALIZED VIEW grammar.
+   */
   materialized?: boolean
   ifNotExists?: boolean
+  /**
+   * PG MATERIALIZED VIEW only — controls whether the view is populated
+   * at creation (`WITH DATA`, the default) or left empty (`WITH NO
+   * DATA`, which requires a subsequent REFRESH MATERIALIZED VIEW before
+   * the view can be queried). Ignored on non-materialized views and
+   * non-PG dialects.
+   */
+  withData?: boolean
 }
 
 // ── DROP VIEW ──
@@ -260,6 +289,28 @@ export interface DropViewNode {
   ifExists?: boolean
   cascade?: boolean
   materialized?: boolean
+}
+
+// ── REFRESH MATERIALIZED VIEW ──
+
+/**
+ * PG-only `REFRESH MATERIALIZED VIEW [CONCURRENTLY] <name> [WITH NO DATA]`.
+ * Rebuilds the cached result of a MATERIALIZED VIEW. The `CONCURRENTLY`
+ * flag requires a UNIQUE index on the view and uses a swap-on-finish
+ * strategy so reads see the old data until the new data is ready;
+ * without it, reads block for the full duration of the refresh.
+ * `WITH NO DATA` empties the view's storage (useful when paired with a
+ * later non-concurrent refresh on a low-traffic window).
+ *
+ * MySQL / SQLite / MSSQL have no materialized views at all — the
+ * printer refuses with `UnsupportedDialectFeatureError`.
+ */
+export interface RefreshMaterializedViewNode {
+  type: "refresh_materialized_view"
+  name: string
+  schema?: string
+  concurrently?: boolean
+  withData?: boolean
 }
 
 // ── TRUNCATE TABLE ──
@@ -328,6 +379,7 @@ export type DDLNode =
   | DropIndexNode
   | CreateViewNode
   | DropViewNode
+  | RefreshMaterializedViewNode
   | TruncateTableNode
   | CreateSchemaNode
   | DropSchemaNode
