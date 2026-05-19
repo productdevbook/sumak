@@ -310,10 +310,12 @@ export type {
   AlterSequenceNode,
   AnalyzeNode,
   CommentNode,
+  CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
   CreateViewNode,
   DDLNode,
+  DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
   DropViewNode,
@@ -342,6 +344,12 @@ export {
   VacuumBuilder,
   vacuum,
 } from "./builder/ddl/maintenance.ts"
+export {
+  CreatePolicyBuilder,
+  createPolicy,
+  DropPolicyBuilder,
+  dropPolicy,
+} from "./builder/ddl/policy.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"

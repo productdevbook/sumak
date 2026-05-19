@@ -511,6 +511,17 @@ export const FEATURES = {
    * SQLite shape in particular needs its own AST node.
    */
   REINDEX_STMT: { label: "REINDEX", dialects: ["pg"] },
+  /**
+   * Row Level Security — `ALTER TABLE … ENABLE / DISABLE / FORCE / NO
+   * FORCE ROW LEVEL SECURITY` and `CREATE POLICY` / `DROP POLICY` on
+   * top of it. PG only. MySQL / SQLite have no equivalent feature at
+   * all. MSSQL's "Row-Level Security" is a different design (security
+   * policy objects + predicate functions, attached via `CREATE
+   * SECURITY POLICY`); surfacing it cleanly needs a dedicated AST
+   * node and a separate pass. The DDL printer refuses on every non-PG
+   * dialect for both the RLS toggle and the policy DDL.
+   */
+  ROW_LEVEL_SECURITY: { label: "Row Level Security", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {
