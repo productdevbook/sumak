@@ -44,6 +44,7 @@ import type {
   MergeNode,
   MergeWhenMatched,
   MergeWhenNotMatched,
+  MergeWhenNotMatchedBySource,
 } from "../ast/nodes.ts"
 import { assertFeature } from "../dialect/features.ts"
 import { assertNever, UnsupportedDialectFeatureError } from "../errors.ts"
@@ -1062,8 +1063,12 @@ export class BasePrinter implements Printer {
     for (const when of node.whens) {
       if (when.type === "matched") {
         parts.push(this.printMergeWhenMatched(when))
-      } else {
+      } else if (when.type === "not_matched") {
         parts.push(this.printMergeWhenNotMatched(when))
+      } else if (when.type === "not_matched_by_source") {
+        parts.push(this.printMergeWhenNotMatchedBySource(when))
+      } else {
+        assertNever(when, "printMerge")
       }
     }
 
@@ -1095,6 +1100,23 @@ export class BasePrinter implements Printer {
     parts.push("THEN INSERT")
     parts.push(`(${when.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)
     parts.push(`VALUES (${when.values.map((v) => this.printExpression(v)).join(", ")})`)
+    return parts.join(" ")
+  }
+
+  protected printMergeWhenNotMatchedBySource(when: MergeWhenNotMatchedBySource): string {
+    const parts: string[] = ["WHEN NOT MATCHED BY SOURCE"]
+    if (when.condition) {
+      parts.push("AND", this.printExpression(when.condition))
+    }
+    if (when.action === "delete") {
+      parts.push("THEN DELETE")
+    } else {
+      parts.push("THEN UPDATE SET")
+      const sets = (when.set ?? []).map(
+        (s) => `${quoteIdentifier(s.column, this.dialect)} = ${this.printExpression(s.value)}`,
+      )
+      parts.push(sets.join(", "))
+    }
     return parts.join(" ")
   }
 

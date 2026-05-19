@@ -4,7 +4,6 @@ import type {
   ExpressionNode,
   InsertNode,
   MergeNode,
-  MergeWhenMatched,
   MergeWhenNotMatched,
   UpdateNode,
 } from "../ast/nodes.ts"
@@ -138,14 +137,18 @@ export class AuditTimestampPlugin implements SumakPlugin {
    * - WHEN MATCHED UPDATE → append `updated_at = CURRENT_TIMESTAMP` to the set list.
    * - WHEN NOT MATCHED INSERT → append both `created_at`/`updated_at`
    *   columns and values to the insert tuple.
-   * - WHEN MATCHED DELETE → unchanged (no rows written).
+   * - WHEN NOT MATCHED BY SOURCE UPDATE → same treatment as WHEN MATCHED
+   *   UPDATE: stamp `updated_at` (and `updated_by` if user id is known)
+   *   on every target row that the branch will rewrite.
+   * - WHEN MATCHED DELETE / WHEN NOT MATCHED BY SOURCE DELETE → unchanged
+   *   (no rows written).
    */
   private transformMerge(node: MergeNode): MergeNode {
     if (!this.isTargetTable(node.target.name)) return node
     const now = fn("CURRENT_TIMESTAMP", [])
     const userId = this.userIdExpr()
     const whens = node.whens.map((w) => {
-      if (w.type === "matched" && w.action === "update") {
+      if ((w.type === "matched" || w.type === "not_matched_by_source") && w.action === "update") {
         const existing = w.set ?? []
         const hasUpdated = existing.some((s) => s.column === this.updatedAt)
         const hasUpdatedBy = existing.some((s) => s.column === this.updatedBy)
@@ -155,7 +158,7 @@ export class AuditTimestampPlugin implements SumakPlugin {
           additions.push({ column: this.updatedBy, value: userId })
         }
         if (additions.length === 0) return w
-        const patched: MergeWhenMatched = { ...w, set: [...existing, ...additions] }
+        const patched: typeof w = { ...w, set: [...existing, ...additions] }
         return patched
       }
       if (w.type === "not_matched") {

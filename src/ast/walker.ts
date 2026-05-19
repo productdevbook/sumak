@@ -284,7 +284,8 @@ export class ASTWalker {
     const source = node.source.type === "subquery" ? this.visitSubquery(node.source) : node.source
     const on = this.visitExpression(node.on)
     const whens = mapPreserve(node.whens, (w) => {
-      if (w.type === "matched") {
+      if (w.type === "matched" || w.type === "not_matched_by_source") {
+        // Both target-side branches share the same shape (condition + set).
         const condition = w.condition ? this.visitExpression(w.condition) : w.condition
         const set = w.set
           ? mapPreserve(w.set, (s) => {
@@ -295,10 +296,13 @@ export class ASTWalker {
         if (condition === w.condition && set === w.set) return w
         return { ...w, condition, set }
       }
-      const condition = w.condition ? this.visitExpression(w.condition) : w.condition
-      const values = mapPreserve(w.values, (v) => this.visitExpression(v))
-      if (condition === w.condition && values === w.values) return w
-      return { ...w, condition, values }
+      if (w.type === "not_matched") {
+        const condition = w.condition ? this.visitExpression(w.condition) : w.condition
+        const values = mapPreserve(w.values, (v) => this.visitExpression(v))
+        if (condition === w.condition && values === w.values) return w
+        return { ...w, condition, values }
+      }
+      return assertNever(w, "ASTWalker.visitMerge.when")
     })
 
     if (ctes === node.ctes && source === node.source && on === node.on && whens === node.whens) {

@@ -596,13 +596,29 @@ export interface MergeWhenNotMatched {
   values: ExpressionNode[]
 }
 
+/**
+ * `WHEN NOT MATCHED BY SOURCE` — fires for target rows with no source match.
+ *
+ * Shape mirrors {@link MergeWhenMatched}: the row already exists in the
+ * target, so the only meaningful actions are UPDATE or DELETE (an INSERT
+ * makes no sense — there's nothing to insert *from*). Supported natively
+ * by PostgreSQL 17+ and MSSQL; rejected by MySQL/SQLite at the dialect
+ * layer since neither implements ANSI MERGE.
+ */
+export interface MergeWhenNotMatchedBySource {
+  type: "not_matched_by_source"
+  condition?: ExpressionNode
+  action: "update" | "delete"
+  set?: { column: string; value: ExpressionNode }[]
+}
+
 export interface MergeNode {
   type: "merge"
   target: TableRefNode
   source: TableRefNode | SubqueryNode
   sourceAlias: string
   on: ExpressionNode
-  whens: (MergeWhenMatched | MergeWhenNotMatched)[]
+  whens: (MergeWhenMatched | MergeWhenNotMatched | MergeWhenNotMatchedBySource)[]
   ctes: CTENode[]
   /** @see QueryFlags — used by soft-delete plugin for idempotency. */
   flags?: QueryFlags

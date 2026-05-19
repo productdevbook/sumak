@@ -134,6 +134,56 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
   }
 
   /**
+   * `WHEN NOT MATCHED BY SOURCE THEN UPDATE SET …` — applies to target rows
+   * that have no matching source row. Useful for full-sync MERGE patterns.
+   *
+   * Supported by PostgreSQL 17+ and SQL Server. MySQL and SQLite have no
+   * `MERGE` at all and will throw at print time.
+   */
+  whenNotMatchedBySourceThenUpdate(
+    values: Updateable<DB[Target]>,
+    condition?: (proxies: MergeProxies<DB, Target, Source>) => Expression<boolean>,
+  ): TypedMergeBuilder<DB, Target, Source> {
+    const set: { column: string; value: ExpressionNode }[] = []
+    for (const [col, val] of Object.entries(values as Record<string, unknown>)) {
+      if (val !== undefined) {
+        set.push({ column: col, value: param(0, val) })
+      }
+    }
+    if (set.length === 0) {
+      throw new Error(
+        ".whenNotMatchedBySourceThenUpdate({}) requires at least one column — an empty " +
+          "object would produce `WHEN NOT MATCHED BY SOURCE THEN UPDATE SET ` with no " +
+          "columns (invalid SQL).",
+      )
+    }
+    let condExpr: ExpressionNode | undefined
+    if (condition) {
+      const proxies = createMergeProxies<DB, Target, Source>(this._targetTable, this._sourceAlias)
+      condExpr = unwrap(condition(proxies))
+    }
+    return this._with(this._builder.whenNotMatchedBySourceUpdate(set, condExpr))
+  }
+
+  /**
+   * `WHEN NOT MATCHED BY SOURCE THEN DELETE` — deletes target rows that
+   * have no matching source row.
+   *
+   * Supported by PostgreSQL 17+ and SQL Server. MySQL and SQLite have no
+   * `MERGE` at all and will throw at print time.
+   */
+  whenNotMatchedBySourceThenDelete(
+    condition?: (proxies: MergeProxies<DB, Target, Source>) => Expression<boolean>,
+  ): TypedMergeBuilder<DB, Target, Source> {
+    let condExpr: ExpressionNode | undefined
+    if (condition) {
+      const proxies = createMergeProxies<DB, Target, Source>(this._targetTable, this._sourceAlias)
+      condExpr = unwrap(condition(proxies))
+    }
+    return this._with(this._builder.whenNotMatchedBySourceDelete(condExpr))
+  }
+
+  /**
    * WITH (CTE). Accepts either a raw `SelectNode` or any builder with a
    * `.build()` method (typically a `TypedSelectBuilder`).
    */

@@ -4,6 +4,7 @@ import type {
   MergeNode,
   MergeWhenMatched,
   MergeWhenNotMatched,
+  MergeWhenNotMatchedBySource,
   SelectNode,
   SubqueryNode,
   TableRefNode,
@@ -47,6 +48,10 @@ export class MergeBuilder {
     return new MergeBuilder({ ...this.node, whens: [...this.node.whens, action] }, this.paramIndex)
   }
 
+  whenNotMatchedBySource(action: MergeWhenNotMatchedBySource): MergeBuilder {
+    return new MergeBuilder({ ...this.node, whens: [...this.node.whens, action] }, this.paramIndex)
+  }
+
   whenMatchedUpdate(
     set: { column: string; value: ExpressionNode }[],
     condition?: ExpressionNode,
@@ -81,6 +86,28 @@ export class MergeBuilder {
       condition,
     }
     return this.whenNotMatched(when)
+  }
+
+  whenNotMatchedBySourceUpdate(
+    set: { column: string; value: ExpressionNode }[],
+    condition?: ExpressionNode,
+  ): MergeBuilder {
+    const when: MergeWhenNotMatchedBySource = {
+      type: "not_matched_by_source",
+      action: "update",
+      set,
+      condition,
+    }
+    return this.whenNotMatchedBySource(when)
+  }
+
+  whenNotMatchedBySourceDelete(condition?: ExpressionNode): MergeBuilder {
+    const when: MergeWhenNotMatchedBySource = {
+      type: "not_matched_by_source",
+      action: "delete",
+      condition,
+    }
+    return this.whenNotMatchedBySource(when)
   }
 
   with(name: string, query: SelectNode, recursive = false): MergeBuilder {
