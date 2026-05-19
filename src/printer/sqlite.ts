@@ -1,6 +1,7 @@
 import type {
   ArrayExprNode,
   BinaryOpNode,
+  DateIntervalNode,
   DeleteNode,
   FullTextSearchNode,
   InsertNode,
@@ -276,5 +277,29 @@ export class SqlitePrinter extends BasePrinter {
       result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
     }
     return result
+  }
+
+  /**
+   * SQLite: `datetime(expr, '±N units')`. The modifier string is a
+   * single argument with the sign and unit baked in. SQLite is
+   * forgiving on singular vs plural (`'7 day'` and `'7 days'` both
+   * parse); the printer uses the plural form for readability. The
+   * resulting expression is a `TEXT` value in ISO-8601 format that
+   * round-trips through the bare `datetime()` cast.
+   *
+   * Note: `expr` is expected to already be a SQLite datetime / date
+   * string / Julian-day value — passing an integer epoch through here
+   * silently coerces via SQLite's type-affinity rules, which may not
+   * be what the caller wanted. The builder accepts any
+   * `Expression<Date>` / `Col<Date>`; callers driving SQLite from a
+   * portable codebase usually store datetimes as TEXT.
+   */
+  protected override printDateInterval(node: DateIntervalNode): string {
+    const sign = node.amount < 0 ? "-" : "+"
+    const magnitude = Math.abs(node.amount)
+    const unitPlural = `${node.unit}s`
+    const modifier = `'${sign}${magnitude} ${unitPlural}'`
+    const inner = `datetime(${this.printExpression(node.expr)}, ${modifier})`
+    return node.alias ? `${inner} AS ${quoteIdentifier(node.alias, this.dialect)}` : inner
   }
 }

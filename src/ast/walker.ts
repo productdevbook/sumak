@@ -82,6 +82,7 @@ export class ASTWalker {
       case "tuple":
       case "quantified":
       case "grouping":
+      case "date_interval":
         return this.visitExpression(node)
       default:
         return assertNever(node, "ASTWalker.visitNode")
@@ -466,6 +467,12 @@ export class ASTWalker {
           mapPreserve(set, (e) => this.visitExpression(e)),
         )
         return sets === expr.sets ? expr : { ...expr, sets }
+      }
+      case "date_interval": {
+        // Only the `expr` field carries an ExpressionNode child;
+        // `amount` and `unit` are scalars and don't need walking.
+        const inner = this.visitExpression(expr.expr)
+        return inner === expr.expr ? expr : { ...expr, expr: inner }
       }
       default:
         return assertNever(expr, "ASTWalker.visitExpression")

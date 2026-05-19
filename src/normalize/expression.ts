@@ -439,6 +439,12 @@ function exprFingerprint(expr: ExpressionNode): string {
       return `q:${expr.quantifier}:${exprFingerprint(expr.operand)}`
     case "grouping":
       return `grp:${expr.kind}:${expr.sets.map((s) => s.map(exprFingerprint).join(",")).join(";")}`
+    case "date_interval":
+      // Include amount + unit in the fingerprint so two intervals on the
+      // same expression but with different magnitudes / units dedup as
+      // distinct predicates (e.g. `created_at + INTERVAL '1 day'` and
+      // `created_at + INTERVAL '7 days'`).
+      return `dint:${expr.amount}:${expr.unit}:${exprFingerprint(expr.expr)}`
     default:
       return assertNever(expr, "exprFingerprint")
   }
@@ -602,6 +608,12 @@ function recurse(
     case "grouping": {
       const sets = mapPreserve(expr.sets, (s) => mapPreserve(s, transform))
       return sets === expr.sets ? expr : { ...expr, sets }
+    }
+    case "date_interval": {
+      // Only `expr` carries a child ExpressionNode; `amount` / `unit`
+      // are scalars and don't participate in normalization.
+      const inner = transform(expr.expr)
+      return inner === expr.expr ? expr : { ...expr, expr: inner }
     }
     // Terminal / opaque nodes — no child expressions to walk.
     case "column_ref":

@@ -297,6 +297,11 @@ function collectTableRefs(expr: ExpressionNode, refs: Set<string>): void {
     case "grouping":
       for (const set of expr.sets) for (const e of set) collectTableRefs(e, refs)
       break
+    case "date_interval":
+      // Only the `expr` field carries a column reference; `amount` and
+      // `unit` are scalars and contribute no table-ref information.
+      collectTableRefs(expr.expr, refs)
+      break
     default: {
       const _exhaustive: never = expr
       void _exhaustive

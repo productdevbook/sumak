@@ -2,6 +2,7 @@ import type {
   ArrayExprNode,
   BinaryOpNode,
   CTENode,
+  DateIntervalNode,
   DeleteNode,
   FrameSpec,
   FullTextSearchNode,
@@ -652,6 +653,18 @@ export class MssqlPrinter extends BasePrinter {
   protected override printQuantified(_node: QuantifiedExprNode): string {
     assertFeature("mssql", "QUANTIFIED_SUBQUERY")
     return "" // unreachable — assertFeature throws
+  }
+
+  /**
+   * MSSQL: `DATEADD(<datepart>, <number>, <date>)`. T-SQL has no
+   * `DATESUB` — the convention is to pass a negative `number` to
+   * `DATEADD` for the subtraction case. The datepart is an
+   * identifier (not a string literal); the closed `DateIntervalUnit`
+   * enum already constrains it to the dialect-recognised set.
+   */
+  protected override printDateInterval(node: DateIntervalNode): string {
+    const inner = `DATEADD(${node.unit}, ${node.amount}, ${this.printExpression(node.expr)})`
+    return node.alias ? `${inner} AS ${quoteIdentifier(node.alias, this.dialect)}` : inner
   }
 
   /**

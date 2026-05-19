@@ -455,6 +455,33 @@ db.selectFrom("users")
 
 `dateTrunc` and `age` are PG-only — the printer throws `UnsupportedDialectFeatureError` on MySQL / SQLite / MSSQL. `extract` works on all four dialects for the SQL standard field names; dialect-specific extras (PG's `EPOCH`, `DOW`, `ISOYEAR`) parse on PG and fail at execution time on the others. Reach for `unsafeRawExpr` if you need a portable equivalent (MySQL: `DATE_FORMAT(ts, '%Y-%m-01')`; MSSQL pre-2022: `DATEADD(month, DATEDIFF(month, 0, ts), 0)`; SQLite: `strftime('%Y-%m-01', ts)`).
 
+### Date arithmetic — `dateAdd` / `dateSub`
+
+```ts
+import { dateAdd, dateSub, typedCol } from "sumak"
+
+// dateAdd(expr, amount, unit) — every dialect emits its native shape
+db.selectFrom("events")
+  .select({
+    expires: dateAdd(typedCol<Date>("created_at"), 7, "day"),
+    expiresMinus: dateSub(typedCol<Date>("created_at"), 1, "month"),
+  })
+  .toSQL()
+
+// PG:     SELECT ("created_at" + INTERVAL '7 days') AS "expires",
+//                ("created_at" - INTERVAL '1 months') AS "expiresMinus"
+// MySQL:  SELECT DATE_ADD(`created_at`, INTERVAL 7 DAY) AS `expires`,
+//                DATE_SUB(`created_at`, INTERVAL 1 MONTH) AS `expiresMinus`
+// MSSQL:  SELECT DATEADD(day, 7, [created_at]) AS [expires],
+//                DATEADD(month, -1, [created_at]) AS [expiresMinus]
+// SQLite: SELECT datetime("created_at", '+7 days') AS "expires",
+//                datetime("created_at", '-1 months') AS "expiresMinus"
+```
+
+Both builders accept the closed unit enum `"year" | "month" | "week" | "day" | "hour" | "minute" | "second"`. The `amount` argument is captured as a SQL literal (validated as a finite integer at build time); the engines treat it as part of the plan-cache key, so parameterising it would degrade plan reuse. Pass a negative `amount` to `dateAdd` to subtract, or use `dateSub` for explicit subtraction — both compile through the same AST node, just with the sign normalised.
+
+The four dialects diverge on the underlying time-zone / type semantics — e.g. SQLite's `datetime()` returns a TEXT in ISO-8601, while PG's `+ INTERVAL` preserves the source type (`timestamp` stays `timestamp`, `timestamptz` stays `timestamptz`). Cast explicitly if you need a different result type.
+
 ---
 
 ## EXISTS / NOT EXISTS (correlated subquery)
