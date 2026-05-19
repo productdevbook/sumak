@@ -1564,6 +1564,65 @@ A few notes:
 
 ---
 
+## Per-column validators
+
+`validators` asserts invariants on column values before they reach the database. Each configured column gets one or more predicate functions; on INSERT or UPDATE, the plugin runs them against the supplied value and throws `ValidationError` on the first failure — before the query is sent to the wire.
+
+This sits next to `normalizeStrings` (which _transforms_ values) and `defaults` (which _injects_ values). Reach for `validators` when you want bad input rejected eagerly in JS-land, with a precise error that names the offending table + column, rather than waiting for the DB to fail a CHECK constraint mid-transaction.
+
+```ts
+import { sumak, validators, ValidationError } from "sumak"
+
+const db = sumak({
+  dialect: pgDialect(),
+  tables: { users },
+  plugins: [
+    validators({
+      users: {
+        email: [
+          (v) => (typeof v === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) || "invalid email",
+          (v) => (typeof v === "string" && v.length <= 255) || "email too long",
+        ],
+        age: [(v) => (typeof v === "number" && v >= 0 && v <= 150) || "age out of range"],
+      },
+    }),
+  ],
+})
+
+try {
+  db.insertInto("users").values({ email: "not-an-email", age: 30 }).toSQL()
+} catch (err) {
+  if (err instanceof ValidationError) {
+    err.table // "users"
+    err.column // "email"
+    err.value // "not-an-email"
+    err.message // "users.email: invalid email"
+  }
+}
+```
+
+### Validator return contract
+
+Each validator receives the raw JS value and returns:
+
+| Return   | Meaning                                                 |
+| -------- | ------------------------------------------------------- |
+| `true`   | Valid — run the next validator (or pass).               |
+| `false`  | Invalid — throw with default `"invalid value"` message. |
+| `string` | Invalid — throw with the returned message.              |
+
+The idiomatic form is `predicate || "error message"` — the OR collapses to `true` on success and to the message on failure. Multiple validators per column run **in declaration order**; the first failure throws and later validators do not run, so cheap type guards can sit before expensive regex checks.
+
+### Behaviour rules
+
+- Fires on **INSERT and UPDATE**. SELECT / DELETE / MERGE are pass-through — the plugin is strictly write-side.
+- **Non-`ParamNode` values pass through.** A `set({ updated_at: now() })` or sub-`SELECT` value can't be statically inspected, so the assertion silently doesn't run on those. For guarantees over raw expressions, keep a CHECK constraint at the DB layer.
+- **Unconfigured columns and tables are pass-through.** Only columns explicitly named in the config are validated; everything else flows through untouched.
+- **`null` is surfaced to the validator.** By default, a `values({ email: null })` will hand `null` to the validator chain. Opt out per-validator with an early `if (value === null) return true`.
+- **Bulk INSERTs** are validated row-by-row; the first failing row throws, and subsequent rows are not consulted.
+
+---
+
 ## CASL row-level authorization
 
 Define abilities, register the plugin, query as usual:
