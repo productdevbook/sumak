@@ -699,6 +699,26 @@ export class MssqlPrinter extends BasePrinter {
     ) {
       assertFeature("mssql", "TRIGONOMETRY_FNS")
     }
+    // MSSQL has no first-class array type. The PG array helpers either
+    // don't exist or would silently match a user-defined function with
+    // the same name. Refuse via the single `PG_ARRAY_FNS` flag so the
+    // failure points at the builder call. The closest MSSQL idiom is
+    // table-valued parameters or OPENJSON projection, neither of which
+    // is interchangeable with PG's array shape.
+    if (
+      upper === "ARRAY_APPEND" ||
+      upper === "ARRAY_PREPEND" ||
+      upper === "ARRAY_CAT" ||
+      upper === "ARRAY_LENGTH" ||
+      upper === "ARRAY_POSITIONS" ||
+      upper === "ARRAY_POSITION" ||
+      upper === "ARRAY_REMOVE" ||
+      upper === "ARRAY_REPLACE" ||
+      upper === "ARRAY_TO_STRING" ||
+      upper === "UNNEST"
+    ) {
+      assertFeature("mssql", "PG_ARRAY_FNS")
+    }
     return super.printFunctionCall(node)
   }
 

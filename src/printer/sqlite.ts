@@ -263,6 +263,26 @@ export class SqlitePrinter extends BasePrinter {
     if (upper === "PI" && node.args.length === 0) {
       assertFeature("sqlite", "PI_FN")
     }
+    // SQLite has no first-class array type. The PG array helpers either
+    // don't exist or would silently match a user-defined function with
+    // the same name. Refuse via the single `PG_ARRAY_FNS` flag so the
+    // failure points at the builder call. Use the json1 functions
+    // (`json_array`, `json_array_length`, `json_each`, …) on SQLite when
+    // you really want an array shape.
+    if (
+      upper === "ARRAY_APPEND" ||
+      upper === "ARRAY_PREPEND" ||
+      upper === "ARRAY_CAT" ||
+      upper === "ARRAY_LENGTH" ||
+      upper === "ARRAY_POSITIONS" ||
+      upper === "ARRAY_POSITION" ||
+      upper === "ARRAY_REMOVE" ||
+      upper === "ARRAY_REPLACE" ||
+      upper === "ARRAY_TO_STRING" ||
+      upper === "UNNEST"
+    ) {
+      assertFeature("sqlite", "PG_ARRAY_FNS")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently

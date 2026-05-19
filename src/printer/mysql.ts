@@ -413,6 +413,26 @@ export class MysqlPrinter extends BasePrinter {
     if (upper === "LOG" && node.args.length === 1) {
       return super.printFunctionCall({ ...node, name: "LOG10" })
     }
+    // MySQL has no first-class array type. The PG array helpers
+    // (`array_append`, `array_cat`, `unnest`, …) either don't exist or
+    // would silently match a user-defined function. Refuse via the
+    // single `PG_ARRAY_FNS` flag so the failure points at the builder
+    // call. Use JSON_ARRAY / JSON_ARRAY_APPEND / JSON_TABLE on MySQL
+    // when you really want an array shape.
+    if (
+      upper === "ARRAY_APPEND" ||
+      upper === "ARRAY_PREPEND" ||
+      upper === "ARRAY_CAT" ||
+      upper === "ARRAY_LENGTH" ||
+      upper === "ARRAY_POSITIONS" ||
+      upper === "ARRAY_POSITION" ||
+      upper === "ARRAY_REMOVE" ||
+      upper === "ARRAY_REPLACE" ||
+      upper === "ARRAY_TO_STRING" ||
+      upper === "UNNEST"
+    ) {
+      assertFeature("mysql", "PG_ARRAY_FNS")
+    }
     return super.printFunctionCall(node)
   }
 

@@ -167,6 +167,21 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   "NEXTVAL",
   "CURRVAL",
   "SETVAL",
+  // PG array functions — same uppercase-on-emit treatment as the other
+  // standard names. Each of these is gated by the `PG_ARRAY_FNS` feature
+  // flag in the non-PG printer overrides (mysql/sqlite/mssql), so
+  // emitting them on those dialects throws rather than silently producing
+  // invalid SQL.
+  "ARRAY_APPEND",
+  "ARRAY_PREPEND",
+  "ARRAY_CAT",
+  "ARRAY_LENGTH",
+  "ARRAY_POSITIONS",
+  "ARRAY_POSITION",
+  "ARRAY_REMOVE",
+  "ARRAY_REPLACE",
+  "ARRAY_TO_STRING",
+  "UNNEST",
 ])
 
 /**
