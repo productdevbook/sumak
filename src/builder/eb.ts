@@ -847,12 +847,30 @@ export class CaseBuilder<T> {
 // ── Window Function Builder ──
 
 /**
- * Window function builder.
+ * Wrap an aggregate or window function in an `OVER (...)` clause.
+ *
+ * The first argument is any function-call expression — `count()`,
+ * `sum(col(...))`, `rowNumber()`, etc. The callback receives a fresh
+ * `WindowBuilder` and configures the `PARTITION BY` / `ORDER BY` /
+ * frame clauses on it.
  *
  * ```ts
- * over(count(), w => w.partitionBy("dept").orderBy("salary", "DESC"))
- * over(sqlFn("ROW_NUMBER"), w => w.partitionBy("dept").orderBy("id"))
+ * // Rank rows within each department by salary
+ * over(rowNumber(), w => w.partitionBy("dept").orderBy("salary", "DESC"))
+ * // -> ROW_NUMBER() OVER (PARTITION BY "dept" ORDER BY "salary" DESC)
+ *
+ * // Running total
+ * over(sum(col("amount")), w => w.orderBy("id").rows(
+ *   { type: "unbounded_preceding" },
+ *   { type: "current_row" },
+ * ))
+ * // -> SUM("amount") OVER (ORDER BY "id" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
  * ```
+ *
+ * Bare ranking functions (`rowNumber()`, `rank()`, `denseRank()`)
+ * **must** be wrapped in `over(...)` — they throw at print time
+ * otherwise. SQL allows `COUNT(*)` without `OVER`, but
+ * `ROW_NUMBER()` does not.
  */
 export function over<T>(
   fn: Expression<T>,
@@ -873,6 +891,15 @@ export class WindowBuilder {
   #orderBy: OrderByNode[] = []
   #frame: FrameSpec | undefined
 
+  /**
+   * `PARTITION BY col1, col2, …` — split the row stream into groups
+   * before applying the window function. Each call replaces the
+   * partition list (calls don't accumulate); pass all columns at once.
+   *
+   * ```ts
+   * over(rank(), w => w.partitionBy("dept", "team").orderBy("salary", "DESC"))
+   * ```
+   */
   partitionBy(...columns: string[]): WindowBuilder {
     const b = new WindowBuilder()
     b.#partitionBy = columns.map((c) => rawCol(c))
@@ -881,6 +908,15 @@ export class WindowBuilder {
     return b
   }
 
+  /**
+   * `ORDER BY col [ASC|DESC]` — append one ordering key per call.
+   * Multiple `.orderBy()` calls accumulate, so `.orderBy("a").orderBy("b")`
+   * emits `ORDER BY "a" ASC, "b" ASC`.
+   *
+   * For ranking functions (`rowNumber`, `rank`, `denseRank`) this
+   * defines tie-breaking and is effectively required — without it the
+   * row numbering is non-deterministic.
+   */
   orderBy(column: string, direction: "ASC" | "DESC" = "ASC"): WindowBuilder {
     const b = new WindowBuilder()
     b.#partitionBy = this.#partitionBy
@@ -889,14 +925,37 @@ export class WindowBuilder {
     return b
   }
 
+  /**
+   * `ROWS BETWEEN start AND end` — physical-row frame. Most common
+   * choice for cumulative aggregates because it counts rows, not
+   * peers. Omit `end` and SQL defaults to `CURRENT ROW`.
+   *
+   * ```ts
+   * // Running total since the first row
+   * over(sum(col("amount")), w => w.orderBy("id").rows(
+   *   { type: "unbounded_preceding" },
+   * ))
+   * ```
+   */
   rows(start: FrameBound, end?: FrameBound): WindowBuilder {
     return this.#withFrame("ROWS", start, end)
   }
 
+  /**
+   * `RANGE BETWEEN start AND end` — logical (value-based) frame. Peers
+   * (rows with equal `ORDER BY` keys) are treated as a single frame
+   * step, which makes `RANGE` semantics different from `ROWS` whenever
+   * ties exist in the ordering.
+   */
   range(start: FrameBound, end?: FrameBound): WindowBuilder {
     return this.#withFrame("RANGE", start, end)
   }
 
+  /**
+   * `GROUPS BETWEEN start AND end` — SQL:2011 frame that counts
+   * **peer groups** rather than rows or values. Supported on PG and
+   * SQLite; MSSQL / MySQL reject at compile time.
+   */
   groups(start: FrameBound, end?: FrameBound): WindowBuilder {
     return this.#withFrame("GROUPS", start, end)
   }
@@ -917,22 +976,50 @@ export class WindowBuilder {
 
 // ── Convenience window functions ──
 
-/** ROW_NUMBER() — must be used with over() */
+/**
+ * `ROW_NUMBER()` — assigns each row a unique sequential integer
+ * within its partition, starting at 1. Ties in `ORDER BY` are broken
+ * arbitrarily but stably within a single call.
+ *
+ * Must be wrapped in `over(...)`; the print pass rejects a bare call.
+ *
+ * ```ts
+ * .select({ rn: over(rowNumber(), w => w.partitionBy("dept").orderBy("hireDate")) })
+ * ```
+ */
 export function rowNumber(): Expression<number> {
   return wrap(rawFn("ROW_NUMBER", []))
 }
 
-/** RANK() — must be used with over() */
+/**
+ * `RANK()` — like `rowNumber`, but ties in `ORDER BY` get the same
+ * rank and the next rank **skips** (1, 2, 2, 4). Use `denseRank` if
+ * you want no gaps. Must be wrapped in `over(...)`.
+ */
 export function rank(): Expression<number> {
   return wrap(rawFn("RANK", []))
 }
 
-/** DENSE_RANK() — must be used with over() */
+/**
+ * `DENSE_RANK()` — like `rank`, but ties don't create gaps in the
+ * sequence (1, 2, 2, 3 instead of 1, 2, 2, 4). Must be wrapped in
+ * `over(...)`.
+ */
 export function denseRank(): Expression<number> {
   return wrap(rawFn("DENSE_RANK", []))
 }
 
-/** LAG(expr, offset?, default?) */
+/**
+ * `LAG(expr, offset?, default?)` — value of `expr` in a previous row
+ * within the same window. `offset` defaults to 1, `default` to NULL.
+ *
+ * ```ts
+ * // Previous month's revenue per region
+ * over(lag(col("revenue")), w => w.partitionBy("region").orderBy("month"))
+ * ```
+ *
+ * Needs `ORDER BY` on the window or the "previous row" is undefined.
+ */
 export function lag<T>(
   expr: Expression<T>,
   offset?: number,
@@ -944,7 +1031,11 @@ export function lag<T>(
   return wrap(rawFn("LAG", args))
 }
 
-/** LEAD(expr, offset?, default?) */
+/**
+ * `LEAD(expr, offset?, default?)` — value of `expr` in a following
+ * row within the same window. Mirror of `lag`. `offset` defaults to
+ * 1, `default` to NULL. Requires `ORDER BY` on the window.
+ */
 export function lead<T>(
   expr: Expression<T>,
   offset?: number,
@@ -956,7 +1047,15 @@ export function lead<T>(
   return wrap(rawFn("LEAD", args))
 }
 
-/** NTILE(n) */
+/**
+ * `NTILE(n)` — split the ordered partition into `n` roughly-equal
+ * buckets and emit each row's bucket number (1..n). Useful for
+ * quartiles / deciles.
+ *
+ * ```ts
+ * .select({ quartile: over(ntile(4), w => w.orderBy("salary", "DESC")) })
+ * ```
+ */
 export function ntile(n: number): Expression<number> {
   return wrap(rawFn("NTILE", [rawLit(n)]))
 }
