@@ -840,6 +840,97 @@ For dialect-aware variants of the same operations — MySQL's `OPTIMIZE TABLE`, 
 
 ---
 
+## Explicit locking — LOCK TABLE
+
+PostgreSQL `LOCK TABLE` takes a named table-level lock inside the current transaction. Use it to serialize a critical section that can't tolerate optimistic concurrency — the canonical "read totals → assert invariant → write a row" pattern is the textbook case (without the lock, a concurrent `INSERT` between the read and the write can invalidate the check).
+
+```ts
+import { lockTable } from "sumak"
+
+await db.transaction(async (tx) => {
+  // Block other writers until COMMIT; readers keep going.
+  await tx.executeCompiledNoRows(db.compileDDL(lockTable("orders").share().build()))
+  //   PG: LOCK TABLE "orders" IN SHARE MODE
+
+  const { total } = await tx
+    .selectFrom("orders")
+    .select(({ fn }) => fn.sum("amount").as("total"))
+    .one()
+
+  if (Number(total) >= dailyCap) throw new Error("daily cap exceeded")
+
+  await tx.insertInto("orders").values({ amount: req.amount }).exec()
+})
+```
+
+`LOCK TABLE` is also exposed on the schema builder for discoverability:
+
+```ts
+db.compileDDL(db.schema.lockTable("orders").exclusive().build())
+//   PG: LOCK TABLE "orders" IN EXCLUSIVE MODE
+```
+
+`LOCK TABLE` must run inside an explicit transaction block — PostgreSQL refuses the bare statement with `LOCK TABLE can only be used in transaction blocks` otherwise. Pair it with `db.transaction(...)` or wrap your own `BEGIN` / `COMMIT` around the call.
+
+### Lock modes
+
+The eight modes correspond 1:1 to the PG keywords. Strictness increases roughly down the table, and each mode lists the implicit lock taken by everyday DML / DDL that you should already be reasoning about when you decide what to take.
+
+| Method                    | Keyword                  | Implicit lock for…                                                |
+| ------------------------- | ------------------------ | ----------------------------------------------------------------- |
+| `.accessShare()`          | `ACCESS SHARE`           | `SELECT`                                                          |
+| `.rowShare()`             | `ROW SHARE`              | `SELECT … FOR UPDATE / SHARE`                                     |
+| `.rowExclusive()`         | `ROW EXCLUSIVE`          | `INSERT / UPDATE / DELETE`                                        |
+| `.shareUpdateExclusive()` | `SHARE UPDATE EXCLUSIVE` | `VACUUM (no FULL)`, `ANALYZE`, `CREATE INDEX CONCURRENTLY`        |
+| `.share()`                | `SHARE`                  | `CREATE INDEX` (no `CONCURRENTLY`)                                |
+| `.shareRowExclusive()`    | `SHARE ROW EXCLUSIVE`    | (no DML — self-conflicting variant of `SHARE`)                    |
+| `.exclusive()`            | `EXCLUSIVE`              | (no DML — blocks every other lock except `ACCESS SHARE`)          |
+| `.accessExclusive()`      | `ACCESS EXCLUSIVE`       | `DROP TABLE`, `TRUNCATE`, `REINDEX`, `ALTER TABLE`, `VACUUM FULL` |
+
+`ACCESS EXCLUSIVE` is the default when no `IN … MODE` clause is given — `lockTable("foo")` and `lockTable("foo").accessExclusive()` emit different SQL strings but the engine treats them identically. Calling `.accessExclusive()` is mostly useful when the audit trail wants the keyword spelled out.
+
+If you need the mode at runtime (config, RPC payload), `.mode(...)` accepts the keyword directly:
+
+```ts
+lockTable("orders").mode("SHARE UPDATE EXCLUSIVE").build()
+```
+
+### `ONLY` and `NOWAIT`
+
+```ts
+// Skip inheritance descendants of the table:
+lockTable("orders").only().exclusive().build()
+//   PG: LOCK TABLE ONLY "orders" IN EXCLUSIVE MODE
+
+// Fail immediately instead of waiting — useful for opportunistic
+// try-lock patterns. PG raises 'could not obtain lock on relation' when
+// the lock can't be taken right away.
+lockTable("orders").exclusive().noWait().build()
+//   PG: LOCK TABLE "orders" IN EXCLUSIVE MODE NOWAIT
+```
+
+### Multi-table form
+
+```ts
+// Atomic — PG takes both locks in one shot, so there's no
+// deadlock-by-ordering risk between sibling lock statements.
+lockTable(["orders", "order_lines"]).share().build()
+//   PG: LOCK TABLE "orders", "order_lines" IN SHARE MODE
+```
+
+### Feature matrix
+
+| Feature          | PG  | MySQL | SQLite | MSSQL |
+| ---------------- | --- | ----- | ------ | ----- |
+| `LOCK TABLE`     | yes | —     | —      | —     |
+| `IN <mode> MODE` | yes | —     | —      | —     |
+| `NOWAIT`         | yes | —     | —      | —     |
+| Multi-table list | yes | —     | —      | —     |
+
+MySQL has `LOCK TABLES name READ|WRITE` but the grammar (no `IN … MODE`, no `NOWAIT`) and transactional semantics (implicit commit, autocommit pairing disabled) are different enough that it needs its own AST node. MSSQL uses per-query table hints (`WITH (TABLOCK)`) instead of a standalone statement. SQLite has no equivalent at all — its locking model is connection-level and implicit.
+
+---
+
 ## Multi-tenant scoping
 
 ```ts

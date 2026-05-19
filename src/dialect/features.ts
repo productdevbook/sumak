@@ -532,6 +532,19 @@ export const FEATURES = {
    * than SQL DDL).
    */
   EXTENSIONS: { label: "CREATE/DROP EXTENSION", dialects: ["pg"] },
+  /**
+   * `LOCK TABLE [ONLY] name [, …] [IN lock_mode MODE] [NOWAIT]` —
+   * standalone statement used inside an explicit transaction to take
+   * a named table-level lock. PostgreSQL only under this exact
+   * grammar. MySQL ships a different statement (`LOCK TABLES name
+   * READ|WRITE` — no `IN … MODE`, no `NOWAIT`, and different
+   * transactional semantics: it implicitly commits and disables the
+   * autocommit pairing). MSSQL has no equivalent statement (uses
+   * per-query table hints like `WITH (TABLOCK)`). SQLite has nothing
+   * comparable. The first cut refuses on every non-PG dialect; the
+   * MySQL shape needs its own AST node.
+   */
+  LOCK_TABLE_STMT: { label: "LOCK TABLE", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {
