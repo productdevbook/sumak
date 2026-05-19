@@ -854,6 +854,55 @@ export interface DropPolicyNode {
   cascade?: boolean
 }
 
+// ── CREATE EXTENSION ──
+
+/**
+ * `CREATE EXTENSION [IF NOT EXISTS] extension_name
+ *  [ WITH ] [ SCHEMA schema_name ] [ VERSION version ] [ CASCADE ]`.
+ *
+ * PostgreSQL-only DDL — loads a contrib extension (pgcrypto, uuid-ossp,
+ * btree_gist, postgis, pg_trgm, …) into the current database. MySQL /
+ * SQLite / MSSQL have no equivalent: the printer throws
+ * {@link UnsupportedDialectFeatureError} on those dialects rather than
+ * emitting SQL the engine will reject.
+ *
+ * - `name`: the extension identifier (validated as a SQL identifier to
+ *   keep injection out of the unquoted name slot).
+ * - `version`: optional `VERSION '<v>'` clause. Validated by a stricter
+ *   regex (`[A-Za-z0-9._-]+`) since real extension versions contain
+ *   dots and hyphens.
+ * - `cascade`: also create any extensions this one depends on (`pgcrypto`
+ *   for example pulls in nothing today, but PostGIS pulls in `fuzzystrmatch`).
+ */
+export interface CreateExtensionNode {
+  type: "create_extension"
+  name: string
+  ifNotExists?: boolean
+  schema?: string
+  version?: string
+  cascade?: boolean
+}
+
+// ── DROP EXTENSION ──
+
+/**
+ * `DROP EXTENSION [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`.
+ *
+ * PostgreSQL-only DDL — removes one or more extensions from the
+ * database. The grammar permits a comma-separated list of names; we
+ * preserve that. `CASCADE` drops dependent objects automatically;
+ * `RESTRICT` (the default) refuses if anything depends on the
+ * extension. The two flags are mutually exclusive and the printer
+ * rejects emitting both.
+ */
+export interface DropExtensionNode {
+  type: "drop_extension"
+  names: string[]
+  ifExists?: boolean
+  cascade?: boolean
+  restrict?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -877,3 +926,5 @@ export type DDLNode =
   | ReindexNode
   | CreatePolicyNode
   | DropPolicyNode
+  | CreateExtensionNode
+  | DropExtensionNode

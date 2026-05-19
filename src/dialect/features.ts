@@ -522,6 +522,16 @@ export const FEATURES = {
    * dialect for both the RLS toggle and the policy DDL.
    */
   ROW_LEVEL_SECURITY: { label: "Row Level Security", dialects: ["pg"] },
+  /**
+   * `CREATE EXTENSION` / `DROP EXTENSION` — load and unload contrib
+   * extensions (`pgcrypto`, `uuid-ossp`, `btree_gist`, `postgis`,
+   * `pg_trgm`, …) into a database. PostgreSQL-only; the other three
+   * dialects have no analogous concept (MySQL plugins are server-wide
+   * and not DDL, MSSQL ditto, SQLite has loadable extensions but
+   * they're a connection-level `sqlite3_load_extension` C API rather
+   * than SQL DDL).
+   */
+  EXTENSIONS: { label: "CREATE/DROP EXTENSION", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {

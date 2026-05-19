@@ -14,6 +14,7 @@ import {
   DropViewBuilder,
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
+import { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/extension.ts"
 import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
 import { CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
@@ -850,6 +851,8 @@ const DDL_NODE_TYPES = new Set<string>([
   "reindex",
   "create_policy",
   "drop_policy",
+  "create_extension",
+  "drop_extension",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1107,6 +1110,38 @@ export class SchemaBuilder {
    */
   dropPolicy(name: string): DropPolicyBuilder {
     return new DropPolicyBuilder(name)
+  }
+
+  /**
+   * `CREATE EXTENSION [IF NOT EXISTS] name
+   *   [SCHEMA schema] [VERSION 'v'] [CASCADE]`.
+   *
+   * ```ts
+   * db.schema.createExtension("btree_gist").ifNotExists().build()
+   * // CREATE EXTENSION IF NOT EXISTS "btree_gist"
+   * ```
+   *
+   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL.
+   */
+  createExtension(name: string): CreateExtensionBuilder {
+    return new CreateExtensionBuilder(name)
+  }
+
+  /**
+   * `DROP EXTENSION [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`.
+   *
+   * Accepts either a single name or a `string[]` — PG permits a
+   * comma-separated list, so the builder preserves that.
+   *
+   * ```ts
+   * db.schema.dropExtension(["uuid-ossp", "pgcrypto"]).ifExists().build()
+   * // DROP EXTENSION IF EXISTS "uuid-ossp", "pgcrypto"
+   * ```
+   *
+   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL.
+   */
+  dropExtension(name: string | string[]): DropExtensionBuilder {
+    return new DropExtensionBuilder(name)
   }
 }
 

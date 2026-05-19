@@ -4,6 +4,7 @@ import type {
   AnalyzeNode,
   ColumnDefinitionNode,
   CommentNode,
+  CreateExtensionNode,
   CreateIndexNode,
   CreatePolicyNode,
   CreateSchemaNode,
@@ -11,6 +12,7 @@ import type {
   CreateTableNode,
   CreateViewNode,
   DDLNode,
+  DropExtensionNode,
   DropIndexNode,
   DropPolicyNode,
   DropSchemaNode,
@@ -33,6 +35,8 @@ import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
 import {
   escapeStringLiteral,
   validateDataType,
+  validateExtensionName,
+  validateExtensionVersion,
   validateFunctionName,
   validateOperator,
 } from "../utils/security.ts"
@@ -103,6 +107,10 @@ export class DDLPrinter {
         return this.printCreatePolicy(node)
       case "drop_policy":
         return this.printDropPolicy(node)
+      case "create_extension":
+        return this.printCreateExtension(node)
+      case "drop_extension":
+        return this.printDropExtension(node)
     }
   }
 
@@ -137,6 +145,57 @@ export class DDLPrinter {
     if (node.ifExists) parts.push("IF EXISTS")
     parts.push(quoteIdentifier(node.name, this.dialect))
     if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
+  private printCreateExtension(node: CreateExtensionNode): string {
+    // Only PG has CREATE EXTENSION. The other dialects either ship
+    // extensions via different mechanisms (MySQL `INSTALL PLUGIN`,
+    // MSSQL CLR / linked-server config — neither is DDL) or don't
+    // surface anything comparable in SQL at all (SQLite loads
+    // extensions through the C API, not a SQL statement). Refuse
+    // up front rather than emit DDL the engine will reject.
+    assertFeature(this.dialect, "EXTENSIONS")
+    // Name lands unquoted (PG-style identifier) but we still gate it
+    // through a stricter regex than `quoteIdentifier` would — the
+    // unquoted-identifier slot can't safely hold attacker-controlled
+    // input, so reject anything that isn't a plain identifier
+    // (alphanumerics + underscore + hyphen, since `uuid-ossp` is real).
+    validateExtensionName(node.name)
+    const parts: string[] = ["CREATE EXTENSION"]
+    if (node.ifNotExists) parts.push("IF NOT EXISTS")
+    parts.push(quoteIdentifier(node.name, this.dialect))
+    if (node.schema) {
+      parts.push("SCHEMA", quoteIdentifier(node.schema, this.dialect))
+    }
+    if (node.version !== undefined) {
+      validateExtensionVersion(node.version)
+      parts.push("VERSION", `'${escapeStringLiteral(node.version)}'`)
+    }
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
+  private printDropExtension(node: DropExtensionNode): string {
+    assertFeature(this.dialect, "EXTENSIONS")
+    if (node.names.length === 0) {
+      // The builder constructor always seeds at least one name, but a
+      // hand-rolled AST could land here. PG would reject `DROP EXTENSION
+      // ;` with a syntax error — surface that as a clearer message.
+      throw new Error("DROP EXTENSION requires at least one extension name.")
+    }
+    if (node.cascade && node.restrict) {
+      // The builder normalizes this to "last call wins" but a
+      // hand-built node could still set both flags. PG would error
+      // anyway; bail with a useful diagnostic before emitting.
+      throw new Error("DROP EXTENSION: CASCADE and RESTRICT are mutually exclusive.")
+    }
+    for (const n of node.names) validateExtensionName(n)
+    const parts: string[] = ["DROP EXTENSION"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(node.names.map((n) => quoteIdentifier(n, this.dialect)).join(", "))
+    if (node.cascade) parts.push("CASCADE")
+    if (node.restrict) parts.push("RESTRICT")
     return parts.join(" ")
   }
 
