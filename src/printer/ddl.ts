@@ -4,11 +4,13 @@ import type {
   CommentNode,
   CreateIndexNode,
   CreateSchemaNode,
+  CreateSequenceNode,
   CreateTableNode,
   CreateViewNode,
   DDLNode,
   DropIndexNode,
   DropSchemaNode,
+  DropSequenceNode,
   DropTableNode,
   DropViewNode,
   ExcludeConstraintNode,
@@ -79,6 +81,10 @@ export class DDLPrinter {
         return this.printDropSchema(node)
       case "comment_on":
         return this.printCommentOn(node)
+      case "create_sequence":
+        return this.printCreateSequence(node)
+      case "drop_sequence":
+        return this.printDropSequence(node)
     }
   }
 
@@ -741,6 +747,143 @@ export class DDLPrinter {
       "mysql",
       "standalone COMMENT ON COLUMN (MySQL requires ALTER TABLE … MODIFY COLUMN <name> <type> COMMENT '…' with the column's full type; use the inline `.comment(\"…\")` form on the column when defining the table instead)",
     )
+  }
+
+  /**
+   * Emit `CREATE SEQUENCE [IF NOT EXISTS] <name>
+   *   [AS <type>] [INCREMENT BY n] [MINVALUE n | NO MINVALUE]
+   *   [MAXVALUE n | NO MAXVALUE] [START WITH n] [CACHE n]
+   *   [CYCLE | NO CYCLE] [OWNED BY t.c | NONE]`.
+   *
+   * PG and MSSQL diverge on:
+   *  - `IF NOT EXISTS` — PG only; MSSQL has no first-class form.
+   *  - `OWNED BY` — PG only.
+   *  - Negative `start` / bounds — both accept (PG requires they sit in
+   *    the data-type range; we don't gate that ahead of time).
+   *
+   * Identifier handling: the data type and identifier slots are
+   * validated through `validateDataType` / `quoteIdentifier`. The
+   * numeric slots are formatted via `String(n)` after a finite-integer
+   * check (a non-integer would be a Number cast to int by the engine
+   * and silently round, which is worse than a clear error).
+   */
+  private printCreateSequence(node: CreateSequenceNode): string {
+    // Refuse on MySQL / SQLite — neither has a sequence object at all.
+    assertFeature(this.dialect, "SEQUENCES")
+    if (node.ifNotExists && this.dialect === "mssql") {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "CREATE SEQUENCE IF NOT EXISTS — wrap in IF NOT EXISTS(SELECT * FROM sys.sequences WHERE name = '…') BEGIN … END",
+      )
+    }
+    if (node.ownedBy !== undefined && this.dialect !== "pg") {
+      throw new UnsupportedDialectFeatureError(
+        this.dialect,
+        "CREATE SEQUENCE … OWNED BY (PG-only; sequences on MSSQL aren't auto-dropped with their column)",
+      )
+    }
+
+    const parts: string[] = ["CREATE SEQUENCE"]
+    if (node.ifNotExists) parts.push("IF NOT EXISTS")
+    parts.push(this.qualifiedName(node.name, node.schema))
+
+    if (node.dataType !== undefined) {
+      // Re-use the existing validator — `AS bigint` follows the same
+      // grammar as a column data type. Refusing anything outside the
+      // SAFE_DATA_TYPE_RE here blocks attacker-built ASTs from smuggling
+      // extra DDL through the unquoted-type slot.
+      validateDataType(node.dataType)
+      parts.push("AS", node.dataType)
+    }
+
+    if (node.increment !== undefined) {
+      this.assertFiniteInteger("increment", node.increment)
+      parts.push("INCREMENT BY", String(node.increment))
+    }
+
+    if (node.minValue === null) {
+      parts.push("NO MINVALUE")
+    } else if (node.minValue !== undefined) {
+      this.assertFiniteInteger("minValue", node.minValue)
+      parts.push("MINVALUE", String(node.minValue))
+    }
+
+    if (node.maxValue === null) {
+      parts.push("NO MAXVALUE")
+    } else if (node.maxValue !== undefined) {
+      this.assertFiniteInteger("maxValue", node.maxValue)
+      parts.push("MAXVALUE", String(node.maxValue))
+    }
+
+    if (node.start !== undefined) {
+      this.assertFiniteInteger("start", node.start)
+      parts.push("START WITH", String(node.start))
+    }
+
+    if (node.cache !== undefined) {
+      this.assertFiniteInteger("cache", node.cache)
+      parts.push("CACHE", String(node.cache))
+    }
+
+    if (node.cycle === true) parts.push("CYCLE")
+    else if (node.cycle === false) parts.push("NO CYCLE")
+
+    if (node.ownedBy !== undefined) {
+      // Guarded above — only PG reaches here.
+      if (node.ownedBy === "NONE") {
+        parts.push("OWNED BY NONE")
+      } else {
+        parts.push(
+          "OWNED BY",
+          `${quoteIdentifier(node.ownedBy.table, this.dialect)}.${quoteIdentifier(node.ownedBy.column, this.dialect)}`,
+        )
+      }
+    }
+
+    return parts.join(" ")
+  }
+
+  /**
+   * `DROP SEQUENCE [IF EXISTS] <name> [CASCADE]`. PG accepts CASCADE;
+   * MSSQL rejects it (sequences aren't part of the referential graph
+   * the way tables are), so the printer refuses if set on that
+   * dialect.
+   */
+  private printDropSequence(node: DropSequenceNode): string {
+    assertFeature(this.dialect, "SEQUENCES")
+    const parts: string[] = ["DROP SEQUENCE"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(this.qualifiedName(node.name, node.schema))
+    if (node.cascade) {
+      if (this.dialect !== "pg") {
+        throw new UnsupportedDialectFeatureError(
+          this.dialect,
+          "DROP SEQUENCE ... CASCADE (PG-only)",
+        )
+      }
+      parts.push("CASCADE")
+    }
+    return parts.join(" ")
+  }
+
+  /** Shared schema-qualified name helper for sequence DDL. */
+  private qualifiedName(name: string, schema?: string): string {
+    return schema
+      ? `${quoteIdentifier(schema, this.dialect)}.${quoteIdentifier(name, this.dialect)}`
+      : quoteIdentifier(name, this.dialect)
+  }
+
+  /**
+   * Reject non-finite / non-integer numeric values in sequence DDL.
+   * The numbers go into the SQL text verbatim (no parameter binding —
+   * DDL doesn't bind), so silently rounding a `1.5` to `1` would
+   * mask a builder-side bug; failing fast points the caller at the
+   * offending call site.
+   */
+  private assertFiniteInteger(field: string, value: number): void {
+    if (!Number.isFinite(value) || !Number.isInteger(value)) {
+      throw new Error(`CREATE SEQUENCE: ${field} must be a finite integer, got ${String(value)}.`)
+    }
   }
 
   private printExpr(node: import("../ast/nodes.ts").ExpressionNode): string {

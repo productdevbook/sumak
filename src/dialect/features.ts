@@ -354,6 +354,25 @@ export const FEATURES = {
    * on the unsupported dialects rather than emit silent no-ops.
    */
   OBJECT_COMMENTS: { label: "COMMENT ON TABLE / COLUMN", dialects: ["pg", "mysql"] },
+  /**
+   * `CREATE SEQUENCE` / `DROP SEQUENCE` — first-class sequence objects.
+   * PG and MSSQL both ship a standard-compliant grammar (PG's superset
+   * is broader: `OWNED BY`, `IF NOT EXISTS`, `CACHE` with explicit `NO
+   * CACHE`). MySQL and SQLite have no sequence object at all — they
+   * only support inline `AUTO_INCREMENT` / `AUTOINCREMENT` on a column.
+   * The DDL printer refuses on the unsupported dialects rather than
+   * emit a statement the engine will reject.
+   */
+  SEQUENCES: { label: "CREATE SEQUENCE / DROP SEQUENCE", dialects: ["pg", "mssql"] },
+  /**
+   * Runtime sequence helpers — `nextval('seq')`, `currval('seq')`,
+   * `setval('seq', n[, is_called])`. PG only; these are the PG-native
+   * function-shape access path to a sequence. MSSQL uses a different
+   * grammar (`NEXT VALUE FOR <seq>`) which is not a function call —
+   * supporting it cleanly needs a dedicated AST node and a separate
+   * pass. For the first cut we expose only the PG forms.
+   */
+  SEQUENCE_FNS: { label: "nextval / currval / setval", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {
