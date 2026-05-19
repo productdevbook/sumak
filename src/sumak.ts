@@ -4,6 +4,7 @@ import type { TclNode } from "./ast/tcl-nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
 import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
 import { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
+import { CreateSequenceBuilder, DropSequenceBuilder } from "./builder/ddl/create-sequence.ts"
 import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
 import { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
 import {
@@ -837,6 +838,8 @@ const DDL_NODE_TYPES = new Set<string>([
   "create_schema",
   "drop_schema",
   "comment_on",
+  "create_sequence",
+  "drop_sequence",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -930,6 +933,31 @@ export class SchemaBuilder {
 
   dropSchema(name: string): DropSchemaBuilder {
     return new DropSchemaBuilder(name)
+  }
+
+  /**
+   * `CREATE SEQUENCE [IF NOT EXISTS] <name> [AS …] [INCREMENT …] …`.
+   * PG and MSSQL only — MySQL and SQLite have no sequence object and
+   * the DDL printer refuses on those dialects.
+   *
+   * ```ts
+   * db.compileDDL(
+   *   db.schema.createSequence("order_no").start(1000).increment(1).build()
+   * )
+   * // PG/MSSQL: CREATE SEQUENCE "order_no" INCREMENT BY 1 START WITH 1000
+   * ```
+   */
+  createSequence(name: string, schema?: string): CreateSequenceBuilder {
+    return new CreateSequenceBuilder(name, schema)
+  }
+
+  /**
+   * `DROP SEQUENCE [IF EXISTS] <name> [CASCADE]`. PG and MSSQL only;
+   * MySQL/SQLite refuse via the `SEQUENCES` feature gate. `CASCADE` is
+   * PG-only (MSSQL sequences aren't auto-dropped with dependents).
+   */
+  dropSequence(name: string, schema?: string): DropSequenceBuilder {
+    return new DropSequenceBuilder(name, schema)
   }
 }
 

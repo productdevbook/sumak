@@ -132,6 +132,9 @@ export type { DateIntervalUnit } from "./builder/eb.ts"
 // SQLite (with the regexp extension), `regexpSubstr` is PG/MySQL.
 export { regexpReplace, regexpLike, regexpMatches, regexpSubstr } from "./builder/eb.ts"
 
+// ─── Sequence access (PG-only — refused on other dialects at print) ────────
+export { nextval, currval, setval } from "./builder/eb.ts"
+
 // ─── String manipulation helpers ───────────────────────────────────────────
 // Typed string functions sitting alongside the flat `upper` / `lower` /
 // `concat` / `substring` / `trim` / `length` (which are surfaced via the
@@ -273,9 +276,11 @@ export type {
 export type {
   CommentNode,
   CreateSchemaNode,
+  CreateSequenceNode,
   CreateViewNode,
   DDLNode,
   DropSchemaNode,
+  DropSequenceNode,
   DropViewNode,
   RefreshMaterializedViewNode,
 } from "./ast/ddl-nodes.ts"
@@ -283,6 +288,12 @@ export type {
 // ─── DDL builders (advanced / custom DDL flows) ────────────────────────────
 export { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
 export { DropViewBuilder } from "./builder/ddl/drop.ts"
+export {
+  CreateSequenceBuilder,
+  createSequence,
+  DropSequenceBuilder,
+  dropSequence,
+} from "./builder/ddl/create-sequence.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"

@@ -1737,6 +1737,106 @@ export function currentTimestamp(): Expression<Date> {
 }
 
 /**
+ * Sequence name validator. The name is emitted as a SQL string literal
+ * inside `nextval('…')` / `currval('…')` / `setval('…', n)` — the
+ * `escapeStringLiteral` doubling on the literal slot blocks the
+ * straight-quote escape path, but a leaked `\\` could still terminate
+ * the literal on engines that honour backslash escapes inside string
+ * literals (PG with `standard_conforming_strings = off`, MySQL with
+ * the default backslash mode). Refuse names that don't match a bare
+ * SQL identifier (optionally with a `schema.name` prefix) — the
+ * common case is a single identifier per sequence anyway.
+ */
+const SEQUENCE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)?$/
+
+function validateSequenceName(name: string): void {
+  if (typeof name !== "string" || !SEQUENCE_NAME_RE.test(name)) {
+    throw new InvalidExpressionError(
+      `Sequence name "${String(name)}" is invalid — must be a SQL identifier ` +
+        `(optionally schema-qualified as "schema.seq"). Reach for unsafeRawExpr() ` +
+        "if your sequence name is genuinely exotic.",
+    )
+  }
+}
+
+/**
+ * `nextval('seq')` — PG runtime function that advances the sequence by
+ * its INCREMENT and returns the new value. Each call inside a session
+ * is independent of every other session's calls (PG hands out value
+ * batches per-session via the sequence's CACHE setting).
+ *
+ * ```ts
+ * db.insertInto("orders").values({ order_no: nextval("order_no_seq") }).exec()
+ * ```
+ *
+ * PG only — refused on MySQL / SQLite / MSSQL at print time via the
+ * `SEQUENCE_FNS` feature flag. MSSQL has the equivalent `NEXT VALUE
+ * FOR <seq>` grammar but it's not a function call; supporting it
+ * cleanly needs a dedicated AST node.
+ *
+ * The sequence name is passed as a string literal in the emitted SQL
+ * (`nextval('seq_name')`), not bound — PG accepts the regclass cast
+ * implicitly from a string literal. The builder rejects anything that
+ * isn't a SQL identifier to keep injection out of the literal slot.
+ */
+export function nextval(seqName: string): Expression<number> {
+  validateSequenceName(seqName)
+  return wrap<number>(rawFn("NEXTVAL", [rawLit(seqName)]))
+}
+
+/**
+ * `currval('seq')` — PG runtime function that returns the value most
+ * recently returned by `nextval` for this sequence *in the current
+ * session*. Errors if `nextval` hasn't yet been called in this
+ * session for this sequence.
+ *
+ * Use case: `INSERT INTO orders RETURNING id` is the modern idiom for
+ * "get the freshly-assigned ID," but `currval` is still useful when
+ * the sequence value is consumed across multiple statements and a
+ * single value-shape function call reads better than threading the
+ * `RETURNING` row.
+ *
+ * PG only — same refusal path as {@link nextval}.
+ */
+export function currval(seqName: string): Expression<number> {
+  validateSequenceName(seqName)
+  return wrap<number>(rawFn("CURRVAL", [rawLit(seqName)]))
+}
+
+/**
+ * `setval('seq', value [, is_called])` — PG runtime function that
+ * sets the sequence's current value. The optional `is_called` flag
+ * controls whether the next `nextval` returns `value + increment`
+ * (when `true`, the default) or `value` (when `false`).
+ *
+ * ```ts
+ * // Set the sequence to 1000; the NEXT nextval returns 1001.
+ * setval("order_no_seq", 1000)
+ *
+ * // Set the sequence to 1000; the NEXT nextval returns 1000.
+ * setval("order_no_seq", 1000, false)
+ * ```
+ *
+ * PG only — same refusal path as {@link nextval}. The `value` is
+ * captured as a numeric literal (not bound) for PG plan-cache
+ * stability; `isCalled` is a bool literal. The builder rejects
+ * non-finite-integer `value` to keep the numeric literal slot safe.
+ */
+export function setval(seqName: string, value: number, isCalled?: boolean): Expression<number> {
+  validateSequenceName(seqName)
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    throw new InvalidExpressionError(
+      `setval(): value must be a finite integer, got ${String(value)}.`,
+    )
+  }
+  const args: ExpressionNode[] = [rawLit(seqName), rawLit(value)]
+  if (isCalled !== undefined) {
+    args.push(rawLit(isCalled))
+  }
+  return wrap<number>(rawFn("SETVAL", args))
+}
+
+/**
  * EXTRACT field allowlist. Keep this in sync with what the underlying
  * dialects parse — the printer emits the field verbatim, so any string
  * not on this list would either fail at parse time or, worse, be

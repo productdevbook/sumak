@@ -369,6 +369,88 @@ export interface CommentNode {
   comment: string | null
 }
 
+// ── CREATE SEQUENCE ──
+
+/**
+ * PG / MSSQL first-class `CREATE SEQUENCE` — a free-standing
+ * monotonic integer source. Useful for advisory IDs, batch numbers, or
+ * any counter that needs to outlive a particular table's lifecycle
+ * (auto-increment / IDENTITY columns are scoped to their owning table;
+ * sequences are not).
+ *
+ * Grammar (loose superset across PG and MSSQL):
+ *
+ *     CREATE SEQUENCE [IF NOT EXISTS] <name>
+ *       [AS <int_type>]                       -- smallint / integer / bigint
+ *       [INCREMENT [BY] <step>]               -- default 1
+ *       [MINVALUE <n> | NO MINVALUE]
+ *       [MAXVALUE <n> | NO MAXVALUE]
+ *       [START [WITH] <n>]
+ *       [CACHE <n> | NO CACHE]                -- batch size; MSSQL NO CACHE
+ *       [CYCLE | NO CYCLE]
+ *       [OWNED BY { table.column | NONE }]    -- PG only
+ *
+ * Divergence the printer handles:
+ *
+ *  - `OWNED BY` is PG-only (drops sequence when the owning column is
+ *    dropped). MSSQL has no analogue; the printer refuses if set.
+ *  - `IF NOT EXISTS` is PG-only on this statement. MSSQL has no first-
+ *    class form and the printer refuses.
+ *  - `minValue`/`maxValue` use `null` to mean "NO MINVALUE/MAXVALUE";
+ *    `undefined` means "default for the data type".
+ *
+ * SQLite and MySQL have no sequence object at all — both refuse via the
+ * `SEQUENCES` feature flag.
+ */
+export interface CreateSequenceNode {
+  type: "create_sequence"
+  name: string
+  schema?: string
+  ifNotExists?: boolean
+  /** `AS <int_type>` — `smallint` / `integer` / `bigint`. */
+  dataType?: string
+  /** `INCREMENT BY <n>`. Negative values reverse the sequence. */
+  increment?: number
+  /** `MINVALUE <n>` when a number; `null` → `NO MINVALUE`; `undefined` → default. */
+  minValue?: number | null
+  /** `MAXVALUE <n>` when a number; `null` → `NO MAXVALUE`; `undefined` → default. */
+  maxValue?: number | null
+  /** `START WITH <n>`. */
+  start?: number
+  /** `CACHE <n>` — pre-allocate that many values per session. */
+  cache?: number
+  /** `CYCLE` (wrap on overflow) when true; `NO CYCLE` when false. */
+  cycle?: boolean
+  /**
+   * `OWNED BY <table>.<column> | NONE` — PG only. When the owning
+   * column / table is dropped, PG drops the sequence too. The literal
+   * string `"NONE"` clears any existing ownership. MSSQL has no
+   * equivalent; the printer refuses if set on that dialect.
+   */
+  ownedBy?: { table: string; column: string } | "NONE"
+}
+
+// ── DROP SEQUENCE ──
+
+/**
+ * `DROP SEQUENCE [IF EXISTS] <name> [CASCADE | RESTRICT]`. PG and
+ * MSSQL accept the same grammar (modulo PG-only `CASCADE`). MySQL and
+ * SQLite have no sequence object; the printer refuses via the
+ * `SEQUENCES` feature flag.
+ */
+export interface DropSequenceNode {
+  type: "drop_sequence"
+  name: string
+  schema?: string
+  ifExists?: boolean
+  /**
+   * `CASCADE` — PG only. MSSQL has no cascade form on `DROP SEQUENCE`
+   * (sequences aren't referentially linked to dependents the way tables
+   * are); the printer refuses if set on that dialect.
+   */
+  cascade?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -384,3 +466,5 @@ export type DDLNode =
   | CreateSchemaNode
   | DropSchemaNode
   | CommentNode
+  | CreateSequenceNode
+  | DropSequenceNode

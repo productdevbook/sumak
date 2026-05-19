@@ -487,6 +487,94 @@ The SELECT embedded in `CREATE VIEW` is rendered by the dialect's full SELECT pi
 
 ---
 
+## Sequences (CREATE SEQUENCE / nextval / currval / setval)
+
+Sequences are free-standing monotonic integer sources — useful for advisory IDs, batch numbers, or any counter that needs to outlive a particular table's lifecycle. `AUTO_INCREMENT` / `IDENTITY` columns are scoped to their owning table; sequences are not. PostgreSQL and SQL Server are the two dialects with a first-class `CREATE SEQUENCE` grammar; MySQL and SQLite have no sequence object at all (they only support inline `AUTO_INCREMENT` / `AUTOINCREMENT` on a column). sumak refuses both `CREATE SEQUENCE` and the runtime helpers on the unsupported dialects via the `SEQUENCES` / `SEQUENCE_FNS` feature flags.
+
+```ts
+db.compileDDL(
+  db.schema
+    .createSequence("order_no")
+    .dataType("bigint")
+    .start(1000)
+    .increment(1)
+    .cache(50)
+    .noCycle()
+    .build(),
+)
+// PG / MSSQL:
+//   CREATE SEQUENCE "order_no" AS bigint INCREMENT BY 1 START WITH 1000 CACHE 50 NO CYCLE
+```
+
+`.minValue(n)` / `.noMinValue()` / `.maxValue(n)` / `.noMaxValue()` set the bounds; the default is the data type's natural minimum / maximum. `.cycle()` / `.noCycle()` controls wrap-on-overflow behaviour. `.ownedBy("table", "column")` is PG-only — it ties the sequence's lifetime to a column so dropping the column drops the sequence; `.ownedByNone()` clears any existing link. MSSQL has no equivalent and the printer refuses if either ownership method is called on that dialect. `.ifNotExists()` is PG-only on this statement; MSSQL has no first-class form and the printer points at the `IF NOT EXISTS(SELECT * FROM sys.sequences …)` wrapper pattern.
+
+```ts
+db.compileDDL(db.schema.dropSequence("order_no").ifExists().build())
+// PG / MSSQL: DROP SEQUENCE IF EXISTS "order_no"
+
+db.compileDDL(db.schema.dropSequence("order_no").ifExists().cascade().build())
+// PG only: DROP SEQUENCE IF EXISTS "order_no" CASCADE
+```
+
+### Runtime access — `nextval` / `currval` / `setval`
+
+On PostgreSQL the three function-shape sequence accessors are the standard idiom. `nextval('seq')` advances the sequence and returns the new value; `currval('seq')` returns the most recent value handed out _in the current session_; `setval('seq', n[, is_called])` sets the sequence's current value (the optional third arg controls whether the next `nextval` returns `n + increment` or `n`).
+
+```ts
+import { nextval, currval, setval } from "sumak"
+
+// Build an INSERT that pulls a fresh ID from the sequence.
+db.insertInto("orders")
+  .values({ order_no: nextval("order_no_seq"), customer_id: 42 })
+  .exec()
+
+// Read the value that the most recent INSERT assigned.
+const last = await db.executeCompiled(
+  db
+    .selectFromValues({
+      alias: "v",
+      columns: ["seq_no"],
+      rows: [[currval("order_no_seq")]],
+    })
+    .selectAll()
+    .build(),
+)
+
+// Reset the sequence so the next nextval returns 1001.
+await db.executeCompiledNoRows(
+  db.compile(
+    db
+      .selectFromValues({
+        alias: "v",
+        columns: ["v"],
+        rows: [[setval("order_no_seq", 1000, true)]],
+      })
+      .selectAll()
+      .build(),
+  ),
+)
+```
+
+The runtime functions are PG-only — calling them on MySQL / SQLite / MSSQL throws `UnsupportedDialectFeatureError` at print time. MSSQL has the equivalent `NEXT VALUE FOR <seq>` grammar but it's not a function call (it's a sequence-value expression), so supporting it cleanly needs a dedicated AST node; that's a future cut. For SQL Server today, fall back to `unsafeRawExpr("NEXT VALUE FOR " + quotedSeqName)` when the sequence name is trusted.
+
+The sequence name passed to `nextval` / `currval` / `setval` is captured as a SQL string literal (not bound) in the emitted SQL — `nextval('order_no_seq')`, not `nextval($1)`. The builder rejects names that don't match a bare SQL identifier (optionally with a `schema.name` prefix) to keep injection out of the literal slot; if your sequence name is genuinely exotic, reach for `unsafeRawExpr` and emit the call directly.
+
+### Feature matrix
+
+| Feature                         | PG  | MySQL | SQLite | MSSQL |
+| ------------------------------- | --- | ----- | ------ | ----- |
+| `CREATE SEQUENCE`               | yes | —     | —      | yes   |
+| `CREATE SEQUENCE … AS …`        | yes | —     | —      | yes   |
+| `INCREMENT / START / …`         | yes | —     | —      | yes   |
+| `OWNED BY …`                    | yes | —     | —      | —     |
+| `CREATE SEQUENCE IF NOT EXISTS` | yes | —     | —      | —     |
+| `DROP SEQUENCE`                 | yes | —     | —      | yes   |
+| `DROP SEQUENCE IF EXISTS`       | yes | —     | —      | yes   |
+| `DROP SEQUENCE … CASCADE`       | yes | —     | —      | —     |
+| `nextval / currval / setval`    | yes | —     | —      | —     |
+
+---
+
 ## Multi-tenant scoping
 
 ```ts
