@@ -276,6 +276,13 @@ export class MssqlPrinter extends BasePrinter {
         `${node.insertMode} (SQLite-only syntax — use MERGE INTO for MSSQL upserts)`,
       )
     }
+    if (node.overriding) {
+      // MSSQL has no inline `OVERRIDING` clause. The closest analogue
+      // is `SET IDENTITY_INSERT <table> ON`, but that's a separate
+      // statement with session-scoped state — silently rewriting one
+      // into the other would surprise callers.
+      assertFeature("mssql", "INSERT_OVERRIDING")
+    }
 
     const parts: string[] = []
 

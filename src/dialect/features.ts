@@ -48,6 +48,16 @@ export const FEATURES = {
     label: "INSERT OR IGNORE / OR REPLACE",
     dialects: ["sqlite", "mysql"],
   },
+  /**
+   * `OVERRIDING { SYSTEM | USER } VALUE` on INSERT — SQL:2003 clause
+   * that controls user-supplied values for identity columns. PG (10+)
+   * supports both forms natively. MSSQL has the separate `SET
+   * IDENTITY_INSERT` *statement* with similar effect for SYSTEM (no
+   * USER equivalent); MySQL and SQLite have no analogue at all (their
+   * auto-increment columns accept user values directly). Non-PG
+   * dialects throw when this clause is set.
+   */
+  INSERT_OVERRIDING: { label: "OVERRIDING SYSTEM/USER VALUE", dialects: ["pg"] },
   MERGE_STATEMENT: { label: "MERGE", dialects: ["pg", "mssql"] },
   /**
    * `RETURNING` projection on MERGE — PG 17+ accepts it natively
