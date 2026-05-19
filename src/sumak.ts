@@ -782,7 +782,9 @@ export class Sumak<DB> {
           let col = c
           if (def.isPrimaryKey) col = col.primaryKey()
           if (def.isNotNull && !def.isPrimaryKey) col = col.notNull()
-          if (def.isUnique) col = col.unique()
+          if (def.isUnique) {
+            col = def.uniqueNullsNotDistinct ? col.unique({ nullsNotDistinct: true }) : col.unique()
+          }
           if (def.hasDefault && def.defaultValue !== undefined) {
             const dv = def.defaultValue
             const lit =

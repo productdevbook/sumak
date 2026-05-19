@@ -63,7 +63,17 @@ export class ColumnDefBuilder {
     return this.clone({ primaryKey: true })
   }
 
-  unique(): ColumnDefBuilder {
+  /**
+   * Mark the column-level constraint as `UNIQUE`. Pass
+   * `{ nullsNotDistinct: true }` for PG 15+ `UNIQUE NULLS NOT DISTINCT`
+   * — see {@link ColumnDefinitionNode.uniqueNullsNotDistinct}. The flag
+   * is only meaningful on PG; MySQL, SQLite, and MSSQL throw
+   * `UnsupportedDialectFeatureError` at print time when it is set.
+   */
+  unique(opts?: { nullsNotDistinct?: boolean }): ColumnDefBuilder {
+    if (opts?.nullsNotDistinct) {
+      return this.clone({ unique: true, uniqueNullsNotDistinct: true })
+    }
     return this.clone({ unique: true })
   }
 
@@ -170,11 +180,24 @@ export class CreateTableBuilder {
     })
   }
 
-  addUniqueConstraint(name: string | undefined, columns: string[]): CreateTableBuilder {
+  /**
+   * Add a table-level UNIQUE constraint. Pass `{ nullsNotDistinct: true }`
+   * in the third arg for PG 15+ `UNIQUE NULLS NOT DISTINCT`; the DDL
+   * printer emits `UNIQUE NULLS NOT DISTINCT (cols…)` on PG and throws
+   * `UnsupportedDialectFeatureError` on MySQL/SQLite/MSSQL.
+   */
+  addUniqueConstraint(
+    name: string | undefined,
+    columns: string[],
+    opts?: { nullsNotDistinct?: boolean },
+  ): CreateTableBuilder {
     const constraint: TableConstraintNode = {
       type: "unique_constraint",
       name,
       columns,
+    }
+    if (opts?.nullsNotDistinct) {
+      ;(constraint as { nullsNotDistinct?: boolean }).nullsNotDistinct = true
     }
     return this.cloneWith({
       constraints: [...this.node.constraints, constraint],

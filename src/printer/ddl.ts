@@ -175,7 +175,24 @@ export class DDLPrinter {
     if (col.primaryKey) parts.push("PRIMARY KEY")
     if (trailingTokens.length > 0) parts.push(...trailingTokens)
     if (col.notNull) parts.push("NOT NULL")
-    if (col.unique) parts.push("UNIQUE")
+    if (col.unique) {
+      if (col.uniqueNullsNotDistinct) {
+        // PG 15+ — at most one NULL per unique column. Other dialects
+        // either treat NULLs as not-equal (PG default, MySQL, SQLite) or
+        // not-equal-and-rejected-as-duplicate (MSSQL allows at most one
+        // NULL, but the syntax doesn't exist). Refuse rather than emit
+        // a clause the engine will reject.
+        if (this.dialect !== "pg") {
+          throw new UnsupportedDialectFeatureError(
+            this.dialect,
+            "UNIQUE NULLS NOT DISTINCT (PG 15+ only)",
+          )
+        }
+        parts.push("UNIQUE NULLS NOT DISTINCT")
+      } else {
+        parts.push("UNIQUE")
+      }
+    }
     if (col.defaultTo) parts.push("DEFAULT", this.printExpr(col.defaultTo))
     if (col.check) parts.push("CHECK", `(${this.printExpr(col.check)})`)
     if (col.references) {
@@ -198,8 +215,22 @@ export class DDLPrinter {
     switch (c.type) {
       case "pk_constraint":
         return `${namePrefix}PRIMARY KEY (${c.columns.map((col) => quoteIdentifier(col, this.dialect)).join(", ")})`
-      case "unique_constraint":
-        return `${namePrefix}UNIQUE (${c.columns.map((col) => quoteIdentifier(col, this.dialect)).join(", ")})`
+      case "unique_constraint": {
+        const cols = c.columns.map((col) => quoteIdentifier(col, this.dialect)).join(", ")
+        if (c.nullsNotDistinct) {
+          // PG 15+ `UNIQUE NULLS NOT DISTINCT` — treat NULLs as equal so
+          // at most one row may have NULL in any of the columns. The
+          // keyword goes BEFORE the column list per PG grammar.
+          if (this.dialect !== "pg") {
+            throw new UnsupportedDialectFeatureError(
+              this.dialect,
+              "UNIQUE NULLS NOT DISTINCT (PG 15+ only)",
+            )
+          }
+          return `${namePrefix}UNIQUE NULLS NOT DISTINCT (${cols})`
+        }
+        return `${namePrefix}UNIQUE (${cols})`
+      }
       case "check_constraint":
         return `${namePrefix}CHECK (${this.printExpr(c.expression)})`
       case "fk_constraint":

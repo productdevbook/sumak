@@ -14,9 +14,17 @@ import type { ColumnType } from "./types.ts"
 export type PrimaryKeyDef = readonly string[] | { name?: string; columns: readonly string[] }
 
 /**
- * Composite unique constraint — same shape as {@link PrimaryKeyDef}.
+ * Composite unique constraint — same shape as {@link PrimaryKeyDef},
+ * plus an optional `nullsNotDistinct` flag for PG 15+
+ * `UNIQUE NULLS NOT DISTINCT`. When set, NULLs in the constrained
+ * columns are treated as equal for uniqueness (default: distinct).
+ * Only PG supports the modifier; the DDL printer throws
+ * `UnsupportedDialectFeatureError` on MySQL/SQLite/MSSQL when the flag
+ * is on.
  */
-export type UniqueDef = readonly string[] | { name?: string; columns: readonly string[] }
+export type UniqueDef =
+  | readonly string[]
+  | { name?: string; columns: readonly string[]; nullsNotDistinct?: boolean }
 
 /**
  * Table-level CHECK constraint. The expression is either a raw SQL
@@ -214,6 +222,27 @@ export function normalizeKeyDef(def: PrimaryKeyDef | UniqueDef): {
   return obj.name === undefined
     ? { columns: [...obj.columns] }
     : { name: obj.name, columns: [...obj.columns] }
+}
+
+/**
+ * Normalize a {@link UniqueDef} to its full shape — same as
+ * {@link normalizeKeyDef} but preserves the `nullsNotDistinct` flag.
+ *
+ * @internal
+ */
+export function normalizeUniqueDef(def: UniqueDef): {
+  name?: string
+  columns: string[]
+  nullsNotDistinct?: boolean
+} {
+  if (Array.isArray(def)) return { columns: [...def] }
+  const obj = def as { name?: string; columns: readonly string[]; nullsNotDistinct?: boolean }
+  const out: { name?: string; columns: string[]; nullsNotDistinct?: boolean } = {
+    columns: [...obj.columns],
+  }
+  if (obj.name !== undefined) out.name = obj.name
+  if (obj.nullsNotDistinct) out.nullsNotDistinct = true
+  return out
 }
 
 /**

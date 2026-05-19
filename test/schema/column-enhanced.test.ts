@@ -24,6 +24,19 @@ describe("ColumnBuilder enhancements", () => {
   it("unique flag", () => {
     const col = text().unique()
     expect(col._def.isUnique).toBe(true)
+    expect(col._def.uniqueNullsNotDistinct).toBeUndefined()
+  })
+
+  it("unique({ nullsNotDistinct: true }) sets the PG 15+ modifier flag", () => {
+    const col = text().nullable().unique({ nullsNotDistinct: true })
+    expect(col._def.isUnique).toBe(true)
+    expect(col._def.uniqueNullsNotDistinct).toBe(true)
+  })
+
+  it("unique({ nullsNotDistinct: false }) does NOT set the modifier flag", () => {
+    const col = text().nullable().unique({ nullsNotDistinct: false })
+    expect(col._def.isUnique).toBe(true)
+    expect(col._def.uniqueNullsNotDistinct).toBeUndefined()
   })
 
   it("references with onDelete", () => {
@@ -82,6 +95,21 @@ describe("generateDDL with enhanced columns", () => {
     })
     const ddl = db.generateDDL()
     expect(ddl[0]!.sql).toContain("UNIQUE")
+    expect(ddl[0]!.sql).not.toContain("NULLS NOT DISTINCT")
+  })
+
+  it("generates UNIQUE NULLS NOT DISTINCT on PG when the flag is set", () => {
+    const db = sumak({
+      dialect: pgDialect(),
+      tables: {
+        users: {
+          id: serial().primaryKey(),
+          email: text().unique({ nullsNotDistinct: true }),
+        },
+      },
+    })
+    const ddl = db.generateDDL()
+    expect(ddl[0]!.sql).toContain("UNIQUE NULLS NOT DISTINCT")
   })
 
   it("generates ON DELETE CASCADE", () => {

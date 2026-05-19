@@ -39,6 +39,26 @@ describe("defineTable — constraints option", () => {
     })
   })
 
+  it("round-trips a unique with PG 15+ nullsNotDistinct flag", () => {
+    const t = defineTable(
+      "members",
+      { orgId: integer().notNull(), userId: integer().nullable() },
+      {
+        constraints: {
+          uniques: [
+            { name: "uq_members_org_user", columns: ["orgId", "userId"], nullsNotDistinct: true },
+          ],
+        },
+      },
+    )
+    const u = t.constraints?.uniques?.[0] as
+      | { name?: string; columns: readonly string[]; nullsNotDistinct?: boolean }
+      | undefined
+    expect(u).toBeDefined()
+    expect(u!.name).toBe("uq_members_org_user")
+    expect(u!.nullsNotDistinct).toBe(true)
+  })
+
   it("round-trips a CHECK with Expression form", () => {
     const t = defineTable(
       "products",
