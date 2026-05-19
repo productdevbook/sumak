@@ -611,6 +611,136 @@ export interface AlterSequenceNode {
   ownedBy?: { table: string; column: string } | "NONE"
 }
 
+// ── VACUUM / ANALYZE / REINDEX (PG maintenance) ──
+
+/**
+ * PostgreSQL `VACUUM [ ( option [, ...] ) ] [ table_and_columns [, ...] ]`.
+ *
+ * Reclaims storage left over by dead tuples and (with `ANALYZE`) refreshes
+ * the planner statistics. Without a table list it runs against every
+ * non-shared table in the current database — useful for nightly cron, but
+ * heavy on shared infrastructure. Per-table form is preferred during
+ * online operation.
+ *
+ * Grammar (loose superset of PG 14+ option list — the first-cut surface
+ * exposes the high-value options only):
+ *
+ *     VACUUM [ ( FULL [bool], FREEZE [bool], VERBOSE [bool],
+ *                 ANALYZE [bool], SKIP_LOCKED [bool], TRUNCATE [bool] ) ]
+ *            [ table_and_columns [, ...] ]
+ *
+ * Divergence the printer handles:
+ *
+ *  - **PG only.** MySQL has an unrelated `OPTIMIZE TABLE` with a different
+ *    surface; SQLite's `VACUUM` is whole-database and option-less; MSSQL
+ *    has no VACUUM at all (its equivalent is `DBCC SHRINKDATABASE` /
+ *    `DBCC SHRINKFILE`). The printer refuses on all three dialects rather
+ *    than emit SQL the engine rejects or — worse — silently misinterprets.
+ *
+ *  - `tables` empty array (`[]`) and `tables: undefined` are both treated
+ *    as "whole database" — the printer omits the table list either way.
+ *
+ *  - `FULL` rewrites the table on disk and takes an `ACCESS EXCLUSIVE`
+ *    lock for the duration; never run on production tables during traffic.
+ *
+ *  - `ANALYZE` is independent of `FULL`; the common operational shape is
+ *    `VACUUM ANALYZE table` to reclaim + refresh stats in one shot.
+ *
+ *  - `SKIP_LOCKED` (PG 12+) skips tables / rows it can't get the lock on
+ *    without blocking — useful inside maintenance windows that have a
+ *    soft deadline.
+ */
+export interface VacuumNode {
+  type: "vacuum"
+  /**
+   * One or more tables to vacuum. Empty / undefined means "every table
+   * in the current database" (PG's default). Multi-table form is PG
+   * only — the printer accepts comma-separated lists straight through.
+   */
+  tables?: string[]
+  /** `FULL` — rewrite the table on disk (takes ACCESS EXCLUSIVE lock). */
+  full?: boolean
+  /** `FREEZE` — aggressively freeze tuples, equivalent to `vacuum_freeze_min_age = 0`. */
+  freeze?: boolean
+  /** `VERBOSE` — print progress to the server log / client. */
+  verbose?: boolean
+  /** `ANALYZE` — refresh planner statistics in the same pass. */
+  analyze?: boolean
+  /** `SKIP_LOCKED` — skip tables / rows it can't lock immediately (PG 12+). */
+  skipLocked?: boolean
+  /**
+   * `TRUNCATE` — truncate the trailing empty pages back to the OS.
+   * Defaults to ON in PG; this flag lets a caller opt out via
+   * `TRUNCATE FALSE` in the option list, which the printer emits as
+   * `TRUNCATE FALSE` (PG 12+).
+   */
+  truncate?: boolean
+}
+
+/**
+ * PostgreSQL `ANALYZE [ ( option [, ...] ) ] [ table_and_columns [, ...] ]`.
+ *
+ * Refreshes the planner's statistics without reclaiming storage. Same
+ * dialect-only-PG story as `VACUUM` — MSSQL has `UPDATE STATISTICS` and
+ * MySQL has `ANALYZE TABLE` with a different grammar; SQLite has
+ * `ANALYZE` but no option list. For first cut: PG only. MySQL/SQLite/MSSQL
+ * refuse at print time.
+ */
+export interface AnalyzeNode {
+  type: "analyze"
+  /** Empty / undefined → analyze every table in the database. */
+  tables?: string[]
+  /** `VERBOSE` — print progress to the server log / client. */
+  verbose?: boolean
+  /** `SKIP_LOCKED` — skip tables it can't lock immediately (PG 12+). */
+  skipLocked?: boolean
+}
+
+/**
+ * PostgreSQL `REINDEX [ ( option ) ] { INDEX | TABLE | SCHEMA |
+ * DATABASE | SYSTEM } [ CONCURRENTLY ] name`.
+ *
+ * Rebuilds one or more indexes — useful after a corruption suspicion, a
+ * bloat purge, or when changing the index access method (drop and
+ * recreate is usually cleaner for the last case, but REINDEX wins when
+ * the index name needs to stay stable). `CONCURRENTLY` (PG 12+) does the
+ * rebuild without blocking writes; it requires twice the disk space for
+ * the duration and can't run inside a transaction.
+ *
+ * Dialect support:
+ *
+ *  - **PG only.** MSSQL has `ALTER INDEX … REBUILD`, MySQL has
+ *    `OPTIMIZE TABLE` and `ALTER TABLE … FORCE` for table-level rebuilds,
+ *    SQLite has `REINDEX` but the grammar is `REINDEX [name]` — no
+ *    target keywords, no `CONCURRENTLY`. The first cut refuses on every
+ *    non-PG dialect; dialect-aware variants need separate AST nodes.
+ */
+export interface ReindexNode {
+  type: "reindex"
+  /**
+   * What to rebuild. `INDEX` / `TABLE` / `SCHEMA` / `DATABASE` /
+   * `SYSTEM` map 1:1 to the PG keywords; the printer emits the keyword
+   * verbatim after validating the chosen target against this set.
+   */
+  target: "INDEX" | "TABLE" | "SCHEMA" | "DATABASE" | "SYSTEM"
+  /**
+   * Identifier of the target object (index / table / schema /
+   * database name). The printer quotes it via the standard
+   * `quoteIdentifier` helper.
+   */
+  name: string
+  /**
+   * `CONCURRENTLY` — non-blocking rebuild (PG 12+). Refused at print
+   * time when `target` is `SYSTEM` since PG itself forbids it on the
+   * system catalogs; for `DATABASE` PG also refuses, but we surface
+   * the error from the engine rather than pre-empt every catalog
+   * detail here.
+   */
+  concurrently?: boolean
+  /** `VERBOSE` — print progress to the server log / client. */
+  verbose?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -629,3 +759,6 @@ export type DDLNode =
   | CreateSequenceNode
   | DropSequenceNode
   | AlterSequenceNode
+  | VacuumNode
+  | AnalyzeNode
+  | ReindexNode

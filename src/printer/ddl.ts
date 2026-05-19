@@ -1,6 +1,7 @@
 import type {
   AlterSequenceNode,
   AlterTableNode,
+  AnalyzeNode,
   ColumnDefinitionNode,
   CommentNode,
   CreateIndexNode,
@@ -17,8 +18,10 @@ import type {
   ExcludeConstraintNode,
   ForeignKeyConstraintNode,
   RefreshMaterializedViewNode,
+  ReindexNode,
   TableConstraintNode,
   TruncateTableNode,
+  VacuumNode,
 } from "../ast/ddl-nodes.ts"
 import type { SelectNode } from "../ast/nodes.ts"
 import { assertFeature } from "../dialect/features.ts"
@@ -88,6 +91,12 @@ export class DDLPrinter {
         return this.printDropSequence(node)
       case "alter_sequence":
         return this.printAlterSequence(node)
+      case "vacuum":
+        return this.printVacuum(node)
+      case "analyze":
+        return this.printAnalyze(node)
+      case "reindex":
+        return this.printReindex(node)
     }
   }
 
@@ -1098,6 +1107,101 @@ export class DDLPrinter {
     if (!Number.isFinite(value) || !Number.isInteger(value)) {
       throw new Error(`SEQUENCE: ${field} must be a finite integer, got ${String(value)}.`)
     }
+  }
+
+  /**
+   * Emit `VACUUM [ ( option, option, ... ) ] [ table [, table ...] ]`.
+   *
+   * PG-only; the printer refuses on MySQL / SQLite / MSSQL via the
+   * `VACUUM_STMT` feature gate.
+   *
+   * Option ordering follows the PG documentation tour for stable
+   * serialisation. Each option emits its keyword unconditionally when
+   * set true; `truncate` is the only flag where the false form is
+   * meaningful (`TRUNCATE FALSE` skips PG's default trailing-page
+   * truncate), so the printer emits the explicit value when the slot
+   * is set.
+   */
+  private printVacuum(node: VacuumNode): string {
+    assertFeature(this.dialect, "VACUUM_STMT")
+    const options: string[] = []
+    if (node.full) options.push("FULL")
+    if (node.freeze) options.push("FREEZE")
+    if (node.verbose) options.push("VERBOSE")
+    if (node.analyze) options.push("ANALYZE")
+    if (node.skipLocked) options.push("SKIP_LOCKED")
+    // `truncate` field controls both directions. PG's default is
+    // `TRUNCATE TRUE`; we only emit when the slot is set.
+    if (node.truncate !== undefined) {
+      options.push(node.truncate ? "TRUNCATE" : "TRUNCATE FALSE")
+    }
+    const parts: string[] = ["VACUUM"]
+    if (options.length > 0) parts.push(`(${options.join(", ")})`)
+    if (node.tables && node.tables.length > 0) {
+      parts.push(node.tables.map((t) => quoteIdentifier(t, this.dialect)).join(", "))
+    }
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `ANALYZE [ ( option, option, ... ) ] [ table [, table ...] ]`.
+   *
+   * PG-only under this exact grammar; the printer refuses on MySQL /
+   * SQLite / MSSQL.
+   */
+  private printAnalyze(node: AnalyzeNode): string {
+    assertFeature(this.dialect, "ANALYZE_STMT")
+    const options: string[] = []
+    if (node.verbose) options.push("VERBOSE")
+    if (node.skipLocked) options.push("SKIP_LOCKED")
+    const parts: string[] = ["ANALYZE"]
+    if (options.length > 0) parts.push(`(${options.join(", ")})`)
+    if (node.tables && node.tables.length > 0) {
+      parts.push(node.tables.map((t) => quoteIdentifier(t, this.dialect)).join(", "))
+    }
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `REINDEX [ ( VERBOSE ) ] { INDEX | TABLE | SCHEMA | DATABASE
+   * | SYSTEM } [CONCURRENTLY] <name>`.
+   *
+   * PG-only. The grammar puts the option list (just `VERBOSE` in the
+   * supported first cut) *before* the target keyword and the
+   * `CONCURRENTLY` flag goes *after* the target keyword but *before*
+   * the name.
+   *
+   * `target` is type-restricted to the five PG keywords; the printer
+   * still routes through a final switch to surface a clearer error if
+   * an attacker-crafted AST passes anything else through. `name` is
+   * quoted via `quoteIdentifier` so reserved words, mixed case, and
+   * Unicode all survive verbatim.
+   */
+  private printReindex(node: ReindexNode): string {
+    assertFeature(this.dialect, "REINDEX_STMT")
+    // Defensive — the AST type narrows this, but a hand-built node
+    // could smuggle in anything via `as unknown`. Surface a clear
+    // error rather than emit a string PG will silently misinterpret.
+    switch (node.target) {
+      case "INDEX":
+      case "TABLE":
+      case "SCHEMA":
+      case "DATABASE":
+      case "SYSTEM":
+        break
+      default:
+        throw new Error(
+          `REINDEX: target must be one of INDEX / TABLE / SCHEMA / DATABASE / SYSTEM — got "${String(
+            (node as { target: string }).target,
+          )}".`,
+        )
+    }
+    const parts: string[] = ["REINDEX"]
+    if (node.verbose) parts.push("(VERBOSE)")
+    parts.push(node.target)
+    if (node.concurrently) parts.push("CONCURRENTLY")
+    parts.push(quoteIdentifier(node.name, this.dialect))
+    return parts.join(" ")
   }
 
   private printExpr(node: import("../ast/nodes.ts").ExpressionNode): string {

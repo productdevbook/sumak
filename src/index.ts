@@ -308,6 +308,7 @@ export type {
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
 export type {
   AlterSequenceNode,
+  AnalyzeNode,
   CommentNode,
   CreateSchemaNode,
   CreateSequenceNode,
@@ -317,7 +318,9 @@ export type {
   DropSequenceNode,
   DropViewNode,
   RefreshMaterializedViewNode,
+  ReindexNode,
   TruncateTableNode,
+  VacuumNode,
 } from "./ast/ddl-nodes.ts"
 
 // ─── DDL builders (advanced / custom DDL flows) ────────────────────────────
@@ -331,6 +334,14 @@ export {
 } from "./builder/ddl/create-sequence.ts"
 export { AlterSequenceBuilder, alterSequence } from "./builder/ddl/alter-sequence.ts"
 export { TruncateBuilder, truncate, type TruncateTableArg } from "./builder/ddl/truncate.ts"
+export {
+  AnalyzeBuilder,
+  analyze,
+  ReindexBuilder,
+  reindex,
+  VacuumBuilder,
+  vacuum,
+} from "./builder/ddl/maintenance.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"

@@ -483,6 +483,34 @@ export const FEATURES = {
     label: "TRUNCATE multi-table / ONLY / RESTART IDENTITY / CASCADE",
     dialects: ["pg"],
   },
+  /**
+   * `VACUUM` — reclaim row storage left over by dead tuples (and,
+   * with `ANALYZE`, refresh planner stats). PG only as a first-class
+   * statement under this name: MySQL has the unrelated `OPTIMIZE
+   * TABLE`, SQLite has whole-database `VACUUM` with no options, and
+   * MSSQL has no equivalent (`DBCC SHRINKDATABASE` / `DBCC SHRINKFILE`
+   * cover similar ground but with different semantics). The dialect-
+   * aware variants need separate AST nodes; for the first cut we gate
+   * the shared `VacuumNode` shape behind this PG-only flag.
+   */
+  VACUUM_STMT: { label: "VACUUM", dialects: ["pg"] },
+  /**
+   * `ANALYZE` — refresh planner stats. PG only under this exact shape
+   * (option-list form). MySQL has `ANALYZE TABLE` with different
+   * grammar; SQLite has `ANALYZE` with no options; MSSQL uses
+   * `UPDATE STATISTICS`. The first cut refuses on all three non-PG
+   * dialects and leaves dialect-aware variants for follow-ups.
+   */
+  ANALYZE_STMT: { label: "ANALYZE", dialects: ["pg"] },
+  /**
+   * `REINDEX` — rebuild indexes. PG only under this exact grammar
+   * (`REINDEX { INDEX | TABLE | SCHEMA | DATABASE | SYSTEM } name`).
+   * MSSQL has `ALTER INDEX … REBUILD`; MySQL has `OPTIMIZE TABLE` /
+   * `ALTER TABLE … FORCE`; SQLite has its own `REINDEX [name]` form
+   * with no target keywords. The first cut refuses on non-PG; the
+   * SQLite shape in particular needs its own AST node.
+   */
+  REINDEX_STMT: { label: "REINDEX", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {

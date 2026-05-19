@@ -705,6 +705,90 @@ SQLite has no TRUNCATE; the printer raises `UnsupportedDialectFeatureError` with
 
 ---
 
+## Maintenance commands (VACUUM / ANALYZE / REINDEX)
+
+PostgreSQL ships three first-class maintenance statements that show up in migrations, nightly cron jobs, and incident playbooks: `VACUUM` (reclaim row storage left over by dead tuples), `ANALYZE` (refresh planner statistics), and `REINDEX` (rebuild one or more indexes). The grammar is PG-specific in shape — MySQL's `OPTIMIZE TABLE` and `ANALYZE TABLE`, SQLite's option-less `VACUUM` / `ANALYZE` / `REINDEX`, and MSSQL's `DBCC SHRINKDATABASE` / `UPDATE STATISTICS` / `ALTER INDEX … REBUILD` cover the same operational territory but with different surfaces. The dedicated builders below model the PG forms; the printer refuses on every non-PG dialect rather than silently misroute.
+
+Until these landed, the workaround was `unsafeRawExpr("VACUUM ANALYZE …")` — which forced callers to construct the SQL by hand, bypassed identifier quoting, and didn't pass the audit checks for unsafe raw nodes.
+
+```ts
+import { analyze, reindex, vacuum } from "sumak"
+
+// VACUUM ANALYZE — reclaim dead tuples and refresh stats in one pass:
+db.compileDDL(vacuum().table("users").analyze().build())
+//   PG: VACUUM (ANALYZE) "users"
+
+// VACUUM FULL — rewrite the table on disk. Takes ACCESS EXCLUSIVE:
+db.compileDDL(vacuum().full().table("users").build())
+//   PG: VACUUM (FULL) "users"
+
+// ANALYZE only — refresh planner stats without reclaiming space:
+db.compileDDL(analyze().table("users").build())
+//   PG: ANALYZE "users"
+
+// REINDEX TABLE CONCURRENTLY — rebuild every index on the table without
+// blocking writes (PG 12+):
+db.compileDDL(reindex("TABLE", "users").concurrently().build())
+//   PG: REINDEX TABLE CONCURRENTLY "users"
+```
+
+Each factory also hangs off `db.schema` so it's discoverable next to the rest of the DDL surface:
+
+```ts
+db.compileDDL(db.schema.vacuum().analyze().table("users").build())
+db.compileDDL(db.schema.analyze().table("users").build())
+db.compileDDL(db.schema.reindex("INDEX", "users_email_idx").concurrently().build())
+```
+
+### VACUUM options
+
+| Option        | Method          | Effect                                                                             |
+| ------------- | --------------- | ---------------------------------------------------------------------------------- |
+| `FULL`        | `.full()`       | Rewrites the table on disk. **ACCESS EXCLUSIVE** lock — never on hot data.         |
+| `FREEZE`      | `.freeze()`     | Aggressively freezes tuples (`vacuum_freeze_min_age = 0`).                         |
+| `VERBOSE`     | `.verbose()`    | Print progress to the server log / client.                                         |
+| `ANALYZE`     | `.analyze()`    | Refresh planner statistics in the same pass.                                       |
+| `SKIP_LOCKED` | `.skipLocked()` | Skip tables / rows it can't immediately lock (PG 12+).                             |
+| `TRUNCATE`    | `.truncate(b?)` | Truncate trailing empty pages back to the OS. Default on; pass `false` to opt out. |
+
+Without any `.table(...)` / `.tables(...)` call, the emitted SQL is database-wide — useful for the nightly maintenance job but heavy enough that production code usually picks a per-table list instead.
+
+### ANALYZE options
+
+| Option        | Method          | Effect                                          |
+| ------------- | --------------- | ----------------------------------------------- |
+| `VERBOSE`     | `.verbose()`    | Print progress to the server log / client.      |
+| `SKIP_LOCKED` | `.skipLocked()` | Skip tables it can't immediately lock (PG 12+). |
+
+`ANALYZE` is a strict subset of `VACUUM (ANALYZE)` — there's no row-reclamation work, just a statistics refresh. Pick it when you want to nudge the planner after a bulk load without paying the vacuum cost.
+
+### REINDEX targets
+
+`REINDEX` pairs a target keyword with a name; the first cut exposes all five PG targets:
+
+```ts
+reindex("INDEX", "users_email_idx").build() // REINDEX INDEX "users_email_idx"
+reindex("TABLE", "users").build() // REINDEX TABLE "users"
+reindex("SCHEMA", "public").build() // REINDEX SCHEMA "public"
+reindex("DATABASE", "shop").build() // REINDEX DATABASE "shop"
+reindex("SYSTEM", "shop").build() // REINDEX SYSTEM "shop"
+```
+
+`.concurrently()` switches to the non-blocking rebuild (PG 12+, requires twice the disk space, can't run inside a transaction). `.verbose()` emits `REINDEX (VERBOSE) …` so progress lands in the server log.
+
+### Feature matrix
+
+| Feature                      | PG  | MySQL | SQLite | MSSQL |
+| ---------------------------- | --- | ----- | ------ | ----- |
+| `VACUUM` with options        | yes | —     | —      | —     |
+| `ANALYZE` with options       | yes | —     | —      | —     |
+| `REINDEX { INDEX \| TABLE }` | yes | —     | —      | —     |
+| `REINDEX … CONCURRENTLY`     | yes | —     | —      | —     |
+
+For dialect-aware variants of the same operations — MySQL's `OPTIMIZE TABLE`, MSSQL's `DBCC SHRINKDATABASE` / `ALTER INDEX … REBUILD`, SQLite's option-less `VACUUM` / `REINDEX` — drop to raw SQL via `db.compile(sql\`…\`)` for now; dedicated AST nodes for each shape are a follow-up.
+
+---
+
 ## Multi-tenant scoping
 
 ```ts

@@ -1,4 +1,4 @@
-import type { DDLNode } from "./ast/ddl-nodes.ts"
+import type { DDLNode, ReindexNode } from "./ast/ddl-nodes.ts"
 import type { ASTNode, ExpressionNode, SelectNode, SubqueryNode } from "./ast/nodes.ts"
 import type { TclNode } from "./ast/tcl-nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
@@ -14,6 +14,7 @@ import {
   DropViewBuilder,
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
+import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
 import { TruncateBuilder, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 import { Col } from "./builder/eb.ts"
@@ -843,6 +844,9 @@ const DDL_NODE_TYPES = new Set<string>([
   "create_sequence",
   "drop_sequence",
   "alter_sequence",
+  "vacuum",
+  "analyze",
+  "reindex",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1013,6 +1017,57 @@ export class SchemaBuilder {
    */
   alterSequence(name: string, schema?: string): AlterSequenceBuilder {
     return new AlterSequenceBuilder(name, schema)
+  }
+
+  /**
+   * PostgreSQL `VACUUM [ ( option, ... ) ] [ table, ... ]` — reclaim
+   * row storage left over by dead tuples. PG only. Without any
+   * `.table()` / `.tables()` call the emitted SQL is database-wide
+   * (the bare `VACUUM` form).
+   *
+   * ```ts
+   * db.compileDDL(db.schema.vacuum().table("users").analyze().build())
+   * // PG: VACUUM (ANALYZE) "users"
+   * ```
+   *
+   * Refused on MySQL / SQLite / MSSQL at print time — those engines
+   * either have a different surface (MySQL `OPTIMIZE TABLE`, SQLite
+   * whole-DB option-less VACUUM, MSSQL `DBCC SHRINKDATABASE`) or no
+   * equivalent at all.
+   */
+  vacuum(): VacuumBuilder {
+    return new VacuumBuilder()
+  }
+
+  /**
+   * PostgreSQL `ANALYZE [ ( option, ... ) ] [ table, ... ]` — refresh
+   * the planner's row statistics. PG only.
+   *
+   * ```ts
+   * db.compileDDL(db.schema.analyze().table("users").build())
+   * // PG: ANALYZE "users"
+   * ```
+   */
+  analyze(): AnalyzeBuilder {
+    return new AnalyzeBuilder()
+  }
+
+  /**
+   * PostgreSQL `REINDEX { INDEX | TABLE | SCHEMA | DATABASE | SYSTEM }
+   * [CONCURRENTLY] <name>` — rebuild the named indexes. PG only.
+   *
+   * ```ts
+   * db.compileDDL(db.schema.reindex("TABLE", "users").concurrently().build())
+   * // PG: REINDEX TABLE CONCURRENTLY "users"
+   * ```
+   *
+   * MSSQL has `ALTER INDEX … REBUILD`, MySQL has `OPTIMIZE TABLE` /
+   * `ALTER TABLE … FORCE`, SQLite uses its own `REINDEX [name]`
+   * shape — each refused at print time, dialect-aware variants are
+   * follow-up work.
+   */
+  reindex(target: ReindexNode["target"], name: string): ReindexBuilder {
+    return new ReindexBuilder(target, name)
   }
 }
 
