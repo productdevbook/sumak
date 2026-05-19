@@ -650,6 +650,50 @@ export class BasePrinter implements Printer {
       }
       return extractResult
     }
+    // SQL standard `POSITION(<needle> IN <haystack>)` — the `IN` keyword
+    // sits between the two arguments instead of a comma. The regular
+    // argument-printing path would emit `POSITION(needle, haystack)`,
+    // which only PG quietly tolerates as a non-standard 2-arg shape;
+    // MySQL/SQLite reject it. Special-case here when the builder marks
+    // the node with `isPositionCall`. MSSQL's printer overrides this
+    // branch to emit `CHARINDEX(needle, haystack)` instead.
+    if (node.isPositionCall) {
+      const needleArg = node.args[0]
+      const haystackArg = node.args[1]
+      if (!needleArg || !haystackArg || node.args.length !== 2) {
+        throw new Error("POSITION requires exactly two arguments (needle, haystack)")
+      }
+      let posResult = `POSITION(${this.printExpression(needleArg)} IN ${this.printExpression(haystackArg)})`
+      if (node.alias) {
+        posResult += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+      }
+      return posResult
+    }
+    // SQL standard `OVERLAY(<target> PLACING <replacement> FROM <from>
+    // [FOR <count>])` — uses `PLACING` / `FROM` / `FOR` keywords inside
+    // the call instead of commas. Special-case when the builder marks
+    // the node with `isOverlayCall`. PG, MSSQL (2017+), and MySQL 8
+    // (8.0.4+) accept this form. SQLite has no equivalent and the
+    // SQLite printer refuses via OVERLAY_FN.
+    if (node.isOverlayCall) {
+      assertFeature(this.dialect, "OVERLAY_FN")
+      const targetArg = node.args[0]
+      const replacementArg = node.args[1]
+      const fromArg = node.args[2]
+      if (!targetArg || !replacementArg || !fromArg) {
+        throw new Error("OVERLAY requires at least three arguments (target, replacement, from)")
+      }
+      const countArg = node.args[3]
+      let ovResult = `OVERLAY(${this.printExpression(targetArg)} PLACING ${this.printExpression(replacementArg)} FROM ${this.printExpression(fromArg)}`
+      if (countArg) {
+        ovResult += ` FOR ${this.printExpression(countArg)}`
+      }
+      ovResult += ")"
+      if (node.alias) {
+        ovResult += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+      }
+      return ovResult
+    }
     const distinctPrefix = node.distinct ? "DISTINCT " : ""
     let inner = `${distinctPrefix}${node.args.map((a) => this.printExpression(a)).join(", ")}`
     if (node.orderBy && node.orderBy.length > 0) {

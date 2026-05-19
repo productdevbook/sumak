@@ -262,6 +262,16 @@ export const FEATURES = {
    */
   REGEXP_SUBSTR_FN: { label: "REGEXP_SUBSTR", dialects: ["pg", "mysql"] },
 
+  // ── String functions ──────────────────────────────────────────────
+  /**
+   * SQL standard `OVERLAY(<target> PLACING <repl> FROM <from> [FOR
+   * <count>])` — substring replace by position. PG, MSSQL (2017+), and
+   * MySQL 8 (8.0.4+) accept the standard form natively. SQLite has no
+   * equivalent — the SQLite printer refuses. The MSSQL printer emits
+   * the standard keyword form (MSSQL parses it 1:1 since 2017).
+   */
+  OVERLAY_FN: { label: "OVERLAY", dialects: ["pg", "mysql", "mssql"] },
+
   // ── Date/time functions ───────────────────────────────────────────
   /**
    * SQL standard `EXTRACT(<field> FROM <expr>)`. All four dialects

@@ -738,6 +738,80 @@ The four dialects diverge on the underlying time-zone / type semantics — e.g. 
 
 ---
 
+## String manipulation
+
+```ts
+import { ltrim, overlay, position, replace, reverse, rtrim, typedCol, val } from "sumak"
+
+const body = typedCol<string>("body")
+const email = typedCol<string>("email")
+const phone = typedCol<string>("phone")
+const title = typedCol<string>("title")
+
+// replace(haystack, needle, replacement) — non-regex substring replace.
+// All four dialects, same shape. For pattern replace use regexpReplace.
+db.selectFrom("posts")
+  .select({ cleaned: replace(body, val("\r\n"), val("\n")) })
+  .toSQL()
+// PG/MySQL/SQLite/MSSQL: SELECT REPLACE("body", '\r\n', '\n') AS "cleaned" FROM "posts"
+
+// position(needle, haystack) — 1-based index of needle in haystack, or 0.
+// PG / MySQL / SQLite emit the standard POSITION(needle IN haystack)
+// form natively; MSSQL has no POSITION grammar, the printer translates
+// to CHARINDEX(needle, haystack) with the same 1-based-or-0 semantics.
+// Note the argument order: needle first, like the SQL standard
+// (POSITION('@' IN email)) — opposite of JS String.prototype.indexOf.
+db.selectFrom("posts")
+  .select({ at: position(val("@"), email) })
+  .toSQL()
+// PG / MySQL / SQLite: SELECT POSITION('@' IN "email") AS "at" FROM "posts"
+// MSSQL:               SELECT CHARINDEX('@', [email]) AS [at] FROM [posts]
+
+// overlay(target, replacement, from [, count]) — replace `count` chars
+// of `target` starting at 1-based position `from`. SQL standard form.
+// PG / MySQL 8 / MSSQL 2017+ accept it natively. SQLite throws — the
+// idiom there is SUBSTR + concatenation.
+db.selectFrom("posts")
+  .select({ masked: overlay(phone, val("***"), 4, 3) })
+  .toSQL()
+// PG / MySQL 8 / MSSQL: SELECT OVERLAY("phone" PLACING '***' FROM 4 FOR 3) AS "masked" FROM "posts"
+
+// ltrim / rtrim — strip leading / trailing characters. With no second
+// argument, strips whitespace. With a `chars` argument, strips any
+// character that appears in the set (not prefix-matching).
+db.selectFrom("posts")
+  .select({
+    name: ltrim(rtrim(title)), // strip whitespace both sides
+    digits: ltrim(title, val("0")), // strip leading zeros
+  })
+  .toSQL()
+// SELECT LTRIM(RTRIM("title")) AS "name", LTRIM("title", '0') AS "digits" FROM "posts"
+
+// reverse(expr) — character order flip. Built in on PG / MySQL /
+// SQLite 3+ / MSSQL.
+db.selectFrom("posts")
+  .select({ flipped: reverse(title) })
+  .toSQL()
+// SELECT REVERSE("title") AS "flipped" FROM "posts"
+```
+
+Dialect support, at a glance:
+
+| Builder    | PG  | MySQL                | SQLite | MSSQL              |
+| ---------- | --- | -------------------- | ------ | ------------------ |
+| `replace`  | yes | yes                  | yes    | yes                |
+| `position` | yes | yes                  | yes    | yes (→ CHARINDEX)  |
+| `overlay`  | yes | 8.0.4+               | no     | 2017+              |
+| `ltrim`    | yes | yes (2-arg: 8.0.28+) | yes    | yes (2-arg: 2022+) |
+| `rtrim`    | yes | yes (2-arg: 8.0.28+) | yes    | yes (2-arg: 2022+) |
+| `reverse`  | yes | yes                  | 3.0+   | yes                |
+
+Where a builder is unsupported, the printer throws `UnsupportedDialectFeatureError` at compile time rather than emit SQL the engine would reject — the failure points at the builder call, not at a generic "no such function" from the driver.
+
+`val()` produces an inline SQL literal (same convention as the regex builders) — the `needle` / `replacement` / `chars` arguments are typically constants, and inlining keeps the statement-cache key stable when only the haystack column varies row-to-row. Use `unsafeRawExpr` or pass a column expression if you genuinely need a runtime-parameterised needle.
+
+---
+
 ## Regex matching and extraction
 
 ```ts
