@@ -69,6 +69,23 @@ exports[`bench scenarios produce equivalent SQL > delete-where > snapshot of gen
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > insert-from-select > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "insert into "users" ("id", "name", "email", "createdAt") select "id", "name", "email", "createdAt" from "users"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "insert into "users" ("id", "name", "email", "createdAt") select "id", "name", "email", "createdAt" from "users"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "INSERT INTO "users" SELECT "id", "name", "email", "createdAt" FROM "users"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > insert-many-100 > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
