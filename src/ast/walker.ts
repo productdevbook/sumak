@@ -68,6 +68,7 @@ export class ASTWalker {
       case "between":
       case "in":
       case "is_null":
+      case "is_json":
       case "case":
       case "cast":
       case "exists":
@@ -365,6 +366,10 @@ export class ASTWalker {
         return { ...expr, expr: e, values }
       }
       case "is_null": {
+        const e = this.visitExpression(expr.expr)
+        return e === expr.expr ? expr : { ...expr, expr: e }
+      }
+      case "is_json": {
         const e = this.visitExpression(expr.expr)
         return e === expr.expr ? expr : { ...expr, expr: e }
       }

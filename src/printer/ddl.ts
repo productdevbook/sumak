@@ -619,6 +619,20 @@ export class DDLPrinter {
           : `(${node.op} ${this.printExpr(node.operand)})`
       case "is_null":
         return `(${this.printExpr(node.expr)} IS${node.negated ? " NOT" : ""} NULL)`
+      case "is_json": {
+        const neg = node.negated ? " NOT" : ""
+        const kind =
+          node.kind === undefined
+            ? ""
+            : node.kind === "value"
+              ? " VALUE"
+              : node.kind === "scalar"
+                ? " SCALAR"
+                : node.kind === "array"
+                  ? " ARRAY"
+                  : " OBJECT"
+        return `(${this.printExpr(node.expr)} IS${neg} JSON${kind})`
+      }
       case "between": {
         const neg = node.negated ? "NOT " : ""
         return `(${this.printExpr(node.expr)} ${neg}BETWEEN ${this.printExpr(node.low)} AND ${this.printExpr(node.high)})`

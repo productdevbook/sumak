@@ -383,6 +383,8 @@ function exprFingerprint(expr: ExpressionNode): string {
       return `un:${expr.op}:${exprFingerprint(expr.operand)}`
     case "is_null":
       return `isnull:${expr.negated}:${exprFingerprint(expr.expr)}`
+    case "is_json":
+      return `isjson:${expr.negated}:${expr.kind ?? ""}:${exprFingerprint(expr.expr)}`
     case "between":
       return `between:${expr.negated}:${exprFingerprint(expr.expr)}:${exprFingerprint(expr.low)}:${exprFingerprint(expr.high)}`
     case "in":
@@ -488,6 +490,10 @@ function recurse(
       return operand === expr.operand ? expr : { ...expr, operand }
     }
     case "is_null": {
+      const inner = transform(expr.expr)
+      return inner === expr.expr ? expr : { ...expr, expr: inner }
+    }
+    case "is_json": {
       const inner = transform(expr.expr)
       return inner === expr.expr ? expr : { ...expr, expr: inner }
     }

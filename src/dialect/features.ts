@@ -104,6 +104,14 @@ export const FEATURES = {
   JSON_ARROW: { label: "-> / ->> JSON operators", dialects: ["pg"] },
   JSON_PATH_ARROW: { label: "#> / #>> JSON path operators", dialects: ["pg"] },
   JSONB: { label: "JSONB", dialects: ["pg"] },
+  /**
+   * `expr IS [NOT] JSON [VALUE|SCALAR|ARRAY|OBJECT]` — SQL:2016
+   * predicate. PG 16+, MySQL 8 (uses JSON_VALID under the hood for
+   * the same effect, but the literal predicate parses), MSSQL all
+   * accept the standard form. SQLite has no equivalent and the
+   * printer refuses.
+   */
+  IS_JSON_PREDICATE: { label: "IS JSON predicate", dialects: ["pg", "mysql", "mssql"] },
 
   // ── Full-text search ──────────────────────────────────────────────
   FTS_TSVECTOR: { label: "to_tsvector / to_tsquery", dialects: ["pg"] },

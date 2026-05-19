@@ -52,6 +52,7 @@ export {
   Col,
   exists,
   filter,
+  isJson,
   not,
   notExists,
   nullif,
