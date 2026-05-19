@@ -94,6 +94,20 @@ export interface FunctionCallNode {
    * list) — both clauses can attach to the same call.
    */
   withinGroup?: OrderByNode[]
+  /**
+   * SQL:2016 JSON-function `RETURNING <type>` clause —
+   * `JSON_VALUE(json, '$.path' RETURNING int)`. Specific to
+   * `JSON_VALUE` (and prospective `JSON_QUERY`) callsites; other
+   * function names ignore this slot at print time. The value is the
+   * raw SQL type name; it flows through {@link validateDataType} in
+   * the printer before being emitted, so callers can't inject via
+   * this field.
+   *
+   * Dialect support: PG 17+ and MySQL 8 accept the clause; MSSQL's
+   * `JSON_VALUE` always returns nvarchar(4000) and the printer rejects
+   * a non-empty `returningType` on that dialect — wrap with `CAST(...)`.
+   */
+  returningType?: string
   alias?: string
 }
 

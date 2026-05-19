@@ -479,6 +479,16 @@ export class MssqlPrinter extends BasePrinter {
         "FILTER (WHERE ...) aggregate clause (rewrite as COUNT(CASE WHEN ... THEN 1 END) or SUM(CASE ...))",
       )
     }
+    // SQL Server's `JSON_VALUE` always returns nvarchar(4000); it has
+    // no `RETURNING <type>` clause and the parser rejects it. Refuse
+    // with a pointer at the CAST workaround. Bare `JSON_VALUE(json,
+    // '$.path')` is fine and passes through.
+    if (node.returningType !== undefined) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "JSON_VALUE ... RETURNING type (SQL Server's JSON_VALUE always returns nvarchar — wrap with CAST(JSON_VALUE(...) AS type))",
+      )
+    }
     return super.printFunctionCall(node)
   }
 

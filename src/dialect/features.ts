@@ -129,6 +129,16 @@ export const FEATURES = {
    * printer refuses.
    */
   IS_JSON_PREDICATE: { label: "IS JSON predicate", dialects: ["pg", "mysql", "mssql"] },
+  /**
+   * `JSON_VALUE(json_expr, '$.path' [RETURNING type])` — SQL:2016
+   * scalar JSON extraction. PG 17+, MySQL 8, MSSQL accept the bare
+   * form; PG 17+ and MySQL 8 also accept the `RETURNING type` clause
+   * (MSSQL always returns nvarchar(4000), and the printer refuses a
+   * non-empty `returningType`). SQLite has no direct equivalent
+   * (`json_extract` differs on both path grammar and the
+   * missing-vs-null semantics) and the printer refuses.
+   */
+  JSON_VALUE_FN: { label: "JSON_VALUE function", dialects: ["pg", "mysql", "mssql"] },
 
   // ── Full-text search ──────────────────────────────────────────────
   FTS_TSVECTOR: { label: "to_tsvector / to_tsquery", dialects: ["pg"] },

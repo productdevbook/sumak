@@ -589,6 +589,14 @@ export class BasePrinter implements Printer {
     if (node.orderBy && node.orderBy.length > 0) {
       inner += ` ORDER BY ${node.orderBy.map((o) => this.printOrderBy(o)).join(", ")}`
     }
+    // SQL:2016 JSON-function `RETURNING <type>` clause — emitted
+    // inside the argument-list parentheses (`JSON_VALUE(json, '$.x'
+    // RETURNING int)`). Only `JSON_VALUE` and `JSON_QUERY` populate
+    // this slot; other functions ignore it.
+    if (node.returningType !== undefined) {
+      validateDataType(node.returningType)
+      inner += ` RETURNING ${node.returningType}`
+    }
     // Uppercase only standard SQL / ANSI built-ins for portability.
     // User-defined and extension functions keep their original casing
     // so quoted identifiers in PG / case-sensitive MySQL collations

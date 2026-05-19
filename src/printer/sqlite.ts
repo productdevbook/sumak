@@ -172,6 +172,14 @@ export class SqlitePrinter extends BasePrinter {
     if (node.withinGroup && node.withinGroup.length > 0) {
       assertFeature("sqlite", "ORDERED_SET_AGGREGATES")
     }
+    // SQLite has no SQL:2016 `JSON_VALUE` — `json_extract(expr,
+    // '$.path')` is the closest, but it differs on path grammar and
+    // on the missing-vs-null semantics. Refuse the standard name so
+    // callers explicitly pick the SQLite-idiomatic form. Bare
+    // `JSON_VALUE(...)` without `RETURNING` is also refused.
+    if (upper === "JSON_VALUE") {
+      assertFeature("sqlite", "JSON_VALUE_FN")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently
