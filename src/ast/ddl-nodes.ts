@@ -854,6 +854,157 @@ export interface DropPolicyNode {
   cascade?: boolean
 }
 
+// ── CREATE TYPE … AS ENUM / DROP TYPE / CREATE DOMAIN / DROP DOMAIN (PG) ──
+
+/**
+ * PostgreSQL `CREATE TYPE <name> AS ENUM ('val1', 'val2', …)`. A
+ * standalone, type-checked alternative to a `CHECK (col IN ('a', 'b'))`
+ * column constraint — values are sortable in their declared order,
+ * indexable, and roundtrip cleanly through introspection. Adding a new
+ * value post-creation needs `ALTER TYPE … ADD VALUE`, which is
+ * operationally significant (can't run inside a transaction in older PG
+ * versions) and lives on a separate roadmap entry; the first cut covers
+ * the create / drop pair only.
+ *
+ * Grammar:
+ *
+ *     CREATE TYPE <name> AS ENUM ( 'val' [, 'val' ...] )
+ *
+ * Each value is emitted as a single-quoted SQL string literal escaped
+ * via {@link escapeStringLiteral}. The type name flows through
+ * `validateFunctionName` so attacker-built ASTs can't smuggle DDL
+ * through the unquoted-name slot.
+ *
+ * Dialect support: **PG only.** MySQL has `ENUM` as a *column type*
+ * (`col ENUM('a','b')`) but no standalone `CREATE TYPE` for it; the
+ * printer refuses on MySQL with a pointer at the column-level form.
+ * SQLite has no equivalent at all. MSSQL has `CREATE TYPE … AS TABLE`
+ * for table-valued types and `CREATE TYPE name FROM existing_type` for
+ * aliases, but neither matches the PG enum shape — refused.
+ */
+export interface CreateTypeEnumNode {
+  type: "create_type_enum"
+  /** Identifier of the new enum type; validated as a SQL identifier. */
+  name: string
+  /**
+   * Ordered list of enum labels. The order matters: PG sorts enum
+   * values by their declaration order and the order survives an
+   * `ORDER BY <enum_column>`.
+   *
+   * Each value is emitted as a single-quoted SQL string literal at
+   * print time — the printer doubles embedded quotes via
+   * {@link escapeStringLiteral} so user-supplied values can't break out
+   * of the literal.
+   */
+  values: string[]
+}
+
+/**
+ * `DROP TYPE [IF EXISTS] <name> [, <name> …] [CASCADE | RESTRICT]`.
+ * Drops one or more user-defined types (enum, domain, composite, …).
+ * PG supports multi-name lists in a single statement.
+ *
+ * Dialect support: **PG only.** The printer refuses on MySQL / SQLite /
+ * MSSQL via the `CUSTOM_TYPES` feature flag — none of the three has a
+ * matching DROP statement under this exact grammar.
+ */
+export interface DropTypeNode {
+  type: "drop_type"
+  /** One or more type names to drop. PG accepts comma-separated lists. */
+  names: string[]
+  ifExists?: boolean
+  /**
+   * `CASCADE` — drop dependents (columns of the dropped type, view
+   * definitions, etc.) along with the type. Mutually exclusive with
+   * {@link restrict}.
+   */
+  cascade?: boolean
+  /**
+   * `RESTRICT` — refuse to drop if anything depends on the type. This
+   * is the SQL standard default; PG normally omits the keyword and the
+   * printer follows suit. Slot exists for explicit symmetry with
+   * `cascade`.
+   */
+  restrict?: boolean
+}
+
+/**
+ * PostgreSQL `CREATE DOMAIN <name> AS <data_type>
+ *   [COLLATE collation]
+ *   [DEFAULT expression]
+ *   [[CONSTRAINT name] { NOT NULL | NULL | CHECK (expression) }] …`.
+ *
+ * A domain is a typed constraint wrapper around an existing type — most
+ * commonly a `text CHECK (value ~ '<regex>')` for email / URL columns.
+ * Once defined, the domain name can be used anywhere a data type is
+ * accepted, and the constraint is enforced by every column that types
+ * to the domain.
+ *
+ * First-cut surface: one `CHECK` (with an optional constraint name),
+ * one `NOT NULL`, one `DEFAULT`. The full grammar also allows multiple
+ * CHECK constraints and the `COLLATE` clause; those are deferred to a
+ * follow-up.
+ *
+ * Dialect support: **PG only.** No other dialect has a matching
+ * statement; the printer refuses via the `CUSTOM_TYPES` flag.
+ */
+export interface CreateDomainNode {
+  type: "create_domain"
+  /** Identifier of the new domain; validated as a SQL identifier. */
+  name: string
+  /**
+   * Raw SQL data type the domain wraps — `varchar(50)`, `text`,
+   * `integer`, etc. Flows through {@link validateDataType} at print
+   * time so an attacker-built AST can't smuggle DDL through the
+   * unquoted-type slot.
+   */
+  dataType: string
+  /**
+   * `DEFAULT <expr>` — default value applied when a domain-typed
+   * column has no explicit value. Standard expression node; emitted
+   * via the same `printExpr` path used by column defaults.
+   */
+  defaultExpression?: ExpressionNode
+  /** `NOT NULL` constraint on the domain. */
+  notNull?: boolean
+  /**
+   * `CHECK (<expr>)` constraint expression. The bare expression form
+   * (without a constraint name) is the common case; pair with
+   * {@link checkConstraintName} to emit `CONSTRAINT <name> CHECK (…)`.
+   */
+  check?: ExpressionNode
+  /**
+   * Optional name for the CHECK constraint — emitted as `CONSTRAINT
+   * <name> CHECK (<expr>)`. Useful for later `ALTER DOMAIN … DROP
+   * CONSTRAINT <name>` flows. Ignored when {@link check} is unset.
+   */
+  checkConstraintName?: string
+}
+
+/**
+ * `DROP DOMAIN [IF EXISTS] <name> [, <name> …] [CASCADE | RESTRICT]`.
+ * Same grammar shape as {@link DropTypeNode} but a different keyword
+ * (DROP DOMAIN vs DROP TYPE — PG distinguishes the two at parse time).
+ *
+ * Dialect support: **PG only.**
+ */
+export interface DropDomainNode {
+  type: "drop_domain"
+  /** One or more domain names to drop. PG accepts comma-separated lists. */
+  names: string[]
+  ifExists?: boolean
+  /**
+   * `CASCADE` — drop dependents along with the domain. Mutually
+   * exclusive with {@link restrict}.
+   */
+  cascade?: boolean
+  /**
+   * `RESTRICT` — SQL standard default; the printer omits the keyword
+   * when set. Slot exists for explicit symmetry with `cascade`.
+   */
+  restrict?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -877,3 +1028,7 @@ export type DDLNode =
   | ReindexNode
   | CreatePolicyNode
   | DropPolicyNode
+  | CreateTypeEnumNode
+  | DropTypeNode
+  | CreateDomainNode
+  | DropDomainNode

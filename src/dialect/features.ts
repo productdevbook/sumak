@@ -522,6 +522,27 @@ export const FEATURES = {
    * dialect for both the RLS toggle and the policy DDL.
    */
   ROW_LEVEL_SECURITY: { label: "Row Level Security", dialects: ["pg"] },
+  /**
+   * User-defined type DDL under the PG flavor — `CREATE TYPE … AS
+   * ENUM (…)`, `DROP TYPE`, `CREATE DOMAIN`, `DROP DOMAIN`. A single
+   * gate covers all four statement shapes; sumak's first cut surfaces
+   * only enum types and domains (composite / range / base types have
+   * a wider AST and are deferred).
+   *
+   * **PG only.** MySQL has `ENUM` as a column-level type but no
+   * standalone `CREATE TYPE` for it. SQLite has no equivalent. MSSQL
+   * has `CREATE TYPE … AS TABLE` (table-valued types) and `CREATE
+   * TYPE name FROM existing_type` (column-style aliases), but neither
+   * matches the PG enum/domain shape — they need dedicated AST nodes
+   * and aren't covered here. The DDL printer refuses on every non-PG
+   * dialect with a pointer at the workaround (CHECK constraint on the
+   * column for enum semantics, MySQL `col ENUM(…)` for the value
+   * list).
+   */
+  CUSTOM_TYPES: {
+    label: "CREATE TYPE / DROP TYPE / CREATE DOMAIN / DROP DOMAIN",
+    dialects: ["pg"],
+  },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {

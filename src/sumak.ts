@@ -9,6 +9,12 @@ import { CreateSequenceBuilder, DropSequenceBuilder } from "./builder/ddl/create
 import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
 import { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
 import {
+  CreateDomainBuilder,
+  CreateTypeEnumBuilder,
+  DropDomainBuilder,
+  DropTypeBuilder,
+} from "./builder/ddl/custom-types.ts"
+import {
   DropIndexBuilder,
   DropTableBuilder,
   DropViewBuilder,
@@ -850,6 +856,10 @@ const DDL_NODE_TYPES = new Set<string>([
   "reindex",
   "create_policy",
   "drop_policy",
+  "create_type_enum",
+  "drop_type",
+  "create_domain",
+  "drop_domain",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1107,6 +1117,68 @@ export class SchemaBuilder {
    */
   dropPolicy(name: string): DropPolicyBuilder {
     return new DropPolicyBuilder(name)
+  }
+
+  /**
+   * PostgreSQL `CREATE TYPE <name> AS ENUM ('v1', 'v2', …)` — a typed
+   * alternative to a `CHECK (col IN (…))` constraint. Enum values are
+   * sortable in their declared order and indexable.
+   *
+   * Pass labels inline or chain `.values(...)` to populate them. PG
+   * only — refused on MySQL / SQLite / MSSQL via the `CUSTOM_TYPES`
+   * gate.
+   *
+   * ```ts
+   * db.compileDDL(
+   *   db.schema.createTypeEnum("mood").values("sad", "happy", "ecstatic").build()
+   * )
+   * // PG: CREATE TYPE "mood" AS ENUM ('sad', 'happy', 'ecstatic')
+   * ```
+   */
+  createTypeEnum(name: string, ...values: string[]): CreateTypeEnumBuilder {
+    return new CreateTypeEnumBuilder(name, ...values)
+  }
+
+  /**
+   * `DROP TYPE [IF EXISTS] <name> [, <name> …] [CASCADE]`. PG only;
+   * pairs with {@link createTypeEnum} (and with composite / range
+   * types should they later land). Accepts a single name or an array
+   * for the multi-drop form.
+   */
+  dropType(name: string | string[]): DropTypeBuilder {
+    return new DropTypeBuilder(name)
+  }
+
+  /**
+   * PostgreSQL `CREATE DOMAIN <name> AS <type> [DEFAULT …] [CHECK
+   * (…)] [NOT NULL]` — a typed constraint wrapper around an existing
+   * data type. Common use cases are validation domains (`email_t` =
+   * `text CHECK (value ~ '^[^@]+@[^@]+$')`) and range-restricted
+   * numeric domains (`positive_int` = `integer CHECK (value > 0)`).
+   *
+   * Pass the wrapped type inline or chain `.dataType(t)`:
+   *
+   * ```ts
+   * db.compileDDL(
+   *   db.schema
+   *     .createDomain("email", "text")
+   *     .check(sql`value ~ '^[^@]+@[^@]+$'`)
+   *     .notNull()
+   *     .build()
+   * )
+   * // PG: CREATE DOMAIN "email" AS text CHECK (value ~ '^[^@]+@[^@]+$') NOT NULL
+   * ```
+   */
+  createDomain(name: string, dataType?: string): CreateDomainBuilder {
+    return new CreateDomainBuilder(name, dataType)
+  }
+
+  /**
+   * `DROP DOMAIN [IF EXISTS] <name> [, <name> …] [CASCADE]`. PG only;
+   * pairs with {@link createDomain}.
+   */
+  dropDomain(name: string | string[]): DropDomainBuilder {
+    return new DropDomainBuilder(name)
   }
 }
 

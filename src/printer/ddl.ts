@@ -4,18 +4,22 @@ import type {
   AnalyzeNode,
   ColumnDefinitionNode,
   CommentNode,
+  CreateDomainNode,
   CreateIndexNode,
   CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
   CreateTableNode,
+  CreateTypeEnumNode,
   CreateViewNode,
   DDLNode,
+  DropDomainNode,
   DropIndexNode,
   DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
   DropTableNode,
+  DropTypeNode,
   DropViewNode,
   ExcludeConstraintNode,
   ForeignKeyConstraintNode,
@@ -103,6 +107,14 @@ export class DDLPrinter {
         return this.printCreatePolicy(node)
       case "drop_policy":
         return this.printDropPolicy(node)
+      case "create_type_enum":
+        return this.printCreateTypeEnum(node)
+      case "drop_type":
+        return this.printDropType(node)
+      case "create_domain":
+        return this.printCreateDomain(node)
+      case "drop_domain":
+        return this.printDropDomain(node)
     }
   }
 
@@ -1343,6 +1355,142 @@ export class DDLPrinter {
       return upper
     }
     return quoteIdentifier(role, this.dialect)
+  }
+
+  /**
+   * Emit `CREATE TYPE <name> AS ENUM ('val1', 'val2', …)`. PG only.
+   *
+   * Name flows through `validateFunctionName` (alphanumeric + underscore
+   * identifier) so an attacker-built AST can't smuggle DDL through the
+   * unquoted-name slot. Each value is emitted as a single-quoted SQL
+   * string literal — embedded `'` is doubled via `escapeStringLiteral`
+   * to seal off the literal boundary.
+   *
+   * An empty value list is *technically* legal in PG (you can later add
+   * values via `ALTER TYPE`), but it's almost always a builder-side
+   * mistake; we still emit the bare form rather than refuse, so a
+   * caller who genuinely wants the empty enum can opt in.
+   */
+  private printCreateTypeEnum(node: CreateTypeEnumNode): string {
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    // The type name is a PG identifier; the same validator that gates
+    // CHECK-clause function names is the right gate here too.
+    validateFunctionName(node.name)
+    const literals = node.values.map((v) => `'${escapeStringLiteral(v)}'`)
+    return `CREATE TYPE ${quoteIdentifier(node.name, this.dialect)} AS ENUM (${literals.join(", ")})`
+  }
+
+  /**
+   * Emit `DROP TYPE [IF EXISTS] <name> [, <name> …] [CASCADE]`. PG
+   * only.
+   *
+   * Multi-name lists pass straight through — PG accepts the
+   * comma-separated form natively. `cascade` and `restrict` are
+   * mutually exclusive: setting both at once is a builder mistake, so
+   * we throw. `restrict` is the SQL default and emits nothing (so an
+   * introspection-roundtripped node with `restrict: true` doesn't
+   * diverge from the bare form).
+   */
+  private printDropType(node: DropTypeNode): string {
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (node.names.length === 0) {
+      throw new Error("DROP TYPE requires at least one type name.")
+    }
+    if (node.cascade && node.restrict) {
+      throw new Error("DROP TYPE: cascade and restrict are mutually exclusive — set only one.")
+    }
+    const parts: string[] = ["DROP TYPE"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(node.names.map((n) => quoteIdentifier(n, this.dialect)).join(", "))
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `CREATE DOMAIN <name> AS <type>
+   *   [DEFAULT <expr>]
+   *   [[CONSTRAINT <name>] CHECK (<expr>)]
+   *   [NOT NULL]`.
+   *
+   * PG only. The constraint order follows the PG documentation tour so
+   * round-tripped DDL serialises stably. `NOT NULL` is emitted *after*
+   * `CHECK` because PG accepts either order but the introspection path
+   * tends to surface NOT NULL at the tail; keeping a single order makes
+   * diff plans easier to read.
+   *
+   * Validation:
+   *
+   *  - The domain name goes through `validateFunctionName` (identifier
+   *    grammar).
+   *  - The wrapped data type goes through `validateDataType` — same
+   *    validator used by the column-level path, blocks `varchar(50);
+   *    DROP TABLE …` style splices.
+   *  - The CHECK / DEFAULT expressions render through `printExpr`,
+   *    which already gates function names and refuses unsafe shapes.
+   */
+  private printCreateDomain(node: CreateDomainNode): string {
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    validateFunctionName(node.name)
+    if (!node.dataType) {
+      throw new Error(
+        `CREATE DOMAIN "${node.name}" requires a data type — call .dataType(type) before compiling.`,
+      )
+    }
+    validateDataType(node.dataType)
+
+    const parts: string[] = [
+      "CREATE DOMAIN",
+      quoteIdentifier(node.name, this.dialect),
+      "AS",
+      node.dataType,
+    ]
+
+    if (node.defaultExpression !== undefined) {
+      parts.push("DEFAULT", this.printExpr(node.defaultExpression))
+    }
+
+    if (node.check !== undefined) {
+      if (node.checkConstraintName !== undefined) {
+        // Optional constraint name — emitted as `CONSTRAINT <name>
+        // CHECK (…)`. PG keeps the name in the catalog so a later
+        // `ALTER DOMAIN … DROP CONSTRAINT <name>` can target it
+        // without guessing the autogenerated name.
+        validateFunctionName(node.checkConstraintName)
+        parts.push(
+          "CONSTRAINT",
+          quoteIdentifier(node.checkConstraintName, this.dialect),
+          "CHECK",
+          `(${this.printExpr(node.check)})`,
+        )
+      } else {
+        parts.push("CHECK", `(${this.printExpr(node.check)})`)
+      }
+    }
+
+    if (node.notNull) parts.push("NOT NULL")
+
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `DROP DOMAIN [IF EXISTS] <name> [, <name> …] [CASCADE]`.
+   * Mirror of {@link printDropType} but a different keyword — PG
+   * distinguishes DROP TYPE from DROP DOMAIN at parse time even though
+   * the rest of the grammar is identical.
+   */
+  private printDropDomain(node: DropDomainNode): string {
+    assertFeature(this.dialect, "CUSTOM_TYPES")
+    if (node.names.length === 0) {
+      throw new Error("DROP DOMAIN requires at least one domain name.")
+    }
+    if (node.cascade && node.restrict) {
+      throw new Error("DROP DOMAIN: cascade and restrict are mutually exclusive — set only one.")
+    }
+    const parts: string[] = ["DROP DOMAIN"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(node.names.map((n) => quoteIdentifier(n, this.dialect)).join(", "))
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
   }
 
   private printExpr(node: import("../ast/nodes.ts").ExpressionNode): string {

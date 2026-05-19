@@ -898,6 +898,90 @@ db.compileDDL(db.schema.dropPolicy("tenant_isolation").on("orders").ifExists().b
 
 ---
 
+## Custom types and domains (PostgreSQL)
+
+PG ships first-class user-defined types. sumak exposes two of the most useful shapes via typed builders: **enum types** (`CREATE TYPE … AS ENUM`) and **domains** (`CREATE DOMAIN`). The first is a sortable, type-checked alternative to a `CHECK (col IN (…))` column constraint; the second is a typed CHECK wrapper around an existing type that you can reuse across many columns.
+
+```ts
+import { sql, sumak, pgDialect, createTypeEnum, dropType, createDomain, dropDomain } from "sumak"
+
+const db = sumak({ dialect: pgDialect(), tables: {} })
+
+// Enum type — declared value order doubles as the sort order.
+db.compileDDL(db.schema.createTypeEnum("mood_t").values("sad", "happy", "ecstatic").build())
+// → CREATE TYPE "mood_t" AS ENUM ('sad', 'happy', 'ecstatic')
+
+// Domain — typed CHECK constraint reusable across many columns.
+db.compileDDL(
+  db.schema
+    .createDomain("email_t", "text")
+    .check(sql<boolean>`value ~ '^[^@]+@[^@]+$'`, "email_format")
+    .notNull()
+    .build(),
+)
+// → CREATE DOMAIN "email_t" AS text CONSTRAINT "email_format"
+//     CHECK (value ~ '^[^@]+@[^@]+$') NOT NULL
+```
+
+Once defined, either name can be used wherever PG accepts a data type — for column declarations on `CREATE TABLE`, `ALTER TABLE … ADD COLUMN`, function arguments, return types, etc. Out-of-range writes are rejected at the engine: an enum-typed column raises `invalid input value for enum` on a bad label, and a domain-typed column raises `violates check constraint` on a value that fails the CHECK.
+
+### Enum types
+
+```ts
+// Inline form.
+createTypeEnum("status_t", "active", "paused", "archived").build()
+
+// Equivalent chained form.
+createTypeEnum("status_t").values("active", "paused", "archived").build()
+```
+
+The order of values is significant: PG sorts enum columns by their declaration order. `ORDER BY status_col` returns rows in `active → paused → archived` order, not alphabetical.
+
+Adding a value post-creation needs `ALTER TYPE … ADD VALUE 'new_label'`, which is operationally significant (older PG versions can't run it inside a transaction) and is not yet wired through the typed builder — emit it via raw SQL when you need it.
+
+### Domains
+
+```ts
+// Simple validation wrapper around text.
+createDomain("url_t", "text")
+  .check(sql<boolean>`value ~ '^https?://'`)
+  .build()
+
+// Range-restricted numeric domain.
+createDomain("percentage", "integer")
+  .check(sql<boolean>`value BETWEEN 0 AND 100`)
+  .defaultTo(sql`0`)
+  .notNull()
+  .build()
+```
+
+Pass an optional name to `.check(expr, name)` so the catalog records a stable constraint identifier — useful if you later need an `ALTER DOMAIN <name> DROP CONSTRAINT <constraint_name>`.
+
+### Dropping types and domains
+
+`DROP TYPE` and `DROP DOMAIN` accept a single name or a comma-separated list. `IF EXISTS` and `CASCADE` are independent flags; `CASCADE` drops dependents (columns, view definitions) along with the type.
+
+```ts
+db.compileDDL(db.schema.dropType("mood_t").ifExists().cascade().build())
+// → DROP TYPE IF EXISTS "mood_t" CASCADE
+
+db.compileDDL(db.schema.dropDomain(["email_t", "url_t"]).ifExists().build())
+// → DROP DOMAIN IF EXISTS "email_t", "url_t"
+```
+
+`CASCADE` and `RESTRICT` are mutually exclusive; the builder lets you set either, the printer refuses if both are true.
+
+### Feature matrix
+
+| Dialect | Status                                                                                                               |
+| ------- | -------------------------------------------------------------------------------------------------------------------- |
+| pg      | ✅ `CREATE TYPE … AS ENUM`, `DROP TYPE`, `CREATE DOMAIN`, `DROP DOMAIN`                                              |
+| mysql   | ❌ Has column-level `ENUM(…)` but no standalone `CREATE TYPE` / `CREATE DOMAIN`; printer refuses                     |
+| sqlite  | ❌ No equivalent at all                                                                                              |
+| mssql   | ❌ Has `CREATE TYPE … AS TABLE` and `CREATE TYPE name FROM existing_type` (different shape); not bridged in this cut |
+
+---
+
 ## Normalize string columns on write
 
 `normalizeStrings` rewrites configured string columns before the INSERT / UPDATE / MERGE hits the wire. The rewrite runs on the value, not the SQL — the generated SQL stays clean (no `LOWER(?)` wrapping) and indexes on the column still apply.

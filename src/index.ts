@@ -310,14 +310,18 @@ export type {
   AlterSequenceNode,
   AnalyzeNode,
   CommentNode,
+  CreateDomainNode,
   CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
+  CreateTypeEnumNode,
   CreateViewNode,
   DDLNode,
+  DropDomainNode,
   DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
+  DropTypeNode,
   DropViewNode,
   RefreshMaterializedViewNode,
   ReindexNode,
@@ -350,6 +354,16 @@ export {
   DropPolicyBuilder,
   dropPolicy,
 } from "./builder/ddl/policy.ts"
+export {
+  CreateDomainBuilder,
+  createDomain,
+  CreateTypeEnumBuilder,
+  createTypeEnum,
+  DropDomainBuilder,
+  dropDomain,
+  DropTypeBuilder,
+  dropType,
+} from "./builder/ddl/custom-types.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"
