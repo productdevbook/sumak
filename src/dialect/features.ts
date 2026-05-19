@@ -69,6 +69,12 @@ export const FEATURES = {
   WINDOW_FRAME_ROWS: { label: "ROWS frame", dialects: ["pg", "mysql", "sqlite", "mssql"] },
   WINDOW_FRAME_RANGE: { label: "RANGE frame", dialects: ["pg", "mysql", "sqlite", "mssql"] },
   WINDOW_FRAME_GROUPS: { label: "GROUPS frame", dialects: ["pg", "sqlite"] },
+  /**
+   * `EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }` frame-exclude
+   * clause (SQL:2011). PG and SQLite accept all four options; MySQL 8
+   * and MSSQL have no equivalent grammar.
+   */
+  FRAME_EXCLUDE: { label: "EXCLUDE frame clause", dialects: ["pg", "sqlite"] },
 
   // ── Aggregates ────────────────────────────────────────────────────
   FILTER_WHERE: { label: "aggregate FILTER (WHERE …)", dialects: ["pg", "sqlite"] },

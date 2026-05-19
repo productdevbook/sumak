@@ -27,14 +27,15 @@ The `WindowBuilder` exposes:
 
 - `partitionBy(...)`, `orderBy(...)`, `rows()` / `range()` / `groups()` frames.
 - Frame bounds: `unbounded_preceding`, `preceding N`, `current_row`, `following N`, `unbounded_following`.
+- Frame `exclude("current_row" | "group" | "ties" | "no_others")` modifier.
 
 **Supported SQL:2003+ extensions:**
 
 - **Named `WINDOW` clause** — `SELECT … WINDOW w AS (PARTITION BY x), w2 AS (w ORDER BY y)`. Register a window once via `.window(name, build)` on the SELECT builder, then reference it from multiple `over(fn, name)` calls. Includes window inheritance (`.window("w2", b => b.orderBy("y"), { from: "w" })`). AST: `SelectNode.windows: NamedWindow[]` + `WindowFunctionNode.windowName?: string`. The printer emits `WINDOW name AS (...)` between HAVING and ORDER BY on PG / MySQL / SQLite; MSSQL throws `UnsupportedDialectFeatureError` because SQL Server has no `WINDOW` clause. ✅
+- **Frame `EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }`** — SQL:2011 frame-exclude clause, attached via `.exclude(option)` on the `WindowBuilder` after one of `.rows()` / `.range()` / `.groups()`. Calling `.exclude()` before any frame method throws `InvalidExpressionError`. AST: a new `FrameSpec.exclude?: "no_others" | "current_row" | "group" | "ties"` slot — defaults to "implicit no_others" (skipped at emit). Dialect matrix: PG and SQLite accept all four options; MySQL 8 and MSSQL have no frame-exclude grammar, and their printers throw via the `FRAME_EXCLUDE` feature flag. ✅
 
 **SQL:2023 additions we don't have:**
 
-- **`EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }`** frame-exclude clause. The `FrameSpec` type has no `exclude` field.
 - **`PERCENTILE_CONT` / `PERCENTILE_DISC`** (inverse-distribution aggregates with `WITHIN GROUP`) — top-level `percentileCont()` / `percentileDisc()` builders plus the generic `withinGroup(agg, [...orderBy])` attach the SQL standard ordered-set clause: `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_ms)`. Emitted on PG, MySQL 8, MSSQL. SQLite has no equivalent (`assertFeature("sqlite", "ORDERED_SET_AGGREGATES")` throws). ✅
 
 ## JSON / SQL:2016 + 2023
@@ -69,4 +70,4 @@ The remaining gaps are all standardized but uniformly opt-in across DB engines �
 
 ## Summary
 
-Sumak's coverage is roughly "core SQL:2016 + vendor-portable parts of SQL:2023". `JSON_TABLE` and frame-`EXCLUDE` are the two most-likely-to-be-requested remaining gaps; everything else is either niche or trivially reachable via `unsafeRawExpr`. If you find a gap that affects your use case, open an issue with the exact statement you want to compile and the dialect — that pins down the AST change needed.
+Sumak's coverage is roughly "core SQL:2016 + vendor-portable parts of SQL:2023". `JSON_TABLE` is the largest remaining gap; everything else is either niche or trivially reachable via `unsafeRawExpr`. If you find a gap that affects your use case, open an issue with the exact statement you want to compile and the dialect — that pins down the AST change needed.

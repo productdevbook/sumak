@@ -3,6 +3,7 @@ import type {
   BinaryOpNode,
   CTENode,
   DeleteNode,
+  FrameSpec,
   FullTextSearchNode,
   FunctionCallNode,
   InsertNode,
@@ -247,6 +248,19 @@ export class MssqlPrinter extends BasePrinter {
       )
     }
     return super.printWindowFunction(node)
+  }
+
+  /**
+   * SQL Server has no SQL:2011 `EXCLUDE` frame clause; the parser
+   * rejects `EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }`
+   * outright. Refuse at print time via the `FRAME_EXCLUDE` feature
+   * flag rather than emitting invalid SQL.
+   */
+  protected override printFrameSpec(frame: FrameSpec): string {
+    if (frame.exclude !== undefined) {
+      assertFeature("mssql", "FRAME_EXCLUDE")
+    }
+    return super.printFrameSpec(frame)
   }
 
   protected override printInsert(node: InsertNode): string {

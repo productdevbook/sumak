@@ -358,10 +358,28 @@ export type FrameBound =
   | { type: "following"; value: number }
   | { type: "unbounded_following" }
 
+/**
+ * Optional SQL:2011 `EXCLUDE` clause that trims rows out of an
+ * already-computed frame. Applies *after* the start/end bounds pick
+ * a candidate window of rows.
+ *
+ * - `"no_others"` — keep everything (the implicit default; emitted
+ *   explicitly only if the user asks for it).
+ * - `"current_row"` — drop the current row from the frame.
+ * - `"group"` — drop the current row **and** its peers (rows with the
+ *   same `ORDER BY` keys).
+ * - `"ties"` — drop the peers but keep the current row.
+ *
+ * Supported on PG and SQLite. MySQL 8 and MSSQL have no frame-exclude
+ * grammar — their printers throw via the `FRAME_EXCLUDE` feature flag.
+ */
+export type FrameExclude = "no_others" | "current_row" | "group" | "ties"
+
 export interface FrameSpec {
   kind: FrameKind
   start: FrameBound
   end?: FrameBound
+  exclude?: FrameExclude
 }
 
 /**
