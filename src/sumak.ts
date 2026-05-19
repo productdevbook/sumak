@@ -9,6 +9,12 @@ import { CreateSequenceBuilder, DropSequenceBuilder } from "./builder/ddl/create
 import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
 import { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
 import {
+  CreateDomainBuilder,
+  CreateTypeEnumBuilder,
+  DropDomainBuilder,
+  DropTypeBuilder,
+} from "./builder/ddl/custom-types.ts"
+import {
   DropIndexBuilder,
   DropTableBuilder,
   DropViewBuilder,
@@ -854,6 +860,10 @@ const DDL_NODE_TYPES = new Set<string>([
   "drop_policy",
   "create_extension",
   "drop_extension",
+  "create_type_enum",
+  "drop_type",
+  "create_domain",
+  "drop_domain",
   "lock_table",
 ])
 
@@ -1147,32 +1157,39 @@ export class SchemaBuilder {
   }
 
   /**
+   * `CREATE TYPE <name> AS ENUM (...)`. PostgreSQL-only.
+   */
+  createTypeEnum(name: string): CreateTypeEnumBuilder {
+    return new CreateTypeEnumBuilder(name)
+  }
+
+  /**
+   * `DROP TYPE [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`. PG-only.
+   */
+  dropType(name: string | string[]): DropTypeBuilder {
+    return new DropTypeBuilder(name)
+  }
+
+  /**
+   * `CREATE DOMAIN <name> AS <type>` with optional DEFAULT / NOT NULL /
+   * CHECK. PostgreSQL-only.
+   */
+  createDomain(name: string, dataType?: string): CreateDomainBuilder {
+    return new CreateDomainBuilder(name, dataType)
+  }
+
+  /**
+   * `DROP DOMAIN [IF EXISTS] name [, ...] [CASCADE | RESTRICT]`. PG-only.
+   */
+  dropDomain(name: string | string[]): DropDomainBuilder {
+    return new DropDomainBuilder(name)
+  }
+
+  /**
    * PostgreSQL `LOCK [TABLE] [ONLY] name [, …] [IN lock_mode MODE]
-   * [NOWAIT]` — take an explicit table-level lock inside the current
-   * transaction. Used to serialize critical sections that can't tolerate
-   * optimistic concurrency (the typical case is "read totals → check
-   * invariant → write" patterns where a concurrent INSERT would
-   * invalidate the check).
+   * [NOWAIT]` — explicit table-level lock inside the current transaction.
    *
-   * Accepts either a single name or a `string[]` — PG applies the same
-   * mode + nowait flag to every table in the list, so the multi-table
-   * form lets a transaction acquire the locks atomically (no
-   * deadlock-by-ordering risk between sibling lock statements).
-   *
-   * ```ts
-   * db.compileDDL(db.schema.lockTable("orders").exclusive().build())
-   * // PG: LOCK TABLE "orders" IN EXCLUSIVE MODE
-   *
-   * db.compileDDL(
-   *   db.schema.lockTable(["orders", "order_lines"]).share().noWait().build(),
-   * )
-   * // PG: LOCK TABLE "orders", "order_lines" IN SHARE MODE NOWAIT
-   * ```
-   *
-   * PostgreSQL-only. The printer throws on MySQL / SQLite / MSSQL via
-   * the `LOCK_TABLE_STMT` feature gate. MySQL's `LOCK TABLES name
-   * READ|WRITE` is a different statement with different transactional
-   * semantics; bridging it cleanly needs a dedicated AST node.
+   * PostgreSQL-only. Throws on MySQL/SQLite/MSSQL via `LOCK_TABLE_STMT`.
    */
   lockTable(tables: string | string[]): LockTableBuilder {
     return new LockTableBuilder(tables)
