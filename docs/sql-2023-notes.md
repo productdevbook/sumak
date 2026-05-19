@@ -12,7 +12,7 @@ Sumak supports the SQL:2016 core MERGE shape:
 - **`WHEN NOT MATCHED BY SOURCE THEN UPDATE SET …` / `THEN DELETE`** — fires for target rows that have no matching source row (the inverse of `WHEN NOT MATCHED [BY TARGET]`). Useful for full-sync MERGE patterns where the source is the new desired state. Builder methods: `.whenNotMatchedBySourceThenUpdate(set, cond?)` and `.whenNotMatchedBySourceThenDelete(cond?)`. AST: third variant `MergeWhenNotMatchedBySource` alongside `MergeWhenMatched` / `MergeWhenNotMatched`. Emitted on PG (17+) and MSSQL; MySQL and SQLite have no `MERGE` at all and throw at print time. ✅
 - Per-branch `AND condition` ("WHEN MATCHED AND <cond>")
 - CTE-prefixed MERGE (`.with(...)`)
-- **`RETURNING` on MERGE** — `.returning(...cols)` / `.returning({ alias: expr })` / `.returningAll()` on the typed MERGE builder. PG 17+ accepts the standard form, including the PG-only `merge_action()` projection (top-level `mergeAction()` helper) which returns `'INSERT' | 'UPDATE' | 'DELETE'` per row. MSSQL has its own `OUTPUT` clause with different positioning and pseudo-tables; until that's wired up the printer throws `UnsupportedDialectFeatureError` (`MERGE_RETURNING` flag is PG-only). MySQL/SQLite have no `MERGE`. ✅
+- **`RETURNING` on MERGE** — `.returning(...cols)` / `.returning({ alias: expr })` / `.returningAll()` on the typed MERGE builder. PG 17+ accepts the standard form, including the PG-only `merge_action()` projection (top-level `mergeAction()` helper) which returns `'INSERT' | 'UPDATE' | 'DELETE'` per row. MSSQL emits the equivalent `OUTPUT` clause through the same builder slot — bare column refs default to `INSERTED.<col>` (the post-action row); the user picks up `DELETED.<col>` by passing a column ref with an explicit `"DELETED"` table qualifier, and the `$action` pseudo-column has its own helper (`mergeActionMssql()`, distinct from PG's `mergeAction()` because the two compile to different syntax — function call vs. pseudo-column). MySQL/SQLite have no `MERGE`. ✅
 
 ## INSERT — SQL:2003 / 2023 additions
 
@@ -20,7 +20,7 @@ Sumak supports the SQL:2016 core MERGE shape:
 
 **SQL:2023 additions we don't have:**
 
-- **MSSQL `OUTPUT` clause on MERGE** — the SQL Server analogue to `RETURNING`. Reuses the `MergeNode.returning` slot? Likely a separate surface because the syntax differs (`OUTPUT $action, inserted.id, deleted.id`) and the column-scope pseudo-tables (`inserted` / `deleted`) have no PG counterpart.
+- _(none currently tracked here for INSERT — the SQL:2023 INSERT-related additions sumak doesn't compile are documented inline at each blocked feature with `assertFeature`)._
 
 ## Window functions
 

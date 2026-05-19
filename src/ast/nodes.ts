@@ -678,13 +678,16 @@ export interface MergeNode {
   on: ExpressionNode
   whens: (MergeWhenMatched | MergeWhenNotMatched | MergeWhenNotMatchedBySource)[]
   /**
-   * SQL:2023 `RETURNING` projection on MERGE. PG 17+ accepts it
-   * natively, including the PG-only `merge_action()` projection that
-   * returns the branch that fired (`'INSERT' | 'UPDATE' | 'DELETE'`).
-   * MSSQL has its own `OUTPUT` clause with different syntax — surface
-   * it as a follow-up; until then the MSSQL printer throws when this
-   * slot is non-empty. MySQL/SQLite have no `MERGE`, so the question
-   * doesn't arise.
+   * SQL:2023 `RETURNING` projection on MERGE. PG 17+ emits the
+   * standard form natively, including the PG-only `merge_action()`
+   * projection (the `mergeAction()` builder helper) that returns the
+   * branch that fired (`'INSERT' | 'UPDATE' | 'DELETE'`). MSSQL
+   * rewrites the same slot to its `OUTPUT` clause at print time, with
+   * bare column refs defaulting to `INSERTED.<col>` (the post-action
+   * row); the `$action` pseudo-column has its own helper
+   * (`mergeActionMssql()` — separate from `mergeAction()` because the
+   * two compile to different syntax). MySQL/SQLite have no `MERGE`,
+   * so the question doesn't arise.
    */
   returning: ExpressionNode[]
   ctes: CTENode[]

@@ -4,8 +4,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { col, eq, param } from "../../src/ast/expression.ts"
 import { brandExpression } from "../../src/ast/typed-expression.ts"
 import type { Expression } from "../../src/ast/typed-expression.ts"
-import { mergeAction } from "../../src/builder/eb.ts"
+import { mergeAction, mergeActionMssql } from "../../src/builder/eb.ts"
 import { MergeBuilder } from "../../src/builder/merge.ts"
+import { mssqlDialect } from "../../src/dialect/mssql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { MssqlPrinter } from "../../src/printer/mssql.ts"
 import { PgPrinter } from "../../src/printer/pg.ts"
@@ -94,7 +95,7 @@ describe("MergeBuilder.returning (printer surface)", () => {
     expect(r.params).toEqual(["active", "renamed", "new"])
   })
 
-  it("MSSQL: throws UnsupportedDialectFeatureError when RETURNING is set", () => {
+  it("MSSQL: emits OUTPUT INSERTED.<col> at the tail (default prefix)", () => {
     const node = new MergeBuilder()
       .into("users")
       .using("staging", "s")
@@ -103,10 +104,56 @@ describe("MergeBuilder.returning (printer surface)", () => {
       .returning({ type: "column_ref", column: "id" })
       .build()
 
-    expect(() => mssqlPrinter().print(node)).toThrow(/RETURNING on MERGE/i)
+    const r = mssqlPrinter().print(node)
+    // No `RETURNING` token on MSSQL — the equivalent is `OUTPUT`.
+    expect(r.sql).not.toContain("RETURNING")
+    expect(r.sql).toMatch(/WHEN MATCHED THEN UPDATE SET .* OUTPUT INSERTED\.\[id\]$/s)
+    expect(r.params).toEqual(["Bob"])
   })
 
-  it("MSSQL: bare MERGE (no RETURNING) still works", () => {
+  it("MSSQL: OUTPUT $action emits the pseudo-column verbatim", () => {
+    const node = new MergeBuilder()
+      .into("users")
+      .using("staging", "s")
+      .on(eq(col("id", "users"), col("id", "s")))
+      .whenMatchedUpdate([{ column: "name", value: col("name", "s") }])
+      .whenNotMatchedInsert(["name"], [col("name", "s")])
+      .returning(
+        // mergeActionMssql() emits the bare `$action` token (pseudo-
+        // column, not a function call — no parens).
+        (mergeActionMssql() as any).node,
+        { type: "column_ref", column: "id" },
+      )
+      .build()
+
+    const r = mssqlPrinter().print(node)
+    expect(r.sql).toContain("$action")
+    expect(r.sql).not.toContain("$action()")
+    // `$action` came in without a pseudo-table prefix; bare column ref
+    // gets the default INSERTED. prefix.
+    expect(r.sql).toContain("OUTPUT $action, INSERTED.[id]")
+  })
+
+  it("MSSQL: explicit DELETED.col prefix passes through unchanged", () => {
+    const node = new MergeBuilder()
+      .into("users")
+      .using("staging", "s")
+      .on(eq(col("id", "users"), col("id", "s")))
+      .whenMatchedUpdate([{ column: "name", value: param(0, "Bob") }])
+      .returning(
+        // INSERTED.id (auto-prefixed) and DELETED.email (user-specified
+        // — the auto-prefix is suppressed).
+        { type: "column_ref", column: "id" },
+        { type: "column_ref", column: "email", table: "DELETED" },
+      )
+      .build()
+
+    const r = mssqlPrinter().print(node)
+    expect(r.sql).toContain("OUTPUT INSERTED.[id], [DELETED].[email]")
+    expect(r.sql).not.toContain("INSERTED.[DELETED]")
+  })
+
+  it("MSSQL: bare MERGE (no RETURNING) is unchanged", () => {
     const node = new MergeBuilder()
       .into("users")
       .using("staging", "s")
@@ -114,10 +161,23 @@ describe("MergeBuilder.returning (printer surface)", () => {
       .whenMatchedUpdate([{ column: "name", value: param(0, "Bob") }])
       .build()
 
-    // Smoke check — the override only throws when returning is set.
     const r = mssqlPrinter().print(node)
     expect(r.sql).toContain("[users]")
+    expect(r.sql).not.toContain("OUTPUT")
     expect(r.sql).not.toContain("RETURNING")
+  })
+
+  it("MSSQL: returning(star()) defaults to OUTPUT INSERTED.*", () => {
+    const node = new MergeBuilder()
+      .into("users")
+      .using("staging", "s")
+      .on(eq(col("id", "users"), col("id", "s")))
+      .whenMatchedUpdate([{ column: "name", value: param(0, "Bob") }])
+      .returning({ type: "star" })
+      .build()
+
+    const r = mssqlPrinter().print(node)
+    expect(r.sql).toContain("OUTPUT INSERTED.*")
   })
 
   it("returning() accumulates across chained calls", () => {
@@ -232,6 +292,70 @@ describe("TypedMergeBuilder.returning", () => {
         .whenMatchedThenUpdate({ name: "x" })
         .returning({}),
     ).toThrow(/at least one aliased expression/i)
+  })
+})
+
+// ─── Typed builder × MSSQL dialect ────────────────────────────────────
+
+const dbForTypedMssql = sumak({
+  dialect: mssqlDialect(),
+  tables: {
+    users: {
+      id: serial().primaryKey(),
+      name: text().notNull(),
+      status: text().notNull(),
+    },
+    staging: {
+      id: serial().primaryKey(),
+      name: text().notNull(),
+      status: text().notNull(),
+    },
+  },
+})
+
+describe("TypedMergeBuilder.returning — MSSQL OUTPUT", () => {
+  it("MSSQL: returning('id') compiles to OUTPUT INSERTED.[id]", () => {
+    const q = dbForTypedMssql
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "renamed" })
+      .returning("id")
+      .toSQL()
+    expect(q.sql).toMatch(/OUTPUT INSERTED\.\[id\]$/)
+  })
+
+  it("MSSQL: returning({ action: mergeActionMssql() }) emits OUTPUT $action AS [action]", () => {
+    const q = dbForTypedMssql
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "renamed" })
+      .whenNotMatchedThenInsert({ id: 1, name: "new", status: "active" })
+      .returning({ action: mergeActionMssql() })
+      .toSQL()
+    // $action passes through verbatim; the alias wrapping is the
+    // typed-merge surface's `AS [alias]` shape.
+    expect(q.sql).toContain("$action")
+    expect(q.sql).toContain("AS [action]")
+  })
+
+  it("MSSQL: returningAll() emits OUTPUT INSERTED.*", () => {
+    const q = dbForTypedMssql
+      .mergeInto("users", {
+        source: "staging",
+        alias: "s",
+        on: ({ target, source }) => target.id.eq(source.id),
+      })
+      .whenMatchedThenUpdate({ name: "renamed" })
+      .returningAll()
+      .toSQL()
+    expect(q.sql).toContain("OUTPUT INSERTED.*")
+    expect(q.sql).not.toContain("RETURNING")
   })
 })
 

@@ -207,8 +207,8 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
    *   .whenMatchedThenUpdate(...)
    *   .returning("id", "name")
    *
-   * // Aliased expressions — use `mergeAction()` to project the
-   * // PG-only column that says which branch fired.
+   * // Aliased expressions — use `mergeAction()` (PG) or
+   * // `mergeActionMssql()` (MSSQL) to project the branch token.
    * db.mergeInto("users", { ... })
    *   .whenMatchedThenUpdate(...)
    *   .returning({ id: col("id"), action: mergeAction() })
@@ -219,9 +219,11 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
    * MERGE-mutation surface — once a RETURNING is set the only useful
    * action is `.toSQL()`.
    *
-   * Dialect support: PG 17+ only at the printer level (MSSQL throws —
-   * its `OUTPUT` clause is a separate surface; MySQL/SQLite have no
-   * MERGE).
+   * Dialect support: PG 17+ emits `RETURNING <cols>`; MSSQL rewrites
+   * to `OUTPUT <cols>` with the `INSERTED` / `DELETED` pseudo-tables
+   * (bare column refs default to `INSERTED.<col>`; pass an explicit
+   * `col("name", "DELETED")` for the pre-action row). MySQL/SQLite
+   * have no MERGE.
    */
   returning<K extends keyof DB[Target] & string>(
     ...cols: K[]
