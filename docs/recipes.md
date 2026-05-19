@@ -148,6 +148,60 @@ DELETE statements get rewritten to UPDATE: `delete-where → UPDATE ... SET dele
 
 ---
 
+## Partial indexes (PostgreSQL / SQLite)
+
+A partial index is `CREATE INDEX ... WHERE <predicate>` — only rows matching the predicate are stored in the index, so the index is smaller and queries that include the same predicate land on a hot, narrow B-tree. The classic case is soft-deleted rows: 99% of reads ignore them, so there's no reason to keep them in the read path's main indexes.
+
+Declare on the table:
+
+```ts
+const users = defineTable(
+  "users",
+  {
+    id: serial().primaryKey(),
+    email: text().notNull(),
+    deletedAt: timestamp().nullable(),
+  },
+  {
+    indexes: [
+      // Unique on email — but only for live rows. A soft-deleted user
+      // can re-use their email, and a live user can re-create with the
+      // same address only after the old row is hard-deleted.
+      {
+        name: "uq_users_email_active",
+        columns: ["email"],
+        unique: true,
+        where: '"deletedAt" IS NULL',
+      },
+    ],
+  },
+)
+```
+
+Emitted SQL (PG / SQLite):
+
+```sql
+CREATE UNIQUE INDEX "uq_users_email_active"
+  ON "users" ("email")
+  WHERE "deletedAt" IS NULL
+```
+
+For status-driven workloads, gate the index on the hot enum value so cold rows aren't paid for on every write:
+
+```ts
+{
+  name: "idx_orders_pending",
+  columns: ["createdAt"],
+  where: "status = 'pending'",
+}
+```
+
+The predicate is part of the index's identity: change the `where` clause and the migration diff drops + recreates the index in one step. The expression accepts raw SQL (schema-author controlled — never user input) or any `Expression<boolean>`. When you reference camelCase columns by raw SQL, quote them yourself (`"deletedAt"` on PG, `` `deletedAt` `` on SQLite) — sumak's automatic identifier quoting only applies to identifiers it owns at print time, not strings inside raw SQL.
+
+**Dialect support.** PG and SQLite (≥ 3.8) accept the standard form. MySQL has no partial-index grammar at all; MSSQL's "filtered indexes" use a similar `WHERE` clause but with a stricter subset of allowed predicates (no UDFs, no subqueries, restrictions on BIT columns). sumak refuses to emit on MySQL and MSSQL — `compileDDL` throws `UnsupportedDialectFeatureError` — rather than ship SQL the engine will reject at runtime.
+
+---
+
 ## Multi-tenant scoping
 
 ```ts
