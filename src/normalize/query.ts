@@ -64,6 +64,7 @@ export function normalizeQuery(node: ASTNode, opts?: NormalizeOptions): ASTNode 
     case "tuple":
     case "quantified":
     case "grouping":
+    case "date_interval":
       return normalizeExpression(node as ExpressionNode, o)
     default:
       return assertNever(node, "normalizeQuery")

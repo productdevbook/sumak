@@ -62,6 +62,7 @@ export function visitNode<R>(node: ASTNode, visitor: ASTVisitor<R>): R {
     case "tuple":
     case "quantified":
     case "grouping":
+    case "date_interval":
       return visitor.visitExpression(node)
     default:
       return assertNever(node, "visitNode")

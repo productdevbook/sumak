@@ -47,6 +47,7 @@ export type ExpressionNode =
   | TupleNode
   | QuantifiedExprNode
   | GroupingExprNode
+  | DateIntervalNode
 
 export interface ColumnRefNode {
   type: "column_ref"
@@ -305,6 +306,41 @@ export interface GroupingExprNode {
   type: "grouping"
   kind: "grouping_sets" | "cube" | "rollup"
   sets: ExpressionNode[][]
+}
+
+/**
+ * Calendar-interval arithmetic — `expr ± N <unit>`.
+ *
+ * Every supported dialect can add an interval to a timestamp, but the
+ * surface syntax is fundamentally different on each:
+ *
+ *  - PG:     `expr + INTERVAL '7 days'`
+ *  - MySQL:  `DATE_ADD(expr, INTERVAL 7 DAY)`
+ *  - MSSQL:  `DATEADD(day, 7, expr)`
+ *  - SQLite: `datetime(expr, '+7 days')`
+ *
+ * Encoding the operation as a structural node (rather than a
+ * FunctionCallNode with a magic name) keeps the four printer
+ * overrides clean — each dialect emits its native shape from a single
+ * AST shape. The builder normalizes `dateSub` into a `DateIntervalNode`
+ * with a negated `amount`, so the printer only has to render one
+ * direction.
+ *
+ * `amount` is a JS number captured at build time (NOT a parameterised
+ * expression). Most dialects treat the value as part of the SQL plan
+ * cache key — substituting a placeholder degrades planner reuse and on
+ * SQLite would force the literal to be string-formatted at execution
+ * time anyway. The builder validates `amount` is a finite integer
+ * before constructing the node so injection via a non-integer cannot
+ * sneak through. `unit` is a closed enum.
+ */
+export interface DateIntervalNode {
+  type: "date_interval"
+  expr: ExpressionNode
+  /** Finite integer; may be negative (dateSub() compiles to a negative amount). */
+  amount: number
+  unit: "year" | "month" | "week" | "day" | "hour" | "minute" | "second"
+  alias?: string
 }
 
 /**

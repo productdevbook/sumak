@@ -1,6 +1,7 @@
 import type {
   ArrayExprNode,
   BinaryOpNode,
+  DateIntervalNode,
   DeleteNode,
   FrameSpec,
   FullTextSearchNode,
@@ -397,5 +398,25 @@ export class MysqlPrinter extends BasePrinter {
       assertFeature("mysql", "LINEAR_REGRESSION_AGG")
     }
     return super.printFunctionCall(node)
+  }
+
+  /**
+   * MySQL: `DATE_ADD(expr, INTERVAL N UNIT)` / `DATE_SUB(expr,
+   * INTERVAL N UNIT)`. Unit keyword is uppercased and singular
+   * (`DAY`, `MONTH`, …) per the MySQL grammar — `DAYS` would parse as
+   * an identifier and `INTERVAL 7 DAYS` is a syntax error.
+   *
+   * Choice of `DATE_ADD` vs `DATE_SUB` is purely cosmetic — both
+   * accept negative intervals — but emitting `DATE_SUB(expr, INTERVAL
+   * 7 DAY)` for a negative amount reads more naturally than
+   * `DATE_ADD(expr, INTERVAL -7 DAY)`. The result is byte-identical at
+   * the planner level.
+   */
+  protected override printDateInterval(node: DateIntervalNode): string {
+    const fn = node.amount < 0 ? "DATE_SUB" : "DATE_ADD"
+    const magnitude = Math.abs(node.amount)
+    const unitKeyword = node.unit.toUpperCase()
+    const inner = `${fn}(${this.printExpression(node.expr)}, INTERVAL ${magnitude} ${unitKeyword})`
+    return node.alias ? `${inner} AS ${quoteIdentifier(node.alias, this.dialect)}` : inner
   }
 }

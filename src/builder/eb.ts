@@ -1582,6 +1582,108 @@ export function age(
 }
 
 /**
+ * Calendar-interval unit accepted by {@link dateAdd} / {@link dateSub}.
+ * The closed enum prevents typos and injection — every dialect's printer
+ * maps the union member to its native unit keyword.
+ */
+export type DateIntervalUnit = "year" | "month" | "week" | "day" | "hour" | "minute" | "second"
+
+const DATE_INTERVAL_UNITS: ReadonlySet<DateIntervalUnit> = new Set([
+  "year",
+  "month",
+  "week",
+  "day",
+  "hour",
+  "minute",
+  "second",
+])
+
+function buildDateInterval(
+  fnName: "dateAdd" | "dateSub",
+  expr: Expression<any> | Col<any>,
+  amount: number,
+  unit: DateIntervalUnit,
+): Expression<Date> {
+  if (!Number.isFinite(amount) || !Number.isInteger(amount)) {
+    throw new InvalidExpressionError(
+      `${fnName}(): amount must be a finite integer, got ${String(amount)}.`,
+    )
+  }
+  if (!DATE_INTERVAL_UNITS.has(unit)) {
+    throw new InvalidExpressionError(
+      `${fnName}(): unknown unit "${String(unit)}". Allowed: ${Array.from(DATE_INTERVAL_UNITS).join(", ")}.`,
+    )
+  }
+  const exprNode = expr instanceof Col ? expr._node : (expr as Expression<any>).node
+  const signedAmount = fnName === "dateSub" ? -amount : amount
+  return wrap<Date>({
+    type: "date_interval",
+    expr: exprNode,
+    amount: signedAmount,
+    unit,
+  })
+}
+
+/**
+ * `dateAdd(expr, amount, unit)` — add a calendar interval to a date /
+ * timestamp expression. Every dialect uses a different surface syntax;
+ * sumak emits the right shape per dialect:
+ *
+ *  - PG:     `expr + INTERVAL '7 days'`
+ *  - MySQL:  `DATE_ADD(expr, INTERVAL 7 DAY)`
+ *  - MSSQL:  `DATEADD(day, 7, expr)`
+ *  - SQLite: `datetime(expr, '+7 days')`
+ *
+ * ```ts
+ * dateAdd(typedCol<Date>("created_at"), 7, "day")
+ *   // PG:     "created_at" + INTERVAL '7 days'
+ *   // MSSQL:  DATEADD(day, 7, [created_at])
+ * ```
+ *
+ * `amount` may be negative; the builder forwards the sign as-is so PG's
+ * `+ INTERVAL '-7 days'` and the MSSQL `DATEADD(day, -7, expr)` shapes
+ * both work. For the symmetric subtraction-style call site, prefer
+ * {@link dateSub} — it negates `amount` internally and makes the
+ * caller's intent (subtract) explicit.
+ *
+ * `amount` is captured into the SQL text rather than parameterised: the
+ * underlying engines use the literal as part of their plan-cache key
+ * (PG, MSSQL) or string-format it at execution anyway (SQLite). The
+ * builder rejects a non-integer / non-finite `amount` to keep injection
+ * out of the picture; `unit` is a closed enum.
+ */
+export function dateAdd(
+  expr: Expression<any> | Col<any>,
+  amount: number,
+  unit: DateIntervalUnit,
+): Expression<Date> {
+  return buildDateInterval("dateAdd", expr, amount, unit)
+}
+
+/**
+ * `dateSub(expr, amount, unit)` — symmetric of {@link dateAdd} for the
+ * subtraction direction. Compiles to the same `DateIntervalNode` shape
+ * with a negated `amount`, so each dialect's printer renders the
+ * appropriate native form:
+ *
+ *  - PG:     `expr - INTERVAL '7 days'`
+ *  - MySQL:  `DATE_SUB(expr, INTERVAL 7 DAY)`  (DATE_ADD with negative also works; the printer picks DATE_SUB for positive amounts so the SQL reads naturally)
+ *  - MSSQL:  `DATEADD(day, -7, expr)` (T-SQL has no `DATESUB`)
+ *  - SQLite: `datetime(expr, '-7 days')`
+ *
+ * Use the same call shape as `dateAdd`; passing a negative amount to
+ * `dateSub` adds back (rare but legal — it mirrors what `dateAdd(..,
+ * -n, ..)` would emit).
+ */
+export function dateSub(
+  expr: Expression<any> | Col<any>,
+  amount: number,
+  unit: DateIntervalUnit,
+): Expression<Date> {
+  return buildDateInterval("dateSub", expr, amount, unit)
+}
+
+/**
  * `NULLIF(a, b)` — returns NULL when `a = b`, otherwise `a`.
  * Common idiom for guarding against divide-by-zero:
  *

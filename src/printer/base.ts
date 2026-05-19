@@ -8,6 +8,7 @@ import type {
   CastNode,
   ColumnRefNode,
   CTENode,
+  DateIntervalNode,
   DeleteNode,
   ExistsNode,
   ExplainNode,
@@ -114,6 +115,7 @@ export class BasePrinter implements Printer {
       case "tuple":
       case "quantified":
       case "grouping":
+      case "date_interval":
         return this.printExpression(node)
       default:
         return assertNever(node, "BasePrinter.printNode")
@@ -448,6 +450,8 @@ export class BasePrinter implements Printer {
         return this.printQuantified(node)
       case "grouping":
         return this.printGrouping(node)
+      case "date_interval":
+        return this.printDateInterval(node)
       default:
         return assertNever(node, "BasePrinter.printExpression")
     }
@@ -504,6 +508,29 @@ export class BasePrinter implements Printer {
     // array / param / raw operands need the parens here.
     const body = node.operand.type === "subquery" ? inner : `(${inner})`
     return `${node.quantifier} ${body}`
+  }
+
+  /**
+   * Calendar-interval arithmetic — `expr ± N <unit>`. The base
+   * implementation emits the PG / SQL-standard shape `(expr ± INTERVAL
+   * 'N <unit>')`; dialect subclasses override this for their native
+   * syntaxes (MySQL's `DATE_ADD`, MSSQL's `DATEADD`, SQLite's
+   * `datetime`). The amount went through an integer check in the
+   * builder, so we can embed it as a literal without injection risk.
+   *
+   * Negative amounts emit as `(expr - INTERVAL '7 days')` rather than
+   * `(expr + INTERVAL '-7 days')` so the SQL reads naturally; both
+   * shapes are equivalent on PG but the explicit `-` is the
+   * idiomatic form. Unit is pluralized for readability (PG accepts
+   * both singular and plural forms — `INTERVAL '1 day'` /
+   * `INTERVAL '1 days'`).
+   */
+  protected printDateInterval(node: DateIntervalNode): string {
+    const op = node.amount < 0 ? "-" : "+"
+    const magnitude = Math.abs(node.amount)
+    const unitPlural = `${node.unit}s`
+    const inner = `(${this.printExpression(node.expr)} ${op} INTERVAL '${magnitude} ${unitPlural}')`
+    return node.alias ? `${inner} AS ${quoteIdentifier(node.alias, this.dialect)}` : inner
   }
 
   protected printColumnRef(node: ColumnRefNode): string {
