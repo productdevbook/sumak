@@ -854,6 +854,65 @@ export interface DropPolicyNode {
   cascade?: boolean
 }
 
+/**
+ * PostgreSQL `ALTER POLICY <name> ON <table>` — modify an existing RLS
+ * policy in-place rather than DROP + CREATE. Two distinct forms share
+ * the same node:
+ *
+ *  - **Rename form**: `ALTER POLICY <name> ON <table> RENAME TO
+ *    <new_name>`. Only {@link renameTo} is set; the modify-form slots
+ *    are all undefined. PG refuses any other clause alongside `RENAME
+ *    TO`, and so does the printer at print time.
+ *  - **Modify form**: `ALTER POLICY <name> ON <table>
+ *    [ TO role[, ...] ]
+ *    [ USING (<expr>) ]
+ *    [ WITH CHECK (<expr>) ]`.
+ *    Any combination of {@link roles}, {@link using}, and
+ *    {@link withCheck} may be set; at least one must be set or PG
+ *    rejects the statement (the printer surfaces a clearer error).
+ *
+ * The policy *kind* (permissive vs restrictive) and the *command* it
+ * applies to (`FOR ALL` / `SELECT` / …) are immutable in PG —
+ * `ALTER POLICY` has no syntax for changing them. To change those you
+ * have to DROP + CREATE the policy.
+ *
+ * Dialect support: **PG only.** Reuses the `ROW_LEVEL_SECURITY`
+ * feature flag from `CREATE POLICY` / `DROP POLICY`.
+ */
+export interface AlterPolicyNode {
+  type: "alter_policy"
+  name: string
+  table: string
+  schema?: string
+  /**
+   * Rename form — `RENAME TO <new_name>`. Mutually exclusive with the
+   * modify-form slots ({@link roles}, {@link using}, {@link withCheck})
+   * — the printer refuses if both are populated.
+   */
+  renameTo?: string
+  /**
+   * `TO role_name [, ...]` — replace the applied-roles list. Each
+   * entry is emitted via `quoteIdentifier`, except for the three
+   * reserved keywords `PUBLIC` / `CURRENT_USER` / `SESSION_USER`
+   * (case-insensitive match) which are passed through verbatim.
+   * Setting an empty array is treated as "no `TO` clause to emit" —
+   * which the printer rejects since `ALTER POLICY` requires at least
+   * one alterable clause; pass `undefined` instead to leave roles
+   * unchanged.
+   */
+  roles?: string[]
+  /**
+   * `USING (<expr>)` — replace the policy's existing-row predicate.
+   * Same `ExpressionNode` surface as `CREATE POLICY`.
+   */
+  using?: ExpressionNode
+  /**
+   * `WITH CHECK (<expr>)` — replace the policy's new-row predicate.
+   * Same `ExpressionNode` surface as `CREATE POLICY`.
+   */
+  withCheck?: ExpressionNode
+}
+
 // ── CREATE EXTENSION ──
 
 /**
@@ -1149,6 +1208,7 @@ export type DDLNode =
   | ReindexNode
   | CreatePolicyNode
   | DropPolicyNode
+  | AlterPolicyNode
   | CreateExtensionNode
   | DropExtensionNode
   | CreateTypeEnumNode

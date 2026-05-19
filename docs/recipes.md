@@ -1199,6 +1199,44 @@ Permissive and restrictive policies layer differently:
 
 The `USING` predicate filters existing rows (SELECT / UPDATE / DELETE); `WITH CHECK` gates new and updated rows (INSERT / UPDATE). If `WITH CHECK` is omitted on a write-allowing policy, PG falls back to the `USING` predicate.
 
+### Altering an existing policy
+
+`ALTER POLICY` can either rename the policy or replace one or more of the
+modify-form clauses (`TO` / `USING` / `WITH CHECK`) without dropping +
+recreating. The two forms are mutually exclusive — PG itself rejects any
+modify clause alongside `RENAME TO`, and sumak's printer surfaces the
+error at compile time before the round-trip to the engine.
+
+```ts
+import { alterPolicy } from "sumak"
+
+// Rename in place.
+db.compileDDL(db.schema.alterPolicy("tenant_isolation").on("orders").renameTo("tenant_iso").build())
+// → ALTER POLICY "tenant_isolation" ON "orders" RENAME TO "tenant_iso"
+
+// Tighten the USING predicate (and replace WITH CHECK at the same time).
+db.compileDDL(
+  db.schema
+    .alterPolicy("tenant_iso")
+    .on("orders")
+    .using(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int AND deleted_at IS NULL`)
+    .withCheck(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+    .build(),
+)
+// → ALTER POLICY "tenant_iso" ON "orders"
+//     USING (tenant_id = current_setting('app.tenant_id')::int AND deleted_at IS NULL)
+//     WITH CHECK (tenant_id = current_setting('app.tenant_id')::int)
+
+// Replace the applied-roles list.
+db.compileDDL(db.schema.alterPolicy("tenant_iso").on("orders").to("app_user", "ops_user").build())
+// → ALTER POLICY "tenant_iso" ON "orders" TO "app_user", "ops_user"
+```
+
+The policy _kind_ (`permissive` vs `restrictive`) and the _command_ it
+applies to (`FOR ALL` / `SELECT` / …) are **immutable in PG** — there's no
+`ALTER POLICY` syntax for changing either. To change them, drop and
+recreate the policy.
+
 ### Dropping a policy
 
 ```ts
@@ -1208,12 +1246,12 @@ db.compileDDL(db.schema.dropPolicy("tenant_isolation").on("orders").ifExists().b
 
 ### Feature matrix
 
-| Dialect | Status                                                                   |
-| ------- | ------------------------------------------------------------------------ |
-| pg      | ✅ Full grammar — `CREATE POLICY` / `DROP POLICY` / RLS toggles          |
-| mysql   | ❌ No equivalent; printer refuses                                        |
-| sqlite  | ❌ No equivalent; printer refuses                                        |
-| mssql   | ❌ Different surface (`CREATE SECURITY POLICY` + predicate fns); refused |
+| Dialect | Status                                                                                             |
+| ------- | -------------------------------------------------------------------------------------------------- |
+| pg      | ✅ Full grammar — `CREATE POLICY` / `ALTER POLICY` (rename + modify) / `DROP POLICY` / RLS toggles |
+| mysql   | ❌ No equivalent; printer refuses                                                                  |
+| sqlite  | ❌ No equivalent; printer refuses                                                                  |
+| mssql   | ❌ Different surface (`CREATE SECURITY POLICY` + predicate fns); refused                           |
 
 ---
 

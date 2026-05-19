@@ -1,4 +1,4 @@
-import type { CreatePolicyNode, DropPolicyNode } from "../../ast/ddl-nodes.ts"
+import type { AlterPolicyNode, CreatePolicyNode, DropPolicyNode } from "../../ast/ddl-nodes.ts"
 import type { ExpressionNode } from "../../ast/nodes.ts"
 import type { Expression } from "../../ast/typed-expression.ts"
 
@@ -191,4 +191,114 @@ export class DropPolicyBuilder {
  */
 export function dropPolicy(name: string): DropPolicyBuilder {
   return new DropPolicyBuilder(name)
+}
+
+/**
+ * Immutable builder for {@link AlterPolicyNode} — PostgreSQL
+ * `ALTER POLICY <name> ON <table>` in either of its two forms:
+ *
+ *  - Rename — `ALTER POLICY <name> ON <table> RENAME TO <new>`.
+ *  - Modify — `ALTER POLICY <name> ON <table>
+ *    [ TO role[, ...] ] [ USING (<expr>) ] [ WITH CHECK (<expr>) ]`.
+ *
+ * The two forms are mutually exclusive — chaining `.renameTo(...)`
+ * after any of `.to(...)` / `.using(...)` / `.withCheck(...)` (or vice
+ * versa) is a builder-side mistake. The printer enforces this at print
+ * time so a hand-rolled AST can't slip past either. PG itself also
+ * accepts the bare `ALTER POLICY <name> ON <table>` with no clauses,
+ * but that's a no-op the printer refuses to emit (caller should set at
+ * least one slot before `.build()`-ing into a compile).
+ *
+ * Note: the policy *kind* (permissive vs restrictive) and the *command*
+ * (FOR ALL / SELECT / …) are immutable in PG — to change those you
+ * have to DROP + CREATE the policy. The builder deliberately offers no
+ * `.permissive()` / `.restrictive()` / `.for(...)` methods here.
+ *
+ * ```ts
+ * alterPolicy("tenant_isolation")
+ *   .on("orders")
+ *   .using(sql`tenant_id = current_setting('app.tenant_id')::int`)
+ *   .build()
+ * // ALTER POLICY "tenant_isolation" ON "orders"
+ * //   USING (tenant_id = current_setting('app.tenant_id')::int)
+ *
+ * alterPolicy("tenant_isolation").on("orders").renameTo("tenant_iso").build()
+ * // ALTER POLICY "tenant_isolation" ON "orders" RENAME TO "tenant_iso"
+ * ```
+ *
+ * Refused on MySQL / SQLite / MSSQL at print time via the
+ * `ROW_LEVEL_SECURITY` feature gate.
+ */
+export class AlterPolicyBuilder {
+  private readonly node: AlterPolicyNode
+
+  constructor(name: string)
+  constructor(node: AlterPolicyNode)
+  constructor(nameOrNode: string | AlterPolicyNode) {
+    if (typeof nameOrNode === "string") {
+      this.node = {
+        type: "alter_policy",
+        name: nameOrNode,
+        // `table` is required at print time; left empty until `.on()` runs.
+        table: "",
+      }
+    } else {
+      this.node = nameOrNode
+    }
+  }
+
+  private clone(patch: Partial<AlterPolicyNode>): AlterPolicyBuilder {
+    return new AlterPolicyBuilder({ ...this.node, ...patch })
+  }
+
+  on(table: string, schema?: string): AlterPolicyBuilder {
+    return this.clone(schema === undefined ? { table } : { table, schema })
+  }
+
+  /**
+   * Rename form — `RENAME TO <new>`. Mutually exclusive with the
+   * modify-form chains; the printer refuses if both are set.
+   */
+  renameTo(newName: string): AlterPolicyBuilder {
+    return this.clone({ renameTo: newName })
+  }
+
+  /**
+   * Modify form — replace the applied-roles list with `TO role[, ...]`.
+   * Calling `.to(...)` more than once *replaces* the previous list so
+   * the chain is idempotent. Mutually exclusive with {@link renameTo}.
+   */
+  to(...roles: string[]): AlterPolicyBuilder {
+    return this.clone({ roles: [...roles] })
+  }
+
+  /**
+   * Modify form — replace the policy's `USING (<expr>)` predicate.
+   * Mutually exclusive with {@link renameTo}.
+   */
+  using(expr: ExpressionNode | Expression<boolean>): AlterPolicyBuilder {
+    return this.clone({ using: unwrapPredicate(expr) })
+  }
+
+  /**
+   * Modify form — replace the policy's `WITH CHECK (<expr>)`
+   * predicate. Mutually exclusive with {@link renameTo}.
+   */
+  withCheck(expr: ExpressionNode | Expression<boolean>): AlterPolicyBuilder {
+    return this.clone({ withCheck: unwrapPredicate(expr) })
+  }
+
+  build(): AlterPolicyNode {
+    return {
+      ...this.node,
+      roles: this.node.roles ? [...this.node.roles] : undefined,
+    }
+  }
+}
+
+/**
+ * Factory for {@link AlterPolicyBuilder}.
+ */
+export function alterPolicy(name: string): AlterPolicyBuilder {
+  return new AlterPolicyBuilder(name)
 }

@@ -309,6 +309,7 @@ export type {
 
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
 export type {
+  AlterPolicyNode,
   AlterSequenceNode,
   AlterTypeAddValueNode,
   AnalyzeNode,
@@ -355,6 +356,8 @@ export {
   vacuum,
 } from "./builder/ddl/maintenance.ts"
 export {
+  AlterPolicyBuilder,
+  alterPolicy,
   CreatePolicyBuilder,
   createPolicy,
   DropPolicyBuilder,
