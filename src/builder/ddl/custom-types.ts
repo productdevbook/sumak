@@ -1,4 +1,5 @@
 import type {
+  AlterTypeAddValueNode,
   CreateDomainNode,
   CreateTypeEnumNode,
   DropDomainNode,
@@ -326,4 +327,116 @@ export class DropDomainBuilder {
  */
 export function dropDomain(name: string | string[]): DropDomainBuilder {
   return new DropDomainBuilder(name)
+}
+
+/**
+ * Immutable builder for {@link AlterTypeAddValueNode} — PostgreSQL
+ * `ALTER TYPE <name> ADD VALUE [IF NOT EXISTS] '<v>'
+ *   [BEFORE | AFTER '<existing>']`.
+ *
+ * Extends a previously-created enum type with a new label. Without
+ * `.before(...)` / `.after(...)` the new label is appended to the end of
+ * the declared order (which is also the sort order on PG, so this is
+ * almost always the right default for new states added over time).
+ *
+ * ```ts
+ * db.schema.alterTypeAddValue("order_status").value("refunded").build()
+ * // ALTER TYPE "order_status" ADD VALUE 'refunded'
+ *
+ * db.schema
+ *   .alterTypeAddValue("order_status")
+ *   .value("processing")
+ *   .after("paid")
+ *   .ifNotExists()
+ *   .build()
+ * // ALTER TYPE "order_status" ADD VALUE IF NOT EXISTS 'processing' AFTER 'paid'
+ * ```
+ *
+ * **Important PG quirk**: this statement is incompatible with normal
+ * transactional migration tooling. In PG 11 and earlier it cannot run
+ * inside a transaction block at all. PG 12+ permits it inside a
+ * transaction, but the newly-added value isn't visible to *that* same
+ * transaction (and multiple ADD VALUE statements on the same enum
+ * within a single transaction are still rejected). Best practice:
+ * emit each `ALTER TYPE … ADD VALUE` as its own standalone migration
+ * step, then use the new label in a *subsequent* step.
+ *
+ * PostgreSQL-only. The printer refuses on MySQL / SQLite / MSSQL with
+ * {@link UnsupportedDialectFeatureError} (the `CUSTOM_TYPES` feature
+ * flag, shared with `CREATE TYPE AS ENUM`).
+ */
+export class AlterTypeAddValueBuilder {
+  private readonly _node: AlterTypeAddValueNode
+
+  constructor(name: string)
+  constructor(node: AlterTypeAddValueNode)
+  constructor(nameOrNode: string | AlterTypeAddValueNode) {
+    if (typeof nameOrNode === "string") {
+      // `value` is required at print time. Builders that ship without
+      // it surface the same diagnostic shape as `CreateDomainBuilder`'s
+      // missing-dataType case — empty string is the seed.
+      this._node = { type: "alter_type_add_value", name: nameOrNode, value: "" }
+    } else {
+      this._node = nameOrNode
+    }
+  }
+
+  private _clone(patch: Partial<AlterTypeAddValueNode>): AlterTypeAddValueBuilder {
+    return new AlterTypeAddValueBuilder({ ...this._node, ...patch })
+  }
+
+  /**
+   * Set the new label to add. Required — the printer throws if it's left
+   * empty. Single quotes inside the value are doubled at print time so
+   * a label like `O'Brien` is safe to splice into the SQL literal slot.
+   */
+  value(v: string): AlterTypeAddValueBuilder {
+    return this._clone({ value: v })
+  }
+
+  /**
+   * Emit `IF NOT EXISTS` (PG 9.6+). Makes the statement idempotent —
+   * if the label already exists on the enum, PG treats the statement
+   * as a no-op rather than raising a duplicate-value error. Strongly
+   * recommended for migrations that may be re-run against a partially
+   * upgraded database.
+   */
+  ifNotExists(): AlterTypeAddValueBuilder {
+    return this._clone({ ifNotExists: true })
+  }
+
+  /**
+   * Position the new label `BEFORE` the named existing label. Mutually
+   * exclusive with {@link after} — last call wins, the previous position
+   * is discarded.
+   *
+   * The existing label is doubled-quoted at print time the same way
+   * the new value is.
+   */
+  before(existing: string): AlterTypeAddValueBuilder {
+    return this._clone({ position: { kind: "BEFORE", existing } })
+  }
+
+  /**
+   * Position the new label `AFTER` the named existing label. Mutually
+   * exclusive with {@link before} — last call wins.
+   */
+  after(existing: string): AlterTypeAddValueBuilder {
+    return this._clone({ position: { kind: "AFTER", existing } })
+  }
+
+  build(): AlterTypeAddValueNode {
+    return { ...this._node }
+  }
+}
+
+/**
+ * Factory for {@link AlterTypeAddValueBuilder}.
+ *
+ * ```ts
+ * alterTypeAddValue("order_status").value("refunded").after("shipped").build()
+ * ```
+ */
+export function alterTypeAddValue(name: string): AlterTypeAddValueBuilder {
+  return new AlterTypeAddValueBuilder(name)
 }

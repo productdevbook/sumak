@@ -1010,6 +1010,48 @@ export interface DropDomainNode {
   restrict?: boolean
 }
 
+// ── ALTER TYPE ADD VALUE ──
+
+/**
+ * `ALTER TYPE name ADD VALUE [IF NOT EXISTS] 'new_value'
+ *   [ BEFORE 'existing' | AFTER 'existing' ]`.
+ *
+ * PostgreSQL-only DDL — extends an existing enum type with a new label,
+ * optionally positioned relative to an existing label. Without the
+ * `BEFORE` / `AFTER` clause the new label is appended at the end (and
+ * sorts after every existing label).
+ *
+ * Important PG quirk: in PG 11 and earlier, `ALTER TYPE … ADD VALUE`
+ * **cannot** run inside a transaction block at all. PG 12+ relaxed that
+ * but the newly-added value still isn't visible to the transaction
+ * that added it until commit — so it remains discouraged inside the
+ * same migration step that uses it. Typical workflow: emit the
+ * `ALTER TYPE` as its own one-shot migration, *then* use the new value
+ * in a subsequent step. Multiple `ADD VALUE` statements on the same
+ * type within one transaction are also rejected by PG even in 12+.
+ *
+ * `IF NOT EXISTS` (PG 9.6+) makes the statement idempotent — if the
+ * label already exists on the enum, the statement is a no-op rather
+ * than a syntax-level error.
+ *
+ * MySQL has no equivalent (its inline `ENUM(...)` column shape changes
+ * via `ALTER TABLE … MODIFY COLUMN`, a different surface); SQLite has
+ * no enum at all; MSSQL's `CREATE TYPE` is a different surface entirely.
+ * The DDL printer refuses on every non-PG dialect.
+ */
+export interface AlterTypeAddValueNode {
+  type: "alter_type_add_value"
+  name: string
+  value: string
+  ifNotExists?: boolean
+  /**
+   * Optional positioning of the new label relative to an existing one.
+   * Without it, PG appends the new label at the end of the declared
+   * order (which is also the sort order).
+   */
+  position?: { kind: "BEFORE" | "AFTER"; existing: string }
+}
+
 // ── LOCK TABLE (PG advisory locking) ──
 
 /**
@@ -1113,4 +1155,5 @@ export type DDLNode =
   | DropTypeNode
   | CreateDomainNode
   | DropDomainNode
+  | AlterTypeAddValueNode
   | LockTableNode

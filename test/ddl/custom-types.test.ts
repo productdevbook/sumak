@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 import {
+  AlterTypeAddValueBuilder,
   CreateDomainBuilder,
   CreateTypeEnumBuilder,
   DropDomainBuilder,
@@ -12,7 +13,14 @@ import { mysqlDialect } from "../../src/dialect/mysql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { sqliteDialect } from "../../src/dialect/sqlite.ts"
 import { SecurityError, UnsupportedDialectFeatureError } from "../../src/errors.ts"
-import { createDomain, createTypeEnum, dropDomain, dropType, sql } from "../../src/index.ts"
+import {
+  alterTypeAddValue,
+  createDomain,
+  createTypeEnum,
+  dropDomain,
+  dropType,
+  sql,
+} from "../../src/index.ts"
 import { DDLPrinter } from "../../src/printer/ddl.ts"
 import { sumak } from "../../src/sumak.ts"
 import { pgliteDriver } from "../integration/pglite-driver.ts"
@@ -384,6 +392,123 @@ describe("DROP DOMAIN — builder + PG emission", () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────
+// ALTER TYPE … ADD VALUE
+// ─────────────────────────────────────────────────────────────────────
+
+describe("ALTER TYPE ADD VALUE — builder shape", () => {
+  it("alterTypeAddValue(name) seeds an empty value", () => {
+    const node = alterTypeAddValue("e").build()
+    expect(node).toEqual({ type: "alter_type_add_value", name: "e", value: "" })
+  })
+
+  it(".value(v) sets the new label", () => {
+    const node = alterTypeAddValue("e").value("x").build()
+    expect(node.value).toBe("x")
+  })
+
+  it(".ifNotExists() sets the flag", () => {
+    const node = alterTypeAddValue("e").value("x").ifNotExists().build()
+    expect(node.ifNotExists).toBe(true)
+  })
+
+  it(".before(existing) sets the BEFORE position", () => {
+    const node = alterTypeAddValue("e").value("x").before("y").build()
+    expect(node.position).toEqual({ kind: "BEFORE", existing: "y" })
+  })
+
+  it(".after(existing) sets the AFTER position", () => {
+    const node = alterTypeAddValue("e").value("x").after("y").build()
+    expect(node.position).toEqual({ kind: "AFTER", existing: "y" })
+  })
+
+  it(".before() then .after() — last call wins (replaces position)", () => {
+    const node = alterTypeAddValue("e").value("x").before("y").after("z").build()
+    expect(node.position).toEqual({ kind: "AFTER", existing: "z" })
+  })
+
+  it(".after() then .before() — last call wins (replaces position)", () => {
+    const node = alterTypeAddValue("e").value("x").after("z").before("y").build()
+    expect(node.position).toEqual({ kind: "BEFORE", existing: "y" })
+  })
+
+  it("builder is immutable — branching returns independent nodes", () => {
+    const a = alterTypeAddValue("e").value("x")
+    const b = a.ifNotExists()
+    expect(a.build().ifNotExists).toBeUndefined()
+    expect(b.build().ifNotExists).toBe(true)
+  })
+})
+
+describe("ALTER TYPE ADD VALUE — PG emission", () => {
+  it("emits the plain form", () => {
+    const q = pg.compileDDL(alterTypeAddValue("order_status").value("refunded").build())
+    expect(q.sql).toBe(`ALTER TYPE "order_status" ADD VALUE 'refunded'`)
+    expect(q.params).toEqual([])
+  })
+
+  it("emits IF NOT EXISTS", () => {
+    const q = pg.compileDDL(
+      alterTypeAddValue("order_status").value("refunded").ifNotExists().build(),
+    )
+    expect(q.sql).toBe(`ALTER TYPE "order_status" ADD VALUE IF NOT EXISTS 'refunded'`)
+  })
+
+  it("emits BEFORE", () => {
+    const q = pg.compileDDL(alterTypeAddValue("order_status").value("x").before("paid").build())
+    expect(q.sql).toBe(`ALTER TYPE "order_status" ADD VALUE 'x' BEFORE 'paid'`)
+  })
+
+  it("emits AFTER", () => {
+    const q = pg.compileDDL(alterTypeAddValue("order_status").value("x").after("paid").build())
+    expect(q.sql).toBe(`ALTER TYPE "order_status" ADD VALUE 'x' AFTER 'paid'`)
+  })
+
+  it("emits IF NOT EXISTS + AFTER together", () => {
+    const q = pg.compileDDL(
+      alterTypeAddValue("order_status").value("x").ifNotExists().after("paid").build(),
+    )
+    expect(q.sql).toBe(`ALTER TYPE "order_status" ADD VALUE IF NOT EXISTS 'x' AFTER 'paid'`)
+  })
+
+  it("escapes single quotes in the new value", () => {
+    // A label like `O'Brien` must be doubled to `O''Brien` to survive
+    // the splice into the SQL literal slot.
+    const q = pg.compileDDL(alterTypeAddValue("names").value("O'Brien").build())
+    expect(q.sql).toBe(`ALTER TYPE "names" ADD VALUE 'O''Brien'`)
+  })
+
+  it("escapes single quotes in the BEFORE / AFTER existing label too", () => {
+    const q = pg.compileDDL(alterTypeAddValue("names").value("x").after("O'Brien").build())
+    expect(q.sql).toBe(`ALTER TYPE "names" ADD VALUE 'x' AFTER 'O''Brien'`)
+  })
+
+  it("escapes backslashes in the new value", () => {
+    const q = pg.compileDDL(alterTypeAddValue("foo").value("a\\b").build())
+    expect(q.sql).toBe(`ALTER TYPE "foo" ADD VALUE 'a\\\\b'`)
+  })
+
+  it("hand-rolled AST with empty value throws", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_add_value",
+        name: "e",
+        value: "",
+      }),
+    ).toThrow(/requires a non-empty value/i)
+  })
+
+  it("hand-rolled AST with injected type name throws", () => {
+    expect(() =>
+      pg.compileDDL({
+        type: "alter_type_add_value",
+        name: "e; DROP TABLE users; --",
+        value: "x",
+      }),
+    ).toThrow(SecurityError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────
 // Dialect feature gate — PG only
 // ─────────────────────────────────────────────────────────────────────
 
@@ -393,6 +518,8 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
   const dropEnum = (db: typeof pg) => db.compileDDL(db.schema.dropType("e").build())
   const createDom = (db: typeof pg) => db.compileDDL(db.schema.createDomain("d", "integer").build())
   const dropDom = (db: typeof pg) => db.compileDDL(db.schema.dropDomain("d").build())
+  const alterAddVal = (db: typeof pg) =>
+    db.compileDDL(db.schema.alterTypeAddValue("e").value("x").build())
 
   it("MySQL: CREATE TYPE AS ENUM refused", () => {
     expect(() => createEnum(my as any)).toThrow(UnsupportedDialectFeatureError)
@@ -408,6 +535,10 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
 
   it("MySQL: DROP DOMAIN refused", () => {
     expect(() => dropDom(my as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MySQL: ALTER TYPE ADD VALUE refused", () => {
+    expect(() => alterAddVal(my as any)).toThrow(UnsupportedDialectFeatureError)
   })
 
   it("SQLite: CREATE TYPE AS ENUM refused", () => {
@@ -426,6 +557,10 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
     expect(() => dropDom(sqlite as any)).toThrow(UnsupportedDialectFeatureError)
   })
 
+  it("SQLite: ALTER TYPE ADD VALUE refused", () => {
+    expect(() => alterAddVal(sqlite as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
   it("MSSQL: CREATE TYPE AS ENUM refused", () => {
     expect(() => createEnum(mssql as any)).toThrow(UnsupportedDialectFeatureError)
   })
@@ -440,6 +575,10 @@ describe("CUSTOM_TYPES is PostgreSQL-only", () => {
 
   it("MSSQL: DROP DOMAIN refused", () => {
     expect(() => dropDom(mssql as any)).toThrow(UnsupportedDialectFeatureError)
+  })
+
+  it("MSSQL: ALTER TYPE ADD VALUE refused", () => {
+    expect(() => alterAddVal(mssql as any)).toThrow(UnsupportedDialectFeatureError)
   })
 
   it("error message names the CUSTOM_TYPES feature", () => {
@@ -557,6 +696,15 @@ describe("Standalone builder classes", () => {
     const node = new DropDomainBuilder("d").ifExists().build()
     expect(node).toMatchObject({ type: "drop_domain", names: ["d"], ifExists: true })
   })
+
+  it("AlterTypeAddValueBuilder is constructable directly", () => {
+    const node = new AlterTypeAddValueBuilder("e").value("x").build()
+    expect(node).toMatchObject({
+      type: "alter_type_add_value",
+      name: "e",
+      value: "x",
+    })
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────
@@ -586,6 +734,12 @@ describe("db.compile() routes custom-type nodes through DDLPrinter", () => {
     const node = pg.schema.dropDomain("d").ifExists().build()
     const q = pg.compile(node)
     expect(q.sql).toBe(`DROP DOMAIN IF EXISTS "d"`)
+  })
+
+  it("AlterTypeAddValueNode round-trips through compile()", () => {
+    const node = pg.schema.alterTypeAddValue("e").value("x").build()
+    const q = pg.compile(node)
+    expect(q.sql).toBe(`ALTER TYPE "e" ADD VALUE 'x'`)
   })
 })
 
@@ -721,5 +875,104 @@ describe("PGlite roundtrip — CREATE TYPE AS ENUM + CREATE DOMAIN", () => {
 
     await pgdb.exec(`DROP TABLE people`)
     await pgdb.exec(db.compileDDL(db.schema.dropDomain("age_dom").build()).sql)
+  })
+
+  // ALTER TYPE ADD VALUE — needs PG 12+ to run inside a transaction.
+  // PGlite ships with PG 16, so the in-transaction case is fine here, but
+  // tooling in the wild that targets PG 11 has to emit each statement
+  // standalone (no surrounding BEGIN/COMMIT). The roundtrip below uses
+  // `pgdb.exec(...)` straight, no explicit transaction, matching the
+  // recommended migration pattern.
+  it("ALTER TYPE ADD VALUE — appends a label, becomes a valid enum value", async () => {
+    // Seed the type.
+    await pgdb.exec(
+      db.compileDDL(db.schema.createTypeEnum("flavor").values("vanilla", "chocolate").build()).sql,
+    )
+
+    // Extend with a third label.
+    await pgdb.exec(
+      db.compileDDL(db.schema.alterTypeAddValue("flavor").value("strawberry").build()).sql,
+    )
+
+    // Inserting the new label must succeed.
+    await pgdb.exec(`
+      CREATE TEMP TABLE cones (
+        id serial PRIMARY KEY,
+        f flavor NOT NULL
+      )
+    `)
+    await pgdb.exec(`INSERT INTO cones (f) VALUES ('strawberry')`)
+    const r = await pgdb.query<{ f: string }>(`SELECT f FROM cones`)
+    expect(r.rows.map((row) => row.f)).toEqual(["strawberry"])
+
+    // Cleanup.
+    await pgdb.exec(`DROP TABLE cones`)
+    await pgdb.exec(db.compileDDL(db.schema.dropType("flavor").build()).sql)
+  })
+
+  it("ALTER TYPE ADD VALUE BEFORE / AFTER orders the new label correctly", async () => {
+    await pgdb.exec(
+      db.compileDDL(db.schema.createTypeEnum("priority").values("low", "high").build()).sql,
+    )
+
+    // Insert `medium` between low and high.
+    await pgdb.exec(
+      db.compileDDL(db.schema.alterTypeAddValue("priority").value("medium").after("low").build())
+        .sql,
+    )
+
+    // pg_enum.enumsortorder reflects the declared (and therefore ORDER BY)
+    // order. Query it and assert the AFTER inserted into the middle.
+    const rows = await pgdb.query<{ enumlabel: string }>(
+      `SELECT enumlabel FROM pg_enum
+        JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+       WHERE pg_type.typname = 'priority'
+       ORDER BY enumsortorder`,
+    )
+    expect(rows.rows.map((row) => row.enumlabel)).toEqual(["low", "medium", "high"])
+
+    await pgdb.exec(db.compileDDL(db.schema.dropType("priority").build()).sql)
+  })
+
+  it("ALTER TYPE ADD VALUE IF NOT EXISTS — idempotent on repeated apply", async () => {
+    await pgdb.exec(
+      db.compileDDL(db.schema.createTypeEnum("mood").values("happy", "sad").build()).sql,
+    )
+
+    const stmt = db.compileDDL(
+      db.schema.alterTypeAddValue("mood").value("meh").ifNotExists().build(),
+    ).sql
+
+    // First apply adds the value.
+    await pgdb.exec(stmt)
+    // Second apply must be a no-op (no error).
+    await pgdb.exec(stmt)
+
+    const rows = await pgdb.query<{ enumlabel: string }>(
+      `SELECT enumlabel FROM pg_enum
+        JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+       WHERE pg_type.typname = 'mood'
+       ORDER BY enumsortorder`,
+    )
+    expect(rows.rows.map((row) => row.enumlabel)).toEqual(["happy", "sad", "meh"])
+
+    await pgdb.exec(db.compileDDL(db.schema.dropType("mood").build()).sql)
+  })
+
+  it("ALTER TYPE ADD VALUE — escaped single quote round-trips through PG", async () => {
+    await pgdb.exec(db.compileDDL(db.schema.createTypeEnum("names").values("alice").build()).sql)
+    await pgdb.exec(
+      db.compileDDL(db.schema.alterTypeAddValue("names").value("O'Brien").build()).sql,
+    )
+
+    const rows = await pgdb.query<{ enumlabel: string }>(
+      `SELECT enumlabel FROM pg_enum
+        JOIN pg_type ON pg_type.oid = pg_enum.enumtypid
+       WHERE pg_type.typname = 'names'
+       ORDER BY enumsortorder`,
+    )
+    expect(rows.rows.map((row) => row.enumlabel)).toEqual(["alice", "O'Brien"])
+
+    await pgdb.exec(db.compileDDL(db.schema.dropType("names").build()).sql)
   })
 })

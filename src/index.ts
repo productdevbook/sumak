@@ -310,6 +310,7 @@ export type {
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
 export type {
   AlterSequenceNode,
+  AlterTypeAddValueNode,
   AnalyzeNode,
   CommentNode,
   CreateDomainNode,
@@ -361,6 +362,8 @@ export {
 } from "./builder/ddl/policy.ts"
 export { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/extension.ts"
 export {
+  AlterTypeAddValueBuilder,
+  alterTypeAddValue,
   CreateDomainBuilder,
   createDomain,
   CreateTypeEnumBuilder,

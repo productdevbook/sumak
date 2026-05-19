@@ -474,6 +474,45 @@ db.schema.dropType(["order_status", "priority"]).cascade().build()
 
 Label values are escaped through `escapeStringLiteral` before splicing — so `O'Brien` lands as `'O''Brien'` and a backslash doubles to `\\\\`. Type names go through `validateFunctionName`, which rejects any non-identifier shape.
 
+### Extending an enum (`ALTER TYPE … ADD VALUE`)
+
+Once an enum is in production, you almost never want to recreate it — every table that references it would have to be rebuilt. PG's `ALTER TYPE … ADD VALUE` extends the label set in place, optionally positioning the new label relative to an existing one:
+
+```ts
+import { alterTypeAddValue } from "sumak"
+
+// Append at the end (which is also the sort-order end).
+db.schema.alterTypeAddValue("order_status").value("refunded").build()
+// ALTER TYPE "order_status" ADD VALUE 'refunded'
+
+// Insert between two existing labels — useful when the sort order matters.
+db.schema.alterTypeAddValue("order_status").value("processing").after("paid").build()
+// ALTER TYPE "order_status" ADD VALUE 'processing' AFTER 'paid'
+
+// Idempotent variant — re-running the same migration is a no-op rather
+// than a duplicate-label error.
+db.schema.alterTypeAddValue("order_status").value("processing").after("paid").ifNotExists().build()
+// ALTER TYPE "order_status" ADD VALUE IF NOT EXISTS 'processing' AFTER 'paid'
+```
+
+The new value lands escaped through `escapeStringLiteral` — `O'Brien` becomes `'O''Brien'`, a backslash doubles. The `BEFORE` / `AFTER` reference label is escaped the same way. Type names continue to go through `validateFunctionName`.
+
+`.before()` and `.after()` are mutually exclusive — the last call wins, replacing any previously-set position. `.value(...)` is required; the printer refuses to compile a node with an empty value.
+
+#### Transaction caveat (important)
+
+`ALTER TYPE … ADD VALUE` is incompatible with normal transactional migration runners in subtle ways:
+
+- **PG 11 and earlier**: the statement cannot run inside a transaction block at all. The server rejects `BEGIN; ALTER TYPE … ADD VALUE …; COMMIT;` with `ERROR: ALTER TYPE … ADD cannot run inside a transaction block`. The fix is to emit it as a standalone DDL step, outside any wrapping BEGIN/COMMIT.
+- **PG 12 and later**: the statement is permitted inside a transaction, **but** the new value is not visible to the current transaction (or to other concurrent transactions) until commit. Using the new value in the same transaction that added it raises `ERROR: unsafe use of new value … of enum type`. Multiple `ADD VALUE` statements on the same enum within a single transaction are also rejected.
+
+Practical workflow for migrations that need a new enum label _and_ immediately want to write rows using it:
+
+1. Migration A: `ALTER TYPE order_status ADD VALUE 'refunded'` (standalone — no BEGIN/COMMIT, or its own one-statement transaction).
+2. Migration B (separate runner invocation): the data-write step that uses `'refunded'`.
+
+Sumak emits the statement verbatim; the surrounding transactional behavior is the runner's job. If you're using `db.transaction(...)` for migrations, split the enum extension out into its own one-shot DDL apply rather than batching it with the writes that need the new value.
+
 ### CHECK domains
 
 A _domain_ in PG is a typed constraint wrapper around an existing type. Declare it once, reference it everywhere — every column declared with the domain inherits its `CHECK`, `DEFAULT`, and `NOT NULL`:
