@@ -7,7 +7,7 @@ import { mysqlDialect } from "../../src/dialect/mysql.ts"
 import { pgDialect } from "../../src/dialect/pg.ts"
 import { sqliteDialect } from "../../src/dialect/sqlite.ts"
 import { UnsupportedDialectFeatureError } from "../../src/errors.ts"
-import { createPolicy, dropPolicy } from "../../src/index.ts"
+import { alterPolicy, createPolicy, dropPolicy } from "../../src/index.ts"
 import { sql } from "../../src/index.ts"
 import { sumak } from "../../src/sumak.ts"
 import { pgliteDriver } from "../integration/pglite-driver.ts"
@@ -349,6 +349,23 @@ describe("non-PG dialects refuse every RLS surface", () => {
         )
       })
 
+      it("ALTER POLICY (rename) refuses", () => {
+        expect(() => db.compileDDL(alterPolicy("p").on("t").renameTo("q").build())).toThrow(
+          UnsupportedDialectFeatureError,
+        )
+      })
+
+      it("ALTER POLICY (modify USING) refuses", () => {
+        expect(() =>
+          db.compileDDL(
+            alterPolicy("p")
+              .on("t")
+              .using(sql<boolean>`tenant_id = 1`)
+              .build(),
+          ),
+        ).toThrow(UnsupportedDialectFeatureError)
+      })
+
       it("ALTER TABLE ENABLE ROW LEVEL SECURITY refuses", () => {
         expect(() => db.compileDDL(alterTable("t").enableRowLevelSecurity().build())).toThrow(
           UnsupportedDialectFeatureError,
@@ -374,6 +391,208 @@ describe("non-PG dialects refuse every RLS surface", () => {
       })
     })
   }
+})
+
+describe("ALTER POLICY — builder shape", () => {
+  it("alterPolicy(name) returns a node with an empty table", () => {
+    const node = alterPolicy("p1").build()
+    expect(node).toMatchObject({ type: "alter_policy", name: "p1", table: "" })
+  })
+
+  it(".on(table) sets the target", () => {
+    const node = alterPolicy("p1").on("orders").build()
+    expect(node.table).toBe("orders")
+  })
+
+  it(".on(table, schema) sets schema too", () => {
+    const node = alterPolicy("p1").on("orders", "shop").build()
+    expect(node).toMatchObject({ table: "orders", schema: "shop" })
+  })
+
+  it(".renameTo(newName) sets the rename slot", () => {
+    const node = alterPolicy("p1").on("t").renameTo("p2").build()
+    expect(node.renameTo).toBe("p2")
+  })
+
+  it(".to(...roles) carries the role list", () => {
+    const node = alterPolicy("p1").on("t").to("alice", "PUBLIC").build()
+    expect(node.roles).toEqual(["alice", "PUBLIC"])
+  })
+
+  it(".to() replaces a previous .to() call (idempotent chains)", () => {
+    const node = alterPolicy("p1").on("t").to("alice").to("bob", "carol").build()
+    expect(node.roles).toEqual(["bob", "carol"])
+  })
+
+  it("builder.build() returns an independent copy of the roles array", () => {
+    const b = alterPolicy("p1").on("t").to("alice", "bob")
+    const node = b.build()
+    node.roles!.push("eve")
+    const fresh = b.build()
+    expect(fresh.roles).toEqual(["alice", "bob"])
+  })
+
+  it(".using(sql) accepts an Expression<boolean>", () => {
+    const node = alterPolicy("p1")
+      .on("orders")
+      .using(sql<boolean>`tenant_id = 1`)
+      .build()
+    expect(node.using).toBeDefined()
+  })
+
+  it(".withCheck(sql) accepts an Expression<boolean>", () => {
+    const node = alterPolicy("p1")
+      .on("orders")
+      .withCheck(sql<boolean>`tenant_id = 1`)
+      .build()
+    expect(node.withCheck).toBeDefined()
+  })
+})
+
+describe("ALTER POLICY — PG emission (rename form)", () => {
+  it("RENAME TO — basic", () => {
+    const q = pg.compileDDL(alterPolicy("p1").on("orders").renameTo("p2").build())
+    expect(q.sql).toBe('ALTER POLICY "p1" ON "orders" RENAME TO "p2"')
+  })
+
+  it("RENAME TO — schema-qualified table", () => {
+    const q = pg.compileDDL(alterPolicy("p1").on("orders", "shop").renameTo("p2").build())
+    expect(q.sql).toBe('ALTER POLICY "p1" ON "shop"."orders" RENAME TO "p2"')
+  })
+
+  it("via db.schema.alterPolicy()", () => {
+    const q = pg.compileDDL(pg.schema.alterPolicy("p1").on("orders").renameTo("p2").build())
+    expect(q.sql).toBe('ALTER POLICY "p1" ON "orders" RENAME TO "p2"')
+  })
+})
+
+describe("ALTER POLICY — PG emission (modify form)", () => {
+  it("TO single role — quoted as identifier", () => {
+    const q = pg.compileDDL(alterPolicy("p1").on("orders").to("alice").build())
+    expect(q.sql).toBe('ALTER POLICY "p1" ON "orders" TO "alice"')
+  })
+
+  it("TO multiple roles", () => {
+    const q = pg.compileDDL(alterPolicy("p1").on("orders").to("alice", "bob").build())
+    expect(q.sql).toBe('ALTER POLICY "p1" ON "orders" TO "alice", "bob"')
+  })
+
+  it("TO PUBLIC — reserved keyword, no quoting", () => {
+    const q = pg.compileDDL(alterPolicy("p1").on("orders").to("PUBLIC").build())
+    expect(q.sql).toBe('ALTER POLICY "p1" ON "orders" TO PUBLIC')
+  })
+
+  it("TO mixed reserved + role names", () => {
+    const q = pg.compileDDL(alterPolicy("p1").on("orders").to("alice", "PUBLIC").build())
+    expect(q.sql).toBe('ALTER POLICY "p1" ON "orders" TO "alice", PUBLIC')
+  })
+
+  it("USING predicate", () => {
+    const q = pg.compileDDL(
+      alterPolicy("p1")
+        .on("orders")
+        .using(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+        .build(),
+    )
+    expect(q.sql).toBe(
+      `ALTER POLICY "p1" ON "orders" USING (tenant_id = current_setting('app.tenant_id')::int)`,
+    )
+  })
+
+  it("WITH CHECK predicate", () => {
+    const q = pg.compileDDL(
+      alterPolicy("p1")
+        .on("orders")
+        .withCheck(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+        .build(),
+    )
+    expect(q.sql).toBe(
+      `ALTER POLICY "p1" ON "orders" WITH CHECK (tenant_id = current_setting('app.tenant_id')::int)`,
+    )
+  })
+
+  it("combined modify — TO + USING + WITH CHECK", () => {
+    const q = pg.compileDDL(
+      alterPolicy("tenant_isolation")
+        .on("orders")
+        .to("app_user")
+        .using(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+        .withCheck(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+        .build(),
+    )
+    expect(q.sql).toBe(
+      `ALTER POLICY "tenant_isolation" ON "orders" TO "app_user" ` +
+        `USING (tenant_id = current_setting('app.tenant_id')::int) ` +
+        `WITH CHECK (tenant_id = current_setting('app.tenant_id')::int)`,
+    )
+  })
+
+  it("schema-qualified table", () => {
+    const q = pg.compileDDL(
+      alterPolicy("p1")
+        .on("orders", "shop")
+        .using(sql<boolean>`tenant_id = 1`)
+        .build(),
+    )
+    expect(q.sql).toBe(`ALTER POLICY "p1" ON "shop"."orders" USING (tenant_id = 1)`)
+  })
+
+  it("via db.schema.alterPolicy() — modify USING", () => {
+    const q = pg.compileDDL(
+      pg.schema
+        .alterPolicy("p1")
+        .on("orders")
+        .using(sql<boolean>`tenant_id = 1`)
+        .build(),
+    )
+    expect(q.sql).toBe(`ALTER POLICY "p1" ON "orders" USING (tenant_id = 1)`)
+  })
+})
+
+describe("ALTER POLICY — print-time guards", () => {
+  it("rejects empty table (forgot .on)", () => {
+    expect(() => pg.compileDDL(alterPolicy("p1").renameTo("p2").build())).toThrow(
+      /requires a target table/,
+    )
+  })
+
+  it("rejects RENAME + modify in one statement (rename then modify on hand-built AST)", () => {
+    const bad = alterPolicy("p1").on("orders").renameTo("p2").build()
+    bad.using = { type: "raw", sql: "tenant_id = 1", params: [] }
+    expect(() => pg.compileDDL(bad)).toThrow(/mutually exclusive/)
+  })
+
+  it("rejects RENAME + modify in one statement (modify then rename on hand-built AST)", () => {
+    const bad = alterPolicy("p1")
+      .on("orders")
+      .using(sql<boolean>`tenant_id = 1`)
+      .build()
+    bad.renameTo = "p2"
+    expect(() => pg.compileDDL(bad)).toThrow(/mutually exclusive/)
+  })
+
+  it("rejects RENAME + .to(...) combined", () => {
+    const bad = alterPolicy("p1").on("orders").renameTo("p2").build()
+    bad.roles = ["alice"]
+    expect(() => pg.compileDDL(bad)).toThrow(/mutually exclusive/)
+  })
+
+  it("rejects RENAME + .withCheck(...) combined", () => {
+    const bad = alterPolicy("p1").on("orders").renameTo("p2").build()
+    bad.withCheck = { type: "raw", sql: "tenant_id = 1", params: [] }
+    expect(() => pg.compileDDL(bad)).toThrow(/mutually exclusive/)
+  })
+
+  it("rejects no-op (no rename, no modify)", () => {
+    expect(() => pg.compileDDL(alterPolicy("p1").on("orders").build())).toThrow(
+      /requires at least one clause/,
+    )
+  })
+
+  it("rejects .to() with an empty array on a hand-built AST", () => {
+    const bad = alterPolicy("p1").on("orders").to().build()
+    expect(() => pg.compileDDL(bad)).toThrow(/at least one role name/)
+  })
 })
 
 describe("PGlite roundtrip — RLS filters rows by tenant_id", () => {
@@ -503,5 +722,100 @@ describe("PGlite roundtrip — RLS filters rows by tenant_id", () => {
     await pgInstance.query(`REVOKE ALL ON SEQUENCE rls_writes_id_seq FROM rls_write_user`)
     await pgInstance.query(`DROP ROLE rls_write_user`)
     await pgInstance.query(`DROP TABLE rls_writes`)
+  })
+
+  it("ALTER POLICY USING — new predicate filters rows differently", async () => {
+    const db = sumak({ dialect: pgDialect(), driver: pgliteDriver(pgInstance), tables: {} })
+
+    await pgInstance.query(
+      `CREATE TABLE rls_alter (id serial PRIMARY KEY, tenant_id int, kind text)`,
+    )
+    await pgInstance.query(
+      `INSERT INTO rls_alter (tenant_id, kind) VALUES ` +
+        `(1, 'public'), (1, 'private'), (2, 'public'), (2, 'public'), (2, 'private')`,
+    )
+
+    await db.executeCompiledNoRows(
+      db.compileDDL(alterTable("rls_alter").enableRowLevelSecurity().build()),
+    )
+
+    // First policy — by tenant only.
+    await db.executeCompiledNoRows(
+      db.compileDDL(
+        createPolicy("alter_iso")
+          .on("rls_alter")
+          .for("ALL")
+          .using(sql<boolean>`tenant_id = current_setting('app.tenant_id')::int`)
+          .build(),
+      ),
+    )
+
+    await pgInstance.query(`CREATE ROLE rls_alter_user NOSUPERUSER NOBYPASSRLS`)
+    await pgInstance.query(`GRANT SELECT ON rls_alter TO rls_alter_user`)
+    await pgInstance.query(`SET ROLE rls_alter_user`)
+    await pgInstance.query(`SET app.tenant_id = '2'`)
+
+    // Tenant 2 sees three rows under the original policy.
+    const before = await pgInstance.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM rls_alter`,
+    )
+    expect(Number(before.rows[0]!.count)).toBe(3)
+
+    // Switch back to superuser to ALTER POLICY.
+    await pgInstance.query(`RESET ROLE`)
+
+    // Narrow the USING predicate to tenant_id + kind = 'public'.
+    await db.executeCompiledNoRows(
+      db.compileDDL(
+        alterPolicy("alter_iso")
+          .on("rls_alter")
+          .using(
+            sql<boolean>`tenant_id = current_setting('app.tenant_id')::int AND kind = 'public'`,
+          )
+          .build(),
+      ),
+    )
+
+    // Switch back, re-set the tenant context (RESET ROLE drops it).
+    await pgInstance.query(`SET ROLE rls_alter_user`)
+    await pgInstance.query(`SET app.tenant_id = '2'`)
+
+    // Tenant 2 now sees only the two 'public' rows.
+    const after = await pgInstance.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM rls_alter`,
+    )
+    expect(Number(after.rows[0]!.count)).toBe(2)
+
+    // Now rename the policy and verify it's still in effect under the new name.
+    await pgInstance.query(`RESET ROLE`)
+    await db.executeCompiledNoRows(
+      db.compileDDL(alterPolicy("alter_iso").on("rls_alter").renameTo("alter_iso_v2").build()),
+    )
+
+    // Drop by the new name — proves the rename took.
+    await db.executeCompiledNoRows(
+      db.compileDDL(dropPolicy("alter_iso_v2").on("rls_alter").build()),
+    )
+
+    await pgInstance.query(`SET ROLE rls_alter_user`)
+    await pgInstance.query(`SET app.tenant_id = '2'`)
+    // Without RLS policy, tenant 2 sees all five rows (RLS still on,
+    // but no policies → default deny). Need to disable RLS or have
+    // FORCE off — superusers bypass; rls_alter_user does not. Verify
+    // policy drop by re-enabling under a known name.
+    // Actually since RLS is on with no policies, a non-superuser sees zero rows.
+    const noPolicy = await pgInstance.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM rls_alter`,
+    )
+    expect(Number(noPolicy.rows[0]!.count)).toBe(0)
+
+    // Cleanup
+    await pgInstance.query(`RESET ROLE`)
+    await db.executeCompiledNoRows(
+      db.compileDDL(alterTable("rls_alter").disableRowLevelSecurity().build()),
+    )
+    await pgInstance.query(`REVOKE ALL ON rls_alter FROM rls_alter_user`)
+    await pgInstance.query(`DROP ROLE rls_alter_user`)
+    await pgInstance.query(`DROP TABLE rls_alter`)
   })
 })

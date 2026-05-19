@@ -1,4 +1,5 @@
 import type {
+  AlterPolicyNode,
   AlterSequenceNode,
   AlterTableNode,
   AlterTypeAddValueNode,
@@ -113,6 +114,8 @@ export class DDLPrinter {
         return this.printCreatePolicy(node)
       case "drop_policy":
         return this.printDropPolicy(node)
+      case "alter_policy":
+        return this.printAlterPolicy(node)
       case "create_extension":
         return this.printCreateExtension(node)
       case "drop_extension":
@@ -1563,6 +1566,80 @@ export class DDLPrinter {
     parts.push(quoteIdentifier(node.name, this.dialect))
     parts.push("ON", this.qualifiedName(node.table, node.schema))
     if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `ALTER POLICY <name> ON <table>` in either of its two forms:
+   *
+   *  - Rename: `ALTER POLICY <name> ON <table> RENAME TO <new>`.
+   *  - Modify: `ALTER POLICY <name> ON <table>
+   *    [TO role[, ...]] [USING (<expr>)] [WITH CHECK (<expr>)]`.
+   *
+   * The two forms are mutually exclusive — PG itself refuses any
+   * modify-clause alongside `RENAME TO`. The printer refuses at print
+   * time so a hand-rolled AST can't slip past the builder. PG also
+   * requires at least one alterable clause; the printer surfaces a
+   * clearer error than PG's "syntax error" when none is set.
+   */
+  private printAlterPolicy(node: AlterPolicyNode): string {
+    assertFeature(this.dialect, "ROW_LEVEL_SECURITY")
+    if (!node.table) {
+      throw new Error(
+        `ALTER POLICY "${node.name}" requires a target table — call .on(table) before compiling.`,
+      )
+    }
+    const hasRename = node.renameTo !== undefined
+    const hasRoles = node.roles !== undefined
+    const hasUsing = node.using !== undefined
+    const hasWithCheck = node.withCheck !== undefined
+    const hasModify = hasRoles || hasUsing || hasWithCheck
+    if (hasRename && hasModify) {
+      throw new Error(
+        `ALTER POLICY "${node.name}": RENAME TO and the modify-form clauses ` +
+          `(TO / USING / WITH CHECK) are mutually exclusive — set only one form per statement.`,
+      )
+    }
+    if (!hasRename && !hasModify) {
+      throw new Error(
+        `ALTER POLICY "${node.name}" requires at least one clause — ` +
+          `set .renameTo(...), .to(...), .using(...), or .withCheck(...).`,
+      )
+    }
+
+    const parts: string[] = [
+      "ALTER POLICY",
+      quoteIdentifier(node.name, this.dialect),
+      "ON",
+      this.qualifiedName(node.table, node.schema),
+    ]
+
+    if (hasRename) {
+      parts.push("RENAME TO", quoteIdentifier(node.renameTo!, this.dialect))
+      return parts.join(" ")
+    }
+
+    if (hasRoles) {
+      // Empty array is a builder-side mistake — PG would emit `TO`
+      // without role names and reject the statement.
+      if (node.roles!.length === 0) {
+        throw new Error(
+          `ALTER POLICY "${node.name}": .to(...) requires at least one role name — ` +
+            `pass undefined (skip the call) to leave roles unchanged.`,
+        )
+      }
+      const rendered = node.roles!.map((r) => this.renderPolicyRole(r))
+      parts.push("TO", rendered.join(", "))
+    }
+
+    if (hasUsing) {
+      parts.push("USING", `(${this.printExpr(node.using!)})`)
+    }
+
+    if (hasWithCheck) {
+      parts.push("WITH CHECK", `(${this.printExpr(node.withCheck!)})`)
+    }
+
     return parts.join(" ")
   }
 

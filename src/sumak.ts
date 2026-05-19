@@ -24,7 +24,7 @@ import {
 import { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/extension.ts"
 import { LockTableBuilder } from "./builder/ddl/lock-table.ts"
 import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
-import { CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
+import { AlterPolicyBuilder, CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
 import { TruncateBuilder, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 import { Col } from "./builder/eb.ts"
@@ -859,6 +859,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "reindex",
   "create_policy",
   "drop_policy",
+  "alter_policy",
   "create_extension",
   "drop_extension",
   "create_type_enum",
@@ -1124,6 +1125,40 @@ export class SchemaBuilder {
    */
   dropPolicy(name: string): DropPolicyBuilder {
     return new DropPolicyBuilder(name)
+  }
+
+  /**
+   * `ALTER POLICY <name> ON <table>` — modify an existing RLS policy
+   * in-place. Two distinct forms share the builder:
+   *
+   *  - Rename — `.on(table).renameTo(newName)`.
+   *  - Modify — any combination of `.to(...roles)`, `.using(expr)`,
+   *    `.withCheck(expr)`. At least one must be set or PG rejects the
+   *    statement.
+   *
+   * The two forms are mutually exclusive — chaining `.renameTo()`
+   * after any modify-form chain (or vice versa) is a builder-side
+   * mistake the printer refuses at compile time.
+   *
+   * The policy *kind* (permissive vs restrictive) and the *command*
+   * (`FOR ALL` / `SELECT` / …) are immutable in PG — to change those
+   * you have to DROP + CREATE the policy.
+   *
+   * ```ts
+   * db.compileDDL(
+   *   db.schema
+   *     .alterPolicy("tenant_isolation")
+   *     .on("orders")
+   *     .using(sql`tenant_id = current_setting('app.tenant_id')::int`)
+   *     .build(),
+   * )
+   * ```
+   *
+   * PG only — the DDL printer refuses on every non-PG dialect via the
+   * `ROW_LEVEL_SECURITY` feature gate.
+   */
+  alterPolicy(name: string): AlterPolicyBuilder {
+    return new AlterPolicyBuilder(name)
   }
 
   /**
