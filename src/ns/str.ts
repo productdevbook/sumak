@@ -1,4 +1,15 @@
-import { concat, length, lower, substring, trim, upper } from "../builder/eb.ts"
+import {
+  concat,
+  length,
+  lower,
+  regexpLike,
+  regexpMatches,
+  regexpReplace,
+  regexpSubstr,
+  substring,
+  trim,
+  upper,
+} from "../builder/eb.ts"
 
 /**
  * String function namespace.
@@ -12,6 +23,10 @@ import { concat, length, lower, substring, trim, upper } from "../builder/eb.ts"
  * str.substring(col.name, 1, 3)
  * str.trim(col.name)
  * str.length(col.name)
+ * str.regexpReplace(col.phone, "[^0-9]", "")
+ * str.regexpLike(col.email, "^[^@]+@[^@]+$")
+ * str.regexpMatches(col.body, "https?://[^\\s]+", "g") // PG-only
+ * str.regexpSubstr(col.body, "\\d+")
  * ```
  */
 export const str: {
@@ -21,6 +36,10 @@ export const str: {
   readonly substring: typeof substring
   readonly trim: typeof trim
   readonly length: typeof length
+  readonly regexpReplace: typeof regexpReplace
+  readonly regexpLike: typeof regexpLike
+  readonly regexpMatches: typeof regexpMatches
+  readonly regexpSubstr: typeof regexpSubstr
 } = {
   upper,
   lower,
@@ -28,4 +47,8 @@ export const str: {
   substring,
   trim,
   length,
+  regexpReplace,
+  regexpLike,
+  regexpMatches,
+  regexpSubstr,
 }

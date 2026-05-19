@@ -650,6 +650,71 @@ The four dialects diverge on the underlying time-zone / type semantics — e.g. 
 
 ---
 
+## Regex matching and extraction
+
+```ts
+import { regexpLike, regexpMatches, regexpReplace, regexpSubstr, typedCol } from "sumak"
+
+const body = typedCol<string>("body")
+const email = typedCol<string>("email")
+
+// regexpReplace(haystack, pattern, replacement [, flags])
+// PG / MySQL 8 / SQLite (with the regexp extension). MSSQL throws.
+db.selectFrom("posts")
+  .select({ digits: regexpReplace(body, "[^0-9]", "", "g") })
+  .toSQL()
+// PG/MySQL/SQLite: SELECT REGEXP_REPLACE("body", '[^0-9]', '', 'g') AS "digits"
+//                  FROM "posts"
+
+// regexpLike(haystack, pattern [, flags]) — boolean test
+// PG 15+ / MySQL 8. SQLite + MSSQL throw.
+db.selectFrom("posts")
+  .selectAll()
+  .where(() => regexpLike(email, "^[^@ ]+@[^@ ]+[.][^@ ]+$"))
+  .toSQL()
+// PG/MySQL: SELECT * FROM "posts"
+//           WHERE REGEXP_LIKE("email", '^[^@ ]+@[^@ ]+[.][^@ ]+$')
+
+// regexpMatches(haystack, pattern [, flags]) — returns text[]
+// PG-only. With the 'g' flag, the function is set-returning (yields
+// one row per match). MySQL / SQLite / MSSQL throw.
+db.selectFrom("posts")
+  .select({ urls: regexpMatches(body, "https?://([^ ]+)", "g") })
+  .toSQL()
+// PG: SELECT REGEXP_MATCHES("body", 'https?://([^ ]+)', 'g') AS "urls"
+//     FROM "posts"
+
+// regexpSubstr(haystack, pattern [, position [, occurrence [, flags]]])
+// — return the first (or Nth) match. PG 15+ / MySQL 8. SQLite + MSSQL throw.
+db.selectFrom("posts")
+  .select({ first: regexpSubstr(body, "[[:digit:]]+") })
+  .toSQL()
+// PG/MySQL: SELECT REGEXP_SUBSTR("body", '[[:digit:]]+') AS "first" FROM "posts"
+```
+
+Pattern, replacement, and flags arguments are emitted as **inline SQL string literals** (via the same `escapeStringLiteral` policy as everywhere else in sumak). That keeps the statement-cache key stable when only the haystack column varies, and avoids over-parameterising what is usually a hard-coded regex. Reach for `unsafeRawExpr` if you genuinely need a runtime-parameterised pattern (e.g. user-supplied search).
+
+**Backslash escaping caveat.** sumak doubles backslashes inside string literals as a defence against the MySQL `BACKSLASH_ESCAPES` sql_mode (a known cross-dialect SQL-injection vector). The side-effect is that PCRE-style escapes like `\d`, `\s`, `\w` arrive at the regex engine as literal backslash-then-letter, not as digit/space/word classes. For portable patterns, use:
+
+- POSIX character classes: `[[:digit:]]`, `[[:space:]]`, `[[:alpha:]]`, `[[:alnum:]]`
+- Bare character ranges: `[0-9]`, `[a-zA-Z]`
+- Bracket negation: `[^@ ]` instead of `[^@\s]`
+
+If you need `\d` etc., write the pattern via `unsafeRawExpr` (and accept that the escape policy then becomes your responsibility).
+
+Dialect support, at a glance:
+
+| Builder         | PG  | MySQL 8 | SQLite               | MSSQL |
+| --------------- | --- | ------- | -------------------- | ----- |
+| `regexpReplace` | yes | yes     | yes (regexp ext)     | no    |
+| `regexpLike`    | 15+ | yes     | no (use `REGEXP` op) | no    |
+| `regexpMatches` | yes | no      | no                   | no    |
+| `regexpSubstr`  | 15+ | yes     | no                   | no    |
+
+The printer throws `UnsupportedDialectFeatureError` rather than emitting SQL the engine would reject at parse / execution time — so the failure points at the builder call, not at a generic driver error from a missing function.
+
+---
+
 ## EXISTS / NOT EXISTS (correlated subquery)
 
 ```ts

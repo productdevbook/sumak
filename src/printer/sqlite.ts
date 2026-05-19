@@ -227,6 +227,23 @@ export class SqlitePrinter extends BasePrinter {
     ) {
       assertFeature("sqlite", "LINEAR_REGRESSION_AGG")
     }
+    // SQLite's regex story is the `REGEXP` operator (only when the
+    // regexp extension is loaded). It has *no* `REGEXP_LIKE`,
+    // `REGEXP_MATCHES`, or `REGEXP_SUBSTR` function — emitting the
+    // standard names would parse-fail or, worse, silently match a
+    // user-defined function with a colliding name. Refuse so the
+    // failure points at the builder call. `REGEXP_REPLACE` is
+    // allowed through (it exists on modern SQLite builds with the
+    // regexp extension and on the matching SQLite-extra builds).
+    if (upper === "REGEXP_LIKE") {
+      assertFeature("sqlite", "REGEXP_LIKE_FN")
+    }
+    if (upper === "REGEXP_MATCHES") {
+      assertFeature("sqlite", "REGEXP_MATCHES_FN")
+    }
+    if (upper === "REGEXP_SUBSTR") {
+      assertFeature("sqlite", "REGEXP_SUBSTR_FN")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently

@@ -102,6 +102,11 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   "CHAR_LENGTH",
   "REPLACE",
   "POSITION",
+  // Regex
+  "REGEXP_REPLACE",
+  "REGEXP_LIKE",
+  "REGEXP_MATCHES",
+  "REGEXP_SUBSTR",
   // Numeric
   "ABS",
   "ROUND",
