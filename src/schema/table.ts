@@ -69,10 +69,15 @@ export type IndexColumn = string | { readonly column: string; readonly direction
  * migration diff with a stable name and the diff engine can match
  * before/after.
  *
- * `unique` flips the index to `CREATE UNIQUE INDEX`. `using` picks a
- * method (`btree`, `gin`, `hash`, …; PG only on most dialects). `where`
- * is a partial index predicate and takes either raw SQL or a sumak
- * Expression<boolean>, same as {@link CheckDef.expression}.
+ * - `unique` flips the index to `CREATE UNIQUE INDEX`.
+ * - `using` picks a method (`btree`, `gin`, `hash`, …; mostly PG-only).
+ * - `where` is a **partial index** predicate emitted as `CREATE INDEX
+ *   … WHERE <expr>`. Accepts either raw SQL (schema-author controlled,
+ *   never user input) or a sumak `Expression<boolean>`, mirroring
+ *   {@link CheckDef.expression}. PG and SQLite (3.8+) support partial
+ *   indexes; the DDL printer throws `UnsupportedDialectFeatureError`
+ *   on MySQL/MSSQL. The predicate is part of the index's identity —
+ *   the diff engine treats a change to `where` as drop + recreate.
  */
 export interface IndexDef {
   readonly name: string

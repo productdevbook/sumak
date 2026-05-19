@@ -149,6 +149,21 @@ export interface CreateIndexNode {
   unique?: boolean
   ifNotExists?: boolean
   using?: string
+  /**
+   * Partial index predicate — emitted as `WHERE <expr>` at the tail of
+   * `CREATE [UNIQUE] INDEX`. Only rows for which the predicate evaluates
+   * to TRUE are indexed, so the index is smaller and the planner can
+   * pick it for queries that include the same predicate. Heavily used
+   * for soft-delete (`WHERE deleted_at IS NULL`) and status filters
+   * (`WHERE status = 'active'`).
+   *
+   * PG and SQLite (3.8+) both support this with identical syntax.
+   * MySQL has no partial-index grammar at all; MSSQL has "filtered
+   * indexes" with a similar `WHERE` clause but a stricter subset of
+   * supported predicates — sumak refuses both with
+   * `UnsupportedDialectFeatureError` rather than emitting SQL the
+   * engine will reject. See {@link FEATURES.PARTIAL_INDEX}.
+   */
   where?: ExpressionNode
 }
 

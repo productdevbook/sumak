@@ -70,6 +70,34 @@ describe("table indexes — pglite roundtrip", () => {
     })
     expect(rows).toHaveLength(1)
     expect(String(rows[0]!.indexdef)).toMatch(/WHERE/i)
+    // pg_stat_user_indexes confirms the index is wired up and visible to
+    // the planner. We don't seed rows + force a scan here because PGlite
+    // resets stats per session in unpredictable ways and the planner is
+    // free to pick a seq scan on a tiny table — but the row exists with
+    // its idx_scan counter (initialized to 0) the moment CREATE INDEX
+    // commits, which is the durable invariant.
+    const statRows = await db.executeCompiled({
+      sql: "SELECT indexrelname, idx_scan FROM pg_stat_user_indexes WHERE indexrelname = 'idx_ix_posts_active_title'",
+      params: [],
+    })
+    expect(statRows).toHaveLength(1)
+    expect(statRows[0]!.indexrelname).toBe("idx_ix_posts_active_title")
+
+    // Insert a mix of live and soft-deleted rows. The partial index
+    // covers only the live rows; the soft-deleted ones are excluded by
+    // the WHERE predicate at index time, so they don't bloat the index.
+    await db.insertInto("ix_posts").values({ id: 1, title: "live-a", deletedAt: null }).exec()
+    await db.insertInto("ix_posts").values({ id: 2, title: "live-b", deletedAt: null }).exec()
+    await db.insertInto("ix_posts").values({ id: 3, title: "gone", deletedAt: 1700000000 }).exec()
+
+    // Reading a row whose `deletedAt IS NULL` succeeds. We aren't
+    // asserting the planner's choice (PGlite is small enough that a seq
+    // scan often wins); the point is the index is queryable + correct.
+    const live = await db.executeCompiled({
+      sql: 'SELECT id FROM "ix_posts" WHERE "deletedAt" IS NULL ORDER BY id',
+      params: [],
+    })
+    expect(live.map((r) => r.id)).toEqual([1, 2])
   })
 
   it("can DROP an index via a follow-up migration", async () => {

@@ -15,6 +15,7 @@ import type {
   TruncateTableNode,
 } from "../ast/ddl-nodes.ts"
 import type { SelectNode } from "../ast/nodes.ts"
+import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
@@ -413,15 +414,15 @@ export class DDLPrinter {
     }
 
     if (node.where) {
-      // Partial indexes: PG native, SQLite 3.8+, MSSQL (filtered indexes,
-      // similar semantics). MySQL has no partial/filtered index at all
-      // — refuse instead of emitting `WHERE ...` which MySQL rejects.
-      if (this.dialect === "mysql") {
-        throw new UnsupportedDialectFeatureError(
-          "mysql",
-          "Partial / filtered indexes (MySQL has no WHERE clause for CREATE INDEX)",
-        )
-      }
+      // Partial / filtered index predicate. PG and SQLite (3.8+) both
+      // accept the standard `CREATE INDEX … WHERE <expr>` form with
+      // identical grammar. MySQL has no equivalent at all. MSSQL has
+      // "filtered indexes" with a similar WHERE clause, but the subset
+      // of supported predicates is stricter (no UDFs, no subqueries,
+      // BIT-typed columns only via `IS NOT NULL`, etc.) — rather than
+      // emit something MSSQL parses but silently rejects on edge cases,
+      // we refuse and point at the dialect-specific recipe.
+      assertFeature(this.dialect, "PARTIAL_INDEX")
       parts.push("WHERE", this.printExpr(node.where))
     }
     return parts.join(" ")
