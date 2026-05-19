@@ -337,6 +337,26 @@ export interface FrameSpec {
   end?: FrameBound
 }
 
+/**
+ * `<window-fn>() OVER (...)` or `<window-fn>() OVER name`.
+ *
+ * Two shapes share this node — discriminated by `windowName`:
+ *
+ *  - **Inline window**: `partitionBy` / `orderBy` / `frame` describe the
+ *    spec right there. `windowName` is undefined.
+ *  - **Named-window reference**: `windowName` points at a definition
+ *    registered on the surrounding `SelectNode.windows`. The printer
+ *    emits `OVER <name>` and ignores the inline `partitionBy` /
+ *    `orderBy` / `frame` slots (which builders leave empty for this
+ *    case). The named entry on the SelectNode carries the actual spec
+ *    so downstream traversal sees a single source of truth.
+ *
+ * Picking option A (reuse this node) over a separate `WindowRefNode`
+ * keeps every AST consumer — visitor, walker, transformer, every
+ * dialect printer — on one switch case. Adding a sibling node would
+ * have meant touching ~6 more exhaustive switches purely to route the
+ * same downstream emit.
+ */
 export interface WindowFunctionNode {
   type: "window_function"
   fn: FunctionCallNode
@@ -344,6 +364,35 @@ export interface WindowFunctionNode {
   orderBy: OrderByNode[]
   frame?: FrameSpec
   alias?: string
+  /**
+   * When set, this window-function call references a named window
+   * registered on the surrounding SELECT's `windows` slot. The printer
+   * emits `OVER <windowName>` and treats `partitionBy` / `orderBy` /
+   * `frame` as empty regardless of their content.
+   */
+  windowName?: string
+}
+
+/**
+ * A `WINDOW w AS (PARTITION BY x ORDER BY y)` clause entry. Lives on
+ * `SelectNode.windows` and is referenced by `WindowFunctionNode` calls
+ * via the `windowName` discriminator.
+ *
+ * `baseName` carries SQL:2003 window-inheritance: `WINDOW w2 AS (w
+ * ORDER BY y)` parses as "start from `w`, then add ORDER BY y". The
+ * spec restricts what the inheriting window may override — the
+ * derived window must not redeclare `PARTITION BY` and (if `w`
+ * already has `ORDER BY`) must not redeclare `ORDER BY` — but the AST
+ * stores the literal user intent and the printer copies the layers
+ * verbatim. Dialects that disagree (none of pg/mysql/sqlite reject
+ * the well-formed cases we surface) are guarded at the builder layer.
+ */
+export interface NamedWindow {
+  name: string
+  partitionBy: ExpressionNode[]
+  orderBy: OrderByNode[]
+  frame?: FrameSpec
+  baseName?: string
 }
 
 export interface OrderByNode {
@@ -444,6 +493,14 @@ export interface SelectNode {
   ctes: CTENode[]
   setOp?: { op: SetOperator; query: SelectNode }
   lock?: LockClause
+  /**
+   * `WINDOW w AS (...), w2 AS (w ORDER BY ...)` clause — SQL:2003 named
+   * window definitions referenced by `WindowFunctionNode.windowName`.
+   * The printer emits this list between ORDER BY and LIMIT per the
+   * PG/MySQL/SQLite grammar; MSSQL doesn't support the clause so the
+   * MSSQL printer throws when it sees a non-empty `windows`.
+   */
+  windows?: NamedWindow[]
   /** @see QueryFlags */
   flags?: QueryFlags
   /** User-specified soft-delete filter mode. Unset = normal filter. */

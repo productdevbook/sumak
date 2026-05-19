@@ -9,6 +9,7 @@ import type {
   InsertNode,
   JoinNode,
   MergeNode,
+  NamedWindow,
   OrderByNode,
   SelectNode,
   SubqueryNode,
@@ -104,6 +105,9 @@ export class ASTWalker {
     const offset = node.offset ? this.visitExpression(node.offset) : node.offset
     const ctes = mapPreserve(node.ctes, (c) => this.visitCTE(c))
     const setOp = node.setOp ? this.visitSelectSetOp(node.setOp, node.setOp.query) : node.setOp
+    const windows = node.windows
+      ? mapPreserve(node.windows, (w) => this.visitNamedWindow(w))
+      : node.windows
 
     if (
       distinctOn === node.distinctOn &&
@@ -117,7 +121,8 @@ export class ASTWalker {
       limit === node.limit &&
       offset === node.offset &&
       ctes === node.ctes &&
-      setOp === node.setOp
+      setOp === node.setOp &&
+      windows === node.windows
     ) {
       return node
     }
@@ -135,7 +140,21 @@ export class ASTWalker {
       offset,
       ctes,
       setOp,
+      windows,
     }
+  }
+
+  /**
+   * Walk a `WINDOW name AS (...)` entry. Identity-preserving so a
+   * subclass that doesn't rewrite the inner expressions returns the
+   * original `NamedWindow` reference and the parent SELECT's identity
+   * check short-circuits.
+   */
+  protected visitNamedWindow(w: NamedWindow): NamedWindow {
+    const partitionBy = mapPreserve(w.partitionBy, (p) => this.visitExpression(p))
+    const orderBy = mapPreserve(w.orderBy, (o) => this.visitOrderBy(o))
+    if (partitionBy === w.partitionBy && orderBy === w.orderBy) return w
+    return { ...w, partitionBy, orderBy }
   }
 
   protected visitSelectFrom(

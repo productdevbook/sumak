@@ -853,37 +853,61 @@ export class CaseBuilder<T> {
 // ── Window Function Builder ──
 
 /**
- * Wrap an aggregate or window function in an `OVER (...)` clause.
+ * Wrap an aggregate or window function in an `OVER (...)` clause, or
+ * reference a named window declared via `.window(name, build)` on the
+ * surrounding SELECT.
  *
- * The first argument is any function-call expression — `count()`,
- * `sum(col(...))`, `rowNumber()`, etc. The callback receives a fresh
- * `WindowBuilder` and configures the `PARTITION BY` / `ORDER BY` /
- * frame clauses on it.
+ * Two shapes — discriminated by the second arg type:
  *
  * ```ts
- * // Rank rows within each department by salary
+ * // Inline window spec — callback configures partitionBy / orderBy / frame
  * over(rowNumber(), w => w.partitionBy("dept").orderBy("salary", "DESC"))
  * // -> ROW_NUMBER() OVER (PARTITION BY "dept" ORDER BY "salary" DESC)
  *
- * // Running total
+ * // Running total with frame
  * over(sum(col("amount")), w => w.orderBy("id").rows(
  *   { type: "unbounded_preceding" },
  *   { type: "current_row" },
  * ))
- * // -> SUM("amount") OVER (ORDER BY "id" ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+ *
+ * // Named-window reference — register on the SELECT, then reference
+ * db.selectFrom("t")
+ *   .window("w", b => b.partitionBy("dept").orderBy("salary"))
+ *   .select({
+ *     rn: over(rowNumber(), "w"),
+ *     run: over(sum(col("amount")), "w"),
+ *   })
+ * // -> SELECT ROW_NUMBER() OVER "w", SUM("amount") OVER "w" FROM "t"
+ * //    WINDOW "w" AS (PARTITION BY "dept" ORDER BY "salary")
  * ```
  *
  * Bare ranking functions (`rowNumber()`, `rank()`, `denseRank()`)
  * **must** be wrapped in `over(...)` — they throw at print time
  * otherwise. SQL allows `COUNT(*)` without `OVER`, but
- * `ROW_NUMBER()` does not.
+ * `ROW_NUMBER()` does not. MSSQL does not support the SQL:2003 named
+ * `WINDOW` clause; its printer throws when it sees the named form or a
+ * non-empty `windows` slot on the SELECT.
  */
 export function over<T>(
   fn: Expression<T>,
-  build: (w: WindowBuilder) => WindowBuilder,
+  build: ((w: WindowBuilder) => WindowBuilder) | string,
 ): Expression<T> {
-  const builder = build(new WindowBuilder())
   const fnNode = (fn as any).node as FunctionCallNode
+  if (typeof build === "string") {
+    // Named-window reference — leave the inline spec slots empty;
+    // the printer reads `windowName` and emits `OVER name` instead
+    // of `OVER (...)`. The actual partitionBy/orderBy/frame lives on
+    // the surrounding SelectNode.windows entry.
+    const node: WindowFunctionNode = {
+      type: "window_function",
+      fn: fnNode,
+      partitionBy: [],
+      orderBy: [],
+      windowName: build,
+    }
+    return wrap<T>(node)
+  }
+  const builder = build(new WindowBuilder())
   const node: WindowFunctionNode = {
     type: "window_function",
     fn: fnNode,

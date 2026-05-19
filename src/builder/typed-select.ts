@@ -4,6 +4,7 @@ import type {
   ASTNode,
   ExplainNode,
   ExpressionNode,
+  NamedWindow,
   SelectNode,
   SubqueryNode,
   TemporalClause,
@@ -27,7 +28,7 @@ import type { CompiledQuery, OrderDirection } from "../types.ts"
 import type { CompiledQueryFn } from "./compiled.ts"
 import { compileQuery } from "./compiled.ts"
 import type { ColumnProxies, WhereCallback } from "./eb.ts"
-import { createColumnProxies } from "./eb.ts"
+import { createColumnProxies, WindowBuilder } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
 import { SelectBuilder } from "./select.ts"
 import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
@@ -423,6 +424,49 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
   ): TypedSelectBuilder<DB, TB, O> {
     const q = "build" in query ? query.build() : query
     return this._chain(this._builder.with(name, q, options?.recursive === true))
+  }
+
+  /**
+   * Register a named window spec on this SELECT — `WINDOW name AS (...)`.
+   * Window-function calls reference it by name via `over(fn, name)`,
+   * letting two or more `OVER` clauses share a single PARTITION/ORDER
+   * spec instead of repeating it.
+   *
+   * The optional `from` parameter sets the inherited base window for
+   * SQL:2003 window inheritance: `.window("w2", b => b.orderBy("y"), {
+   * from: "w" })` emits `w2 AS (w ORDER BY "y")`. The standard
+   * constrains what the inheriting window may override (no PARTITION
+   * BY redeclare; no ORDER BY redeclare if `w` already has one) but
+   * sumak stores the literal intent — the DB rejects the invalid
+   * cases with a clear parse error.
+   *
+   * ```ts
+   * db.selectFrom("sales")
+   *   .window("w", b => b.partitionBy("region").orderBy("date"))
+   *   .select({
+   *     rn:  over(rowNumber(), "w"),
+   *     run: over(sum(col("amount")), "w"),
+   *   })
+   * ```
+   *
+   * MSSQL does not support the SQL:2003 named WINDOW clause; compiling
+   * any SELECT with a non-empty `windows` list against the MSSQL
+   * printer throws `UnsupportedDialectFeatureError`.
+   */
+  window(
+    name: string,
+    build: (b: WindowBuilder) => WindowBuilder,
+    options?: { from?: string },
+  ): TypedSelectBuilder<DB, TB, O> {
+    const spec = build(new WindowBuilder())._build()
+    const entry: NamedWindow = {
+      name,
+      partitionBy: spec.partitionBy,
+      orderBy: spec.orderBy,
+      frame: spec.frame,
+      baseName: options?.from,
+    }
+    return this._chain(this._builder.window(entry))
   }
 
   /** UNION */

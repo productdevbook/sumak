@@ -12,6 +12,7 @@ import type {
   QuantifiedExprNode,
   SelectNode,
   UpdateNode,
+  WindowFunctionNode,
 } from "../ast/nodes.ts"
 import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
@@ -32,6 +33,17 @@ export class MssqlPrinter extends BasePrinter {
 
     if (node.distinctOn) {
       assertFeature("mssql", "DISTINCT_ON")
+    }
+
+    // SQL Server supports OVER but not the SQL:2003 named `WINDOW` clause —
+    // there's no way to register a reusable window spec on a SELECT. Reject
+    // both halves of the feature with a single error pointing at the
+    // workaround (repeat the spec inline on each OVER).
+    if (node.windows && node.windows.length > 0) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "named WINDOW clause (SQL Server has no `WINDOW name AS (...)` — repeat the spec inline on each OVER(...))",
+      )
     }
 
     parts.push("SELECT")
@@ -217,6 +229,23 @@ export class MssqlPrinter extends BasePrinter {
       )
     }
     return super.printJoin(node)
+  }
+
+  /**
+   * SQL Server supports OVER but rejects `OVER <name>` (the named-window
+   * reference form). The matching `WINDOW` clause is also unavailable —
+   * `printSelect` rejects a non-empty `windows` slot already, but a
+   * stray `WindowFunctionNode.windowName` in a subquery / CTE wouldn't
+   * pass through that guard. Reject here too.
+   */
+  protected override printWindowFunction(node: WindowFunctionNode): string {
+    if (node.windowName !== undefined) {
+      throw new UnsupportedDialectFeatureError(
+        "mssql",
+        "named WINDOW reference (`OVER <name>` — SQL Server requires the spec inline on each OVER(...))",
+      )
+    }
+    return super.printWindowFunction(node)
   }
 
   protected override printInsert(node: InsertNode): string {
