@@ -49,6 +49,13 @@ export const FEATURES = {
     dialects: ["sqlite", "mysql"],
   },
   MERGE_STATEMENT: { label: "MERGE", dialects: ["pg", "mssql"] },
+  /**
+   * `RETURNING` projection on MERGE — PG 17+ accepts it natively
+   * (including the `merge_action()` projection). MSSQL has the
+   * `OUTPUT` clause but its syntax is different; until that's
+   * wired up the MSSQL printer throws. MySQL/SQLite have no MERGE.
+   */
+  MERGE_RETURNING: { label: "RETURNING on MERGE", dialects: ["pg"] },
 
   // ── Row locking ───────────────────────────────────────────────────
   FOR_UPDATE: { label: "FOR UPDATE/SHARE", dialects: ["pg", "mysql"] },

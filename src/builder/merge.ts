@@ -115,6 +115,22 @@ export class MergeBuilder {
     return new MergeBuilder({ ...this.node, ctes: [...this.node.ctes, cte] }, this.paramIndex)
   }
 
+  /**
+   * Append RETURNING expressions. Accumulates across chained calls so
+   * `.returning(a).returning(b)` is equivalent to `.returning(a, b)`.
+   *
+   * PG 17+ accepts the standard `RETURNING` shape on MERGE plus the
+   * PG-only `merge_action()` projection. The MSSQL printer throws (its
+   * equivalent uses `OUTPUT`, not `RETURNING`); MySQL/SQLite have no
+   * MERGE at all.
+   */
+  returning(...exprs: ExpressionNode[]): MergeBuilder {
+    return new MergeBuilder(
+      { ...this.node, returning: [...this.node.returning, ...exprs] },
+      this.paramIndex,
+    )
+  }
+
   build(): MergeNode {
     return { ...this.node }
   }

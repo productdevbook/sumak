@@ -304,11 +304,18 @@ export class ASTWalker {
       }
       return assertNever(w, "ASTWalker.visitMerge.when")
     })
+    const returning = mapPreserve(node.returning, (r) => this.visitExpression(r))
 
-    if (ctes === node.ctes && source === node.source && on === node.on && whens === node.whens) {
+    if (
+      ctes === node.ctes &&
+      source === node.source &&
+      on === node.on &&
+      whens === node.whens &&
+      returning === node.returning
+    ) {
       return node
     }
-    return { ...node, ctes, source, on, whens }
+    return { ...node, ctes, source, on, whens, returning }
   }
 
   visitExplain(node: ExplainNode): ExplainNode {

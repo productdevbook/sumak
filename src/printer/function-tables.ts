@@ -118,4 +118,9 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   // Full-text
   "FREETEXT",
   "CONTAINS",
+  // MERGE projection (PG 17+ only — emits `MERGE_ACTION()` which PG
+  // recognizes inside a `RETURNING` clause on a MERGE statement). The
+  // function has no analogue on MSSQL (which uses `$action` in its
+  // `OUTPUT` clause), so it's only meaningful inside `MERGE … RETURNING`.
+  "MERGE_ACTION",
 ])

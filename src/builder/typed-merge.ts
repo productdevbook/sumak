@@ -1,9 +1,9 @@
-import { param } from "../ast/expression.ts"
+import { param, star } from "../ast/expression.ts"
 import type { ASTNode, ExpressionNode, MergeNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
-import type { Insertable, Updateable } from "../schema/types.ts"
+import type { Insertable, SelectRow, Updateable } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
 import { Col } from "./eb.ts"
 import { MergeBuilder } from "./merge.ts"
@@ -194,6 +194,140 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
   ): TypedMergeBuilder<DB, Target, Source> {
     const q = "build" in query ? query.build() : query
     return this._with(this._builder.with(name, q, options?.recursive === true))
+  }
+
+  /**
+   * `RETURNING …` projection — accepts either plain target column names
+   * or an aliased-expression object (for `merge_action()` and other
+   * computed projections).
+   *
+   * ```ts
+   * // Plain target columns
+   * db.mergeInto("users", { ... })
+   *   .whenMatchedThenUpdate(...)
+   *   .returning("id", "name")
+   *
+   * // Aliased expressions — use `mergeAction()` to project the
+   * // PG-only column that says which branch fired.
+   * db.mergeInto("users", { ... })
+   *   .whenMatchedThenUpdate(...)
+   *   .returning({ id: col("id"), action: mergeAction() })
+   * ```
+   *
+   * Calls accumulate across chains. The result type is a separate
+   * builder shape (`TypedMergeReturningBuilder`) that strips the
+   * MERGE-mutation surface — once a RETURNING is set the only useful
+   * action is `.toSQL()`.
+   *
+   * Dialect support: PG 17+ only at the printer level (MSSQL throws —
+   * its `OUTPUT` clause is a separate surface; MySQL/SQLite have no
+   * MERGE).
+   */
+  returning<K extends keyof DB[Target] & string>(
+    ...cols: K[]
+  ): TypedMergeReturningBuilder<DB, Target, Pick<SelectRow<DB, Target>, K>>
+  returning<A extends Record<string, Expression<any>>>(
+    aliased: A,
+  ): TypedMergeReturningBuilder<
+    DB,
+    Target,
+    { [K in keyof A]: A[K] extends Expression<infer T> ? T : never }
+  >
+  returning(...args: unknown[]): any {
+    if (args.length === 0) {
+      throw new Error(".returning() requires at least one column or expression.")
+    }
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0]) &&
+      Object.keys(args[0] as object).length === 0
+    ) {
+      throw new Error(".returning({}) requires at least one aliased expression.")
+    }
+    let exprs: ExpressionNode[]
+    if (
+      args.length === 1 &&
+      typeof args[0] === "object" &&
+      args[0] !== null &&
+      !Array.isArray(args[0])
+    ) {
+      exprs = Object.entries(args[0] as Record<string, Expression<any>>).map(([alias, expr]) => ({
+        type: "aliased_expr" as const,
+        expr: unwrap(expr as Expression<any>),
+        alias,
+      }))
+    } else {
+      exprs = (args as string[]).map((c) => ({ type: "column_ref" as const, column: c }))
+    }
+    const builder = this._builder.returning(...exprs)
+    return new TypedMergeReturningBuilder(builder, this._printer, this._compile)
+  }
+
+  /**
+   * `RETURNING *` — project every column on the target table.
+   *
+   * On MERGE, `*` means "the post-action row from the target", which is
+   * what every dialect that supports `RETURNING` on MERGE returns. PG
+   * 17+ accepts the form natively.
+   */
+  returningAll(): TypedMergeReturningBuilder<DB, Target, SelectRow<DB, Target>> {
+    const builder = this._builder.returning(star())
+    return new TypedMergeReturningBuilder(builder, this._printer, this._compile)
+  }
+
+  build(): MergeNode {
+    return this._builder.build()
+  }
+
+  compile(printer: Printer): CompiledQuery {
+    return printer.print(this.build())
+  }
+
+  /** Compile to SQL using the dialect's printer. */
+  toSQL(): CompiledQuery {
+    if (this._compile) return this._compile(this.build())
+    if (!this._printer) {
+      throw new Error("toSQL() requires a printer. Use db.mergeInto() to construct the builder.")
+    }
+    return this._printer.print(this.build())
+  }
+}
+
+/**
+ * Returning-stage MERGE builder. Carries the row-shape parameter `R`
+ * so consumers reading the AST through `.toSQL()` know what columns
+ * to expect back. We deliberately don't expose the WHEN-clause
+ * methods here — once you've declared a projection, adding more
+ * branches would be a footgun (which branch shape applies to which
+ * row?).
+ */
+export class TypedMergeReturningBuilder<DB, _Target extends keyof DB, _R> {
+  /** @internal */
+  readonly _builder: MergeBuilder
+  /** @internal */
+  readonly _printer?: Printer
+  /** @internal */
+  readonly _compile?: (node: ASTNode) => CompiledQuery
+
+  constructor(
+    builder: MergeBuilder,
+    printer?: Printer,
+    compile?: (node: ASTNode) => CompiledQuery,
+  ) {
+    this._builder = builder
+    this._printer = printer
+    this._compile = compile
+  }
+
+  /** Stack additional RETURNING expressions onto the projection. */
+  returning(...exprs: ExpressionNode[]): TypedMergeReturningBuilder<DB, _Target, _R> {
+    return new TypedMergeReturningBuilder<DB, _Target, _R>(
+      this._builder.returning(...exprs),
+      this._printer,
+      this._compile,
+    )
   }
 
   build(): MergeNode {

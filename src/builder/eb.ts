@@ -577,6 +577,30 @@ export function unsafeSqlFn(name: string, ...args: Expression<any>[]): Expressio
   )
 }
 
+/**
+ * `merge_action()` — PG 17+ niladic projection that returns the
+ * branch which fired for the row: `'INSERT'`, `'UPDATE'`, or
+ * `'DELETE'`. Only meaningful inside a `RETURNING` clause on a
+ * `MERGE` statement.
+ *
+ * ```ts
+ * db.mergeInto("users", { ... })
+ *   .whenMatchedThenUpdate(...)
+ *   .whenNotMatchedThenInsert(...)
+ *   .returning({ id: col("id"), action: mergeAction() })
+ * ```
+ *
+ * The printer emits the bare `MERGE_ACTION()` form; PG recognizes
+ * this as the standard `merge_action()` function. MSSQL has an
+ * equivalent token (`$action`) but it's wired into the `OUTPUT`
+ * clause syntactically rather than callable as a function — using
+ * `mergeAction()` on a non-PG dialect produces a `MERGE_ACTION()`
+ * call that the engine will reject.
+ */
+export function mergeAction(): Expression<string> {
+  return wrap(rawFn("MERGE_ACTION", []))
+}
+
 // Aggregate helpers live in `./aggregate.ts` so this file can stay
 // focused on the typed-expression core. The re-export here preserves
 // the historical `import { count } from "sumak"` shape so user code

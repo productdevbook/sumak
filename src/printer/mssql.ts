@@ -8,6 +8,7 @@ import type {
   InsertNode,
   JsonAccessNode,
   LiteralNode,
+  MergeNode,
   OrderByNode,
   QuantifiedExprNode,
   SelectNode,
@@ -493,5 +494,21 @@ export class MssqlPrinter extends BasePrinter {
   protected override printQuantified(_node: QuantifiedExprNode): string {
     assertFeature("mssql", "QUANTIFIED_SUBQUERY")
     return "" // unreachable — assertFeature throws
+  }
+
+  /**
+   * MSSQL's MERGE has an `OUTPUT` clause for the same purpose as PG's
+   * `RETURNING`, but it lives between WHEN and the closing semicolon
+   * with different positioning, syntax (`OUTPUT $action, inserted.id,
+   * deleted.id`), and pseudo-tables. Until we wire up that surface,
+   * reject the generic `RETURNING` slot rather than silently emitting
+   * invalid SQL. The supporting matrix is intentionally PG-only via
+   * the {@link MERGE_RETURNING} flag.
+   */
+  protected override printMerge(node: MergeNode): string {
+    if (node.returning.length > 0) {
+      assertFeature("mssql", "MERGE_RETURNING")
+    }
+    return super.printMerge(node)
   }
 }
