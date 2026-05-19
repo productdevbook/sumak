@@ -587,6 +587,13 @@ export class BasePrinter implements Printer {
     const upper = node.name.toUpperCase()
     const emittedName = STANDARD_FUNCTIONS.has(upper) ? upper : node.name
     let result = `${emittedName}(${inner})`
+    // Clause ordering per SQL standard:
+    //   FN(args) WITHIN GROUP (...) FILTER (WHERE ...) OVER (...)
+    // `OVER` is emitted by `printWindowFunction` upstream, so just
+    // make sure WITHIN GROUP precedes FILTER here.
+    if (node.withinGroup && node.withinGroup.length > 0) {
+      result += ` WITHIN GROUP (ORDER BY ${node.withinGroup.map((o) => this.printOrderBy(o)).join(", ")})`
+    }
     if (node.filter) {
       result += ` FILTER (WHERE ${this.printExpression(node.filter)})`
     }

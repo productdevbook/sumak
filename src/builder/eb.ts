@@ -591,11 +591,14 @@ export {
   jsonAgg,
   max,
   min,
+  percentileCont,
+  percentileDisc,
   stringAgg,
   sum,
   sumDistinct,
   aggOrderBy,
   filter,
+  withinGroup,
 } from "./aggregate.ts"
 
 /** COALESCE(a, b, c, ...) — returns first non-null value */

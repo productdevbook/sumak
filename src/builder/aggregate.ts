@@ -239,3 +239,56 @@ export function filter<T>(agg: Expression<T>, condition: Expression<boolean>): E
   const fnNode = (agg as any).node as FunctionCallNode
   return wrap<T>({ ...fnNode, filter: (condition as any).node })
 }
+
+/**
+ * `PERCENTILE_CONT(fraction)` — continuous percentile (interpolates
+ * between the two values straddling the requested fraction). Must be
+ * paired with {@link withinGroup} to specify the ordering column;
+ * unpaired calls emit `PERCENTILE_CONT(0.5)` which every dialect
+ * rejects at runtime.
+ *
+ * ```ts
+ * withinGroup(percentileCont(0.5), [{ expr: typedCol("response_ms") }])
+ * // PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "response_ms" ASC)
+ * ```
+ *
+ * Supported on PG, MySQL 8, MSSQL. SQLite has no equivalent.
+ */
+export function percentileCont(fraction: number): Expression<number> {
+  return wrap(rawFn("PERCENTILE_CONT", [rawLit(fraction)]))
+}
+
+/**
+ * `PERCENTILE_DISC(fraction)` — discrete percentile (picks an actual
+ * value from the dataset, no interpolation). See {@link percentileCont}
+ * for the surrounding `WITHIN GROUP` pattern.
+ */
+export function percentileDisc(fraction: number): Expression<number> {
+  return wrap(rawFn("PERCENTILE_DISC", [rawLit(fraction)]))
+}
+
+/**
+ * Attach `WITHIN GROUP (ORDER BY …)` to an ordered-set aggregate.
+ * This is the SQL standard clause for inverse-distribution aggregates
+ * like `PERCENTILE_CONT` / `PERCENTILE_DISC` / `MODE` — structurally
+ * separate from the inline-arg-list ORDER BY that `STRING_AGG` and
+ * `ARRAY_AGG` use (see {@link aggOrderBy}).
+ *
+ * ```ts
+ * withinGroup(percentileCont(0.5), [{ expr: typedCol("response_ms") }])
+ * // PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "response_ms" ASC)
+ * ```
+ */
+export function withinGroup<T>(
+  agg: Expression<T>,
+  orderBy: { expr: Expression<any>; direction?: "ASC" | "DESC" }[],
+): Expression<T> {
+  const fnNode = (agg as any).node as FunctionCallNode
+  return wrap<T>({
+    ...fnNode,
+    withinGroup: orderBy.map((o) => ({
+      expr: (o.expr as any).node,
+      direction: o.direction ?? "ASC",
+    })),
+  })
+}

@@ -31,7 +31,7 @@ The `WindowBuilder` exposes:
 
 - **Named `WINDOW` clause** — `SELECT … WINDOW w AS (PARTITION BY x), w2 AS (w ORDER BY y)`. Lets you reuse window definitions across multiple window-function calls without copy-paste. Currently each `over(…)` carries its own window spec. AST would need a `windows: NamedWindow[]` slot on `SelectNode` plus a `WindowRef` node that lookup-resolves at print time.
 - **`EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }`** frame-exclude clause. The `FrameSpec` type has no `exclude` field.
-- **`PERCENTILE_CONT` / `PERCENTILE_DISC`** (inverse distribution aggregates with `WITHIN GROUP`) — these are technically pre-2023 (introduced in 2003) but still missing. PG supports them natively; would need a `withinGroup()` builder method.
+- **`PERCENTILE_CONT` / `PERCENTILE_DISC`** (inverse-distribution aggregates with `WITHIN GROUP`) — top-level `percentileCont()` / `percentileDisc()` builders plus the generic `withinGroup(agg, [...orderBy])` attach the SQL standard ordered-set clause: `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_ms)`. Emitted on PG, MySQL 8, MSSQL. SQLite has no equivalent (`assertFeature("sqlite", "ORDERED_SET_AGGREGATES")` throws). ✅
 
 ## JSON / SQL:2016 + 2023
 

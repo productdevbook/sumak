@@ -164,6 +164,14 @@ export class SqlitePrinter extends BasePrinter {
    */
   protected override printFunctionCall(node: import("../ast/nodes.ts").FunctionCallNode): string {
     const upper = node.name.toUpperCase()
+    // SQLite has no ordered-set aggregates — `PERCENTILE_CONT(0.5)
+    // WITHIN GROUP (ORDER BY x)` is rejected at parse time. Trap the
+    // misuse here so the failure points at the builder call, not the
+    // driver. Note: the `withinGroup` slot is the canonical signal;
+    // the function name alone isn't, because a UDF could shadow.
+    if (node.withinGroup && node.withinGroup.length > 0) {
+      assertFeature("sqlite", "ORDERED_SET_AGGREGATES")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently

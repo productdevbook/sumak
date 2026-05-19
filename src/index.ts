@@ -74,11 +74,14 @@ export {
   countDistinct,
   max,
   min,
+  percentileCont,
+  percentileDisc,
   stringAgg,
   sum,
   sumDistinct,
   jsonAgg,
   aggOrderBy,
+  withinGroup,
 } from "./builder/eb.ts"
 
 // ─── Scalar helpers & subqueries ───────────────────────────────────────────
