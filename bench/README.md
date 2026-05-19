@@ -23,44 +23,62 @@ pnpm vitest run bench/_scenarios.test.ts
 
 It snapshots every scenario's compiled SQL across all three libraries and asserts that WHERE-bearing queries actually carry their parameters through. It exists because for >7 months the bench was running with a silent-no-op bug where sumak's typed builder accepted `.where("col", "=", val)` (kysely's three-arg form) at runtime, dropped the operator and value, and produced SQL **without a WHERE clause** — making every WHERE scenario unfairly favorable to sumak. The smoke test would have caught that the moment it landed.
 
-## Scenarios (29 total)
+## Scenarios (41 total)
 
 Cross-library compile-throughput benchmarks. The smoke test in
 `bench/_scenarios.test.ts` asserts every scenario's SQL is structurally
 equivalent across sumak / kysely / drizzle so the bench compares like-for-
 like work.
 
-| name                    | shape                                                                             |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| select-all              | `SELECT * FROM users`                                                             |
-| select-where-eq         | `SELECT id, name FROM users WHERE id = $1`                                        |
-| select-where-and        | `SELECT * FROM posts WHERE author_id = $1 AND published > $2`                     |
-| join-2-tables           | `SELECT … FROM posts JOIN users ON posts.author_id = users.id`                    |
-| insert-values           | `INSERT INTO users (id, name, email, created_at) VALUES (...)`                    |
-| update-where            | `UPDATE users SET name = $1 WHERE id = $2`                                        |
-| delete-where            | `DELETE FROM users WHERE id = $1`                                                 |
-| select-where-or         | `SELECT id, name FROM users WHERE id = $1 OR name = $2`                           |
-| select-where-in-small   | `SELECT * FROM users WHERE id IN ($1..$5)`                                        |
-| select-where-in-large   | `SELECT * FROM users WHERE id IN ($1..$100)`                                      |
-| select-order-limit      | `SELECT * FROM users ORDER BY name ASC LIMIT 10 OFFSET 20`                        |
-| select-aggregate        | `SELECT COUNT(*) AS total, MAX(id) AS hi, AVG(id) AS avg FROM users`              |
-| select-group-having     | `SELECT author_id, COUNT(*) FROM posts GROUP BY author_id HAVING …`               |
-| select-distinct         | `SELECT DISTINCT name FROM users`                                                 |
-| left-join-3-tables      | `SELECT … FROM comments LEFT JOIN posts LEFT JOIN users`                          |
-| select-subquery-in      | `SELECT * FROM posts WHERE author_id IN (SELECT id FROM users …)`                 |
-| insert-many-100         | `INSERT INTO users VALUES (…), (…) × 100`                                         |
-| select-where-deep-and   | 5-clause AND chain on posts                                                       |
-| select-order-desc-limit | `SELECT * FROM posts ORDER BY published DESC LIMIT 20`                            |
-| cte-single              | `WITH active AS (SELECT id, name FROM users WHERE id > 0) SELECT * FROM users`    |
-| cte-with-join           | CTE definition + INNER JOIN against the CTE                                       |
-| select-union            | `SELECT id, name FROM users UNION SELECT id, name FROM users`                     |
-| select-union-all        | same with `UNION ALL`                                                             |
-| window-row-number       | `SELECT id, ROW_NUMBER() OVER (PARTITION BY author_id ORDER BY id) FROM posts`    |
-| upsert-do-update        | `INSERT … ON CONFLICT (email) DO UPDATE SET name = ?`                             |
-| insert-returning        | `INSERT … RETURNING id, name`                                                     |
-| select-case-when        | `SELECT id, CASE WHEN published > 0 THEN 'published' ELSE 'draft' END FROM posts` |
-| select-exists-subquery  | `SELECT … FROM users WHERE EXISTS (SELECT … FROM posts WHERE …)`                  |
-| select-count-distinct   | `SELECT COUNT(DISTINCT author_id) FROM posts`                                     |
+| name                              | shape                                                                                            |
+| --------------------------------- | ------------------------------------------------------------------------------------------------ |
+| select-all                        | `SELECT * FROM users`                                                                            |
+| select-where-eq                   | `SELECT id, name FROM users WHERE id = $1`                                                       |
+| select-where-and                  | `SELECT * FROM posts WHERE author_id = $1 AND published > $2`                                    |
+| join-2-tables                     | `SELECT … FROM posts JOIN users ON posts.author_id = users.id`                                   |
+| insert-values                     | `INSERT INTO users (id, name, email, created_at) VALUES (...)`                                   |
+| update-where                      | `UPDATE users SET name = $1 WHERE id = $2`                                                       |
+| delete-where                      | `DELETE FROM users WHERE id = $1`                                                                |
+| select-where-or                   | `SELECT id, name FROM users WHERE id = $1 OR name = $2`                                          |
+| select-where-in-small             | `SELECT * FROM users WHERE id IN ($1..$5)`                                                       |
+| select-where-in-large             | `SELECT * FROM users WHERE id IN ($1..$100)`                                                     |
+| select-order-limit                | `SELECT * FROM users ORDER BY name ASC LIMIT 10 OFFSET 20`                                       |
+| select-aggregate                  | `SELECT COUNT(*) AS total, MAX(id) AS hi, AVG(id) AS avg FROM users`                             |
+| select-group-having               | `SELECT author_id, COUNT(*) FROM posts GROUP BY author_id HAVING …`                              |
+| select-distinct                   | `SELECT DISTINCT name FROM users`                                                                |
+| left-join-3-tables                | `SELECT … FROM comments LEFT JOIN posts LEFT JOIN users`                                         |
+| select-subquery-in                | `SELECT * FROM posts WHERE author_id IN (SELECT id FROM users …)`                                |
+| insert-many-100                   | `INSERT INTO users VALUES (…), (…) × 100`                                                        |
+| select-where-deep-and             | 5-clause AND chain on posts                                                                      |
+| select-order-desc-limit           | `SELECT * FROM posts ORDER BY published DESC LIMIT 20`                                           |
+| cte-single                        | `WITH active AS (SELECT id, name FROM users WHERE id > 0) SELECT * FROM users`                   |
+| cte-with-join                     | CTE definition + INNER JOIN against the CTE                                                      |
+| select-union                      | `SELECT id, name FROM users UNION SELECT id, name FROM users`                                    |
+| select-union-all                  | same with `UNION ALL`                                                                            |
+| window-row-number                 | `SELECT id, ROW_NUMBER() OVER (PARTITION BY author_id ORDER BY id) FROM posts`                   |
+| upsert-do-update                  | `INSERT … ON CONFLICT (email) DO UPDATE SET name = ?`                                            |
+| insert-returning                  | `INSERT … RETURNING id, name`                                                                    |
+| select-case-when                  | `SELECT id, CASE WHEN published > 0 THEN 'published' ELSE 'draft' END FROM posts`                |
+| select-exists-subquery            | `SELECT … FROM users WHERE EXISTS (SELECT … FROM posts WHERE …)`                                 |
+| select-count-distinct             | `SELECT COUNT(DISTINCT author_id) FROM posts`                                                    |
+| select-window-rank                | `SELECT id, RANK() OVER (PARTITION BY author_id ORDER BY id) FROM posts`                         |
+| select-percentile                 | `SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY published) FROM posts`                       |
+| select-named-window               | `SELECT … OVER w, … OVER w FROM posts WINDOW w AS (PARTITION BY … ORDER BY …)`                   |
+| select-json-value                 | `SELECT JSON_VALUE(body, '$.name') FROM posts`                                                   |
+| select-is-json                    | `SELECT * FROM posts WHERE body IS JSON`                                                         |
+| select-count-any-value            | `SELECT author_id, ANY_VALUE(title) FROM posts GROUP BY author_id`                               |
+| merge-not-matched-by-source-bench | `MERGE INTO users USING comments … WHEN MATCHED … WHEN NOT MATCHED … WHEN NOT MATCHED BY SOURCE` |
+
+The last seven (`select-window-rank` through `merge-not-matched-by-source-bench`)
+cover the SQL features added in PRs #142–151: SQL:2003 named WINDOW,
+SQL:2003 ordered-set aggregates (`PERCENTILE_CONT`), SQL:2016 `JSON_VALUE`
+and `IS JSON`, SQL:2023 `ANY_VALUE`, and the SQL:2008/2023 three-branch
+MERGE with `WHEN NOT MATCHED BY SOURCE`. Where competitors lack a first-
+class API for the feature (`PERCENTILE_CONT`, named `WINDOW`, `JSON_VALUE`,
+`IS JSON`, `ANY_VALUE`, MERGE) they fall back to raw SQL templates —
+sumak's typed builder is doing more work, but the AST it builds is more
+analyzable downstream (plugins, transformers, audit hooks). The bench
+keeps that tradeoff visible.
 
 ## Plugin overhead microbench
 

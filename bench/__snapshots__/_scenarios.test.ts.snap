@@ -1404,6 +1404,41 @@ exports[`bench scenarios produce equivalent SQL > left-join-3-tables > snapshot 
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > merge-not-matched-by-source-bench > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [
+      "updated",
+      1,
+      "new",
+      "new@x.io",
+      1970-01-01T00:00:00.000Z,
+    ],
+    "sql": "MERGE INTO "users" USING "comments" AS "c" ON "users"."id" = "comments"."authorId" WHEN MATCHED THEN UPDATE SET "users"."name" = $1 WHEN NOT MATCHED THEN INSERT ("users"."id", "users"."name", "users"."email", "users"."createdAt") VALUES ($2, $3, $4, $5) WHEN NOT MATCHED BY SOURCE THEN DELETE",
+  },
+  "kysely": {
+    "params": [
+      "updated",
+      1,
+      "new",
+      "new@x.io",
+      1970-01-01T00:00:00.000Z,
+    ],
+    "sql": "MERGE INTO "users" USING "comments" AS "c" ON "users"."id" = "c"."authorId" WHEN MATCHED THEN UPDATE SET "name" = $1 WHEN NOT MATCHED THEN INSERT ("id", "name", "email", "createdAt") VALUES ($2, $3, $4, $5) WHEN NOT MATCHED BY SOURCE THEN DELETE",
+  },
+  "sumak": {
+    "params": [
+      "updated",
+      1,
+      "new",
+      "new@x.io",
+      1970-01-01T00:00:00.000Z,
+    ],
+    "sql": "MERGE INTO "users" USING "comments" AS "c" ON ("users"."id" = "c"."authorId") WHEN MATCHED THEN UPDATE SET "name" = $1 WHEN NOT MATCHED THEN INSERT ("id", "name", "email", "createdAt") VALUES ($2, $3, $4, $5) WHEN NOT MATCHED BY SOURCE THEN DELETE",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > scalar-subquery-in-select > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
@@ -1493,6 +1528,23 @@ exports[`bench scenarios produce equivalent SQL > select-coalesce > snapshot of 
   "sumak": {
     "params": [],
     "sql": "SELECT "id", COALESCE("name", 'unknown') AS "displayName" FROM "users"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-count-any-value > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "authorId", ANY_VALUE("title") from "posts" group by "posts"."authorId"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "authorId", ANY_VALUE("title") as "sampleTitle" from "posts" group by "authorId"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "authorId", ANY_VALUE("title") AS "sampleTitle" FROM "posts" GROUP BY "authorId"",
   },
 }
 `;
@@ -1617,6 +1669,57 @@ exports[`bench scenarios produce equivalent SQL > select-group-multi-col > snaps
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-is-json > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "id", "authorId", "title", "body", "published" from "posts" where "posts"."body" IS JSON",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select * from "posts" where "body" IS JSON",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT * FROM "posts" WHERE ("body" IS JSON)",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-json-value > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select JSON_VALUE("body", '$.name') from "posts"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select JSON_VALUE("body", '$.name') as "name" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT JSON_VALUE("body", '$.name') AS "name" FROM "posts"",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-named-window > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "id", "authorId", row_number() over w, rank() over w from "posts"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "id", "authorId", row_number() over w as "rn", rank() over w as "rk" from "posts" window w as (partition by "authorId" order by "id")",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", "authorId", ROW_NUMBER() OVER "w" AS "rn", RANK() OVER "w" AS "rk" FROM "posts" WINDOW "w" AS (PARTITION BY "authorId" ORDER BY "id" ASC)",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-order-desc-limit > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
@@ -1657,6 +1760,23 @@ exports[`bench scenarios produce equivalent SQL > select-order-limit > snapshot 
   "sumak": {
     "params": [],
     "sql": "SELECT * FROM "users" ORDER BY "name" ASC LIMIT 10 OFFSET 20",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-percentile > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select percentile_cont(0.5) within group (order by "published") from "posts"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select percentile_cont(0.5) within group (order by "published") as "p50" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY "published" ASC) AS "p50" FROM "posts"",
   },
 }
 `;
@@ -2179,6 +2299,23 @@ exports[`bench scenarios produce equivalent SQL > select-where-or > snapshot of 
       "ada",
     ],
     "sql": "SELECT "id", "name" FROM "users" WHERE (("id" = $1) OR ("name" = $2))",
+  },
+}
+`;
+
+exports[`bench scenarios produce equivalent SQL > select-window-rank > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select "id", "authorId", rank() over (partition by "authorId" order by "id") from "posts"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select "id", "authorId", rank() over(partition by "authorId" order by "id") as "rk" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT "id", "authorId", RANK() OVER (PARTITION BY "authorId" ORDER BY "id" ASC) AS "rk" FROM "posts"",
   },
 }
 `;

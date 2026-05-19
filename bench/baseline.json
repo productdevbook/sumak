@@ -36,6 +36,13 @@
     "select-group-multi-col": { "sumakMinHz": 130000 },
     "insert-from-select": { "sumakMinHz": 130000 },
     "select-from-derived": { "sumakMinHz": 90000 },
-    "select-count-distinct": { "sumakMinHz": 90000 }
+    "select-count-distinct": { "sumakMinHz": 90000 },
+    "select-window-rank": { "sumakMinHz": 75000 },
+    "select-percentile": { "sumakMinHz": 100000 },
+    "select-named-window": { "sumakMinHz": 65000 },
+    "select-json-value": { "sumakMinHz": 130000 },
+    "select-is-json": { "sumakMinHz": 130000 },
+    "select-count-any-value": { "sumakMinHz": 90000 },
+    "merge-not-matched-by-source-bench": { "sumakMinHz": 30000 }
   }
 }
