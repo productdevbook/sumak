@@ -252,6 +252,7 @@ export {
   queryLimit,
   softDelete,
   subjectType,
+  validators,
   withSchema,
 } from "./plugin/factories.ts"
 export type { CaslAuthzConfig, SubjectTypeConfig } from "./plugin/factories.ts"
@@ -262,6 +263,7 @@ export type {
   NormalizeTransformSpec,
 } from "./plugin/normalize-strings.ts"
 export type { ResultContext, SumakPlugin } from "./plugin/types.ts"
+export type { Validator, ValidatorsConfig } from "./plugin/validators.ts"
 
 // ─── CASL integration — opt-in utility path (no plugin required) ───────────
 // Re-exports so `import { caslToSumakWhere, ForbiddenByCaslError,
@@ -419,6 +421,7 @@ export {
   SumakError,
   UnreachableNodeError,
   UnsupportedDialectFeatureError,
+  ValidationError,
 } from "./errors.ts"
 
 // ─── Driver adapter ────────────────────────────────────────────────────────
