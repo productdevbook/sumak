@@ -78,6 +78,11 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   "PERCENTILE_CONT",
   "PERCENTILE_DISC",
   "MODE",
+  "BIT_AND",
+  "BIT_OR",
+  "BIT_XOR",
+  "BOOL_AND",
+  "BOOL_OR",
   // Window
   "ROW_NUMBER",
   "RANK",

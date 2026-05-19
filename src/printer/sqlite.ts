@@ -283,6 +283,13 @@ export class SqlitePrinter extends BasePrinter {
     ) {
       assertFeature("sqlite", "PG_ARRAY_FNS")
     }
+    // SQLite gained `BIT_AND` / `BIT_OR` as aggregate functions in 3.44
+    // (via the math extension build). `BIT_XOR` does not exist on
+    // SQLite — refuse via the dedicated flag. `BIT_AND` / `BIT_OR`
+    // pass through to the base printer.
+    if (upper === "BIT_XOR") {
+      assertFeature("sqlite", "BIT_XOR_AGG")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently

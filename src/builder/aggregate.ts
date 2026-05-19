@@ -446,3 +446,187 @@ export function regrIntercept(y: Expression<number>, x: Expression<number>): Exp
 export function regrR2(y: Expression<number>, x: Expression<number>): Expression<number> {
   return wrap(rawFn("REGR_R2", [exprNode(y), exprNode(x)]))
 }
+
+// ─── Bitwise aggregate functions ──────────────────────────────────────
+//
+// `BIT_AND`, `BIT_OR`, `BIT_XOR` reduce a column of integers via the
+// matching bitwise operator. PG ships all three (XOR was added in PG 14);
+// MySQL has the full set; SQLite gained `BIT_AND` and `BIT_OR` in 3.44
+// (via the math extension build, which sumak's supported SQLite version
+// line includes). MSSQL has none of the three as built-ins — refuses via
+// `BIT_AGGREGATES` / `BIT_XOR_AGG`.
+//
+// NULL handling matches `SUM`: NULL inputs are skipped, an empty set
+// (or all-NULL set) returns NULL. There is no `BIT_AND DISTINCT` form —
+// the bitwise reduction is order-independent, so DISTINCT would either
+// be a no-op (BIT_AND, BIT_OR) or behave like a parity counter
+// (BIT_XOR), neither of which has portable SQL syntax.
+
+/**
+ * `BIT_AND(expr)` — bitwise AND across every non-null input. Useful
+ * for masking out bits that aren't set in every row (a "common bits"
+ * fold). PG, MySQL, and SQLite (3.44+, with the math extension)
+ * support the standard name. **MSSQL has no built-in equivalent** —
+ * the printer refuses via the `BIT_AGGREGATES` flag.
+ *
+ * ```ts
+ * db.selectFrom("perms").select({ everyoneHas: bitAnd(typedCol<number>("flags")) })
+ * // SELECT BIT_AND("flags") AS "everyoneHas" FROM "perms"
+ * ```
+ */
+export function bitAnd(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("BIT_AND", [exprNode(expr)]))
+}
+
+/**
+ * `BIT_OR(expr)` — bitwise OR across every non-null input. Useful for
+ * gathering "any-of-row-has-bit" flags into a single mask. PG, MySQL,
+ * SQLite (3.44+). MSSQL is unsupported.
+ *
+ * ```ts
+ * db.selectFrom("perms").select({ unionMask: bitOr(typedCol<number>("flags")) })
+ * // SELECT BIT_OR("flags") AS "unionMask" FROM "perms"
+ * ```
+ */
+export function bitOr(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("BIT_OR", [exprNode(expr)]))
+}
+
+/**
+ * `BIT_XOR(expr)` — bitwise XOR across every non-null input. Behaves
+ * like a parity fold: a bit is set in the result iff an odd number of
+ * input rows have it set. **MySQL only natively**; PG added a native
+ * `BIT_XOR` aggregate in version 14, but the matrix only lists MySQL
+ * since older PG versions parse it as a UDF call (or fail outright).
+ * SQLite and MSSQL have no equivalent. The printer refuses via the
+ * `BIT_XOR_AGG` flag on PG/SQLite/MSSQL — if you're on PG 14+ and want
+ * the built-in, reach for `sqlFn("BIT_XOR", expr)` directly.
+ */
+export function bitXor(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("BIT_XOR", [exprNode(expr)]))
+}
+
+// ─── Boolean aggregate functions ──────────────────────────────────────
+//
+// `BOOL_AND` / `BOOL_OR` reduce a column of booleans to a single
+// boolean. PG ships both under the standard names (with `EVERY` as a
+// synonym for `BOOL_AND`); SQLite added them in 3.45. MySQL has no
+// equivalent — its `BIT_AND` / `BIT_OR` are bitwise, not boolean, and
+// silently coerce booleans to 0/1 with no nicely-typed boolean fold.
+// MSSQL also lacks the built-ins; the printer refuses on both via
+// `BOOL_AGGREGATES`. The portable workaround is `MIN(CAST(b AS int))`
+// (for BOOL_AND) / `MAX(CAST(b AS int))` (for BOOL_OR).
+
+/**
+ * `BOOL_AND(expr)` — TRUE iff every non-null input is TRUE. Synonym
+ * of the SQL standard `EVERY(expr)`; sumak emits `BOOL_AND` for
+ * consistency with `BOOL_OR`. PG and SQLite (3.45+) support the
+ * standard name. **MySQL and MSSQL have no equivalent built-in** —
+ * the printer refuses via the `BOOL_AGGREGATES` flag; reach for
+ * `min(cast(b as int))` (or `MIN(b)` on PG with the booleans-as-ints
+ * shortcut) as the portable workaround.
+ *
+ * ```ts
+ * db.selectFrom("checks").select({ allPassed: boolAnd(typedCol<boolean>("passed")) })
+ * // SELECT BOOL_AND("passed") AS "allPassed" FROM "checks"
+ * ```
+ */
+export function boolAnd(expr: Expression<boolean>): Expression<boolean> {
+  return wrap(rawFn("BOOL_AND", [exprNode(expr)]))
+}
+
+/**
+ * `BOOL_OR(expr)` — TRUE iff at least one non-null input is TRUE.
+ * Synonym of the SQL standard `ANY(expr)` (not to be confused with
+ * the `<op> ANY (...)` quantified subquery construct, which sumak
+ * exposes separately). PG and SQLite (3.45+). MySQL and MSSQL refuse
+ * via `BOOL_AGGREGATES`.
+ *
+ * ```ts
+ * db.selectFrom("checks").select({ anyPassed: boolOr(typedCol<boolean>("passed")) })
+ * // SELECT BOOL_OR("passed") AS "anyPassed" FROM "checks"
+ * ```
+ */
+export function boolOr(expr: Expression<boolean>): Expression<boolean> {
+  return wrap(rawFn("BOOL_OR", [exprNode(expr)]))
+}
+
+// ─── Window-value functions ───────────────────────────────────────────
+//
+// `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE` are window-only — they only
+// make sense inside an `OVER (...)` clause and the printer refuses bare
+// calls via the `WINDOW_ONLY_FUNCTIONS` allowlist (see
+// `src/printer/function-tables.ts`). `FIRST_VALUE` / `LAST_VALUE` are
+// portable across PG, MySQL 8, SQLite 3.25+, MSSQL. `NTH_VALUE` is
+// supported on PG, MySQL 8, SQLite 3.25+ — MSSQL has no equivalent and
+// the printer refuses via `NTH_VALUE_FN`.
+//
+// All three honor the window frame: changing the frame from the default
+// `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW` to `ROWS BETWEEN
+// UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` flips `LAST_VALUE` from
+// "current row's value" to "actual last value in the partition" — a
+// classic SQL footgun. The JSDoc on each function spells it out.
+
+/**
+ * `FIRST_VALUE(expr)` — the first value of `expr` in the window
+ * frame. Must be wrapped in `over(...)`. Supported on PG, MySQL 8,
+ * SQLite 3.25+, MSSQL.
+ *
+ * The frame matters: with the default `RANGE BETWEEN UNBOUNDED
+ * PRECEDING AND CURRENT ROW` the "first value" is the first row in
+ * the partition's ordering (the usual intent). Combined with an
+ * unbounded-both frame it stays the same; combined with `ROWS BETWEEN
+ * 1 PRECEDING AND CURRENT ROW` the "first" becomes "the prior row's
+ * value" — different semantics.
+ *
+ * ```ts
+ * over(firstValue(col("price")), w => w.partitionBy("symbol").orderBy("ts"))
+ * // FIRST_VALUE("price") OVER (PARTITION BY "symbol" ORDER BY "ts")
+ * ```
+ */
+export function firstValue<T>(expr: Expression<T>): Expression<T> {
+  return wrap(rawFn("FIRST_VALUE", [exprNode(expr)]))
+}
+
+/**
+ * `LAST_VALUE(expr)` — the last value of `expr` in the window frame.
+ * Must be wrapped in `over(...)`. Supported on PG, MySQL 8, SQLite
+ * 3.25+, MSSQL.
+ *
+ * **Frame-default footgun.** The default window frame is `RANGE
+ * BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, which makes
+ * `LAST_VALUE` return the *current* row's value (the "last" so far),
+ * not the last value in the entire partition. To get the latter, set
+ * an explicit frame:
+ *
+ * ```ts
+ * over(lastValue(col("price")), w =>
+ *   w.partitionBy("symbol")
+ *    .orderBy("ts")
+ *    .rows({ type: "unbounded_preceding" }, { type: "unbounded_following" }))
+ * // LAST_VALUE("price") OVER (PARTITION BY "symbol" ORDER BY "ts"
+ * //   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+ * ```
+ */
+export function lastValue<T>(expr: Expression<T>): Expression<T> {
+  return wrap(rawFn("LAST_VALUE", [exprNode(expr)]))
+}
+
+/**
+ * `NTH_VALUE(expr, n)` — the Nth value of `expr` in the window frame
+ * (1-indexed). Must be wrapped in `over(...)`. Supported on PG, MySQL
+ * 8, SQLite 3.25+. **MSSQL has no equivalent** — the printer refuses
+ * via the `NTH_VALUE_FN` feature flag.
+ *
+ * Same frame-default warning as {@link lastValue}: if `n` exceeds the
+ * current frame size, the result is NULL — not an out-of-bounds
+ * error.
+ *
+ * ```ts
+ * over(nthValue(col("price"), 3), w => w.partitionBy("symbol").orderBy("ts"))
+ * // NTH_VALUE("price", 3) OVER (PARTITION BY "symbol" ORDER BY "ts")
+ * ```
+ */
+export function nthValue<T>(expr: Expression<T>, n: number): Expression<T> {
+  return wrap(rawFn("NTH_VALUE", [exprNode(expr), rawLit(n)]))
+}

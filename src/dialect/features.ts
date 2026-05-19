@@ -140,6 +140,45 @@ export const FEATURES = {
     label: "linear-regression aggregates (CORR / COVAR_* / REGR_*)",
     dialects: ["pg"],
   },
+  /**
+   * Bitwise aggregates `BIT_AND(int)` / `BIT_OR(int)` — reduce a column
+   * of integers via the matching bitwise operator. PG and MySQL ship
+   * both natively; SQLite added them in 3.44 (via the math extension
+   * build, which sumak's supported version line includes). **MSSQL has
+   * no built-in equivalent** — the printer refuses on MSSQL.
+   */
+  BIT_AGGREGATES: { label: "BIT_AND / BIT_OR aggregates", dialects: ["pg", "mysql", "sqlite"] },
+  /**
+   * `BIT_XOR(int)` aggregate — bitwise XOR fold. MySQL ships it
+   * natively. PG 14+ has the same function but the matrix lists only
+   * MySQL because older PG versions don't parse the name (and sumak
+   * has no per-version gating); PG 14+ users who want the built-in can
+   * reach for `sqlFn("BIT_XOR", expr)` directly. SQLite and MSSQL have
+   * no equivalent.
+   */
+  BIT_XOR_AGG: { label: "BIT_XOR aggregate", dialects: ["mysql"] },
+  /**
+   * Boolean aggregates `BOOL_AND(bool)` / `BOOL_OR(bool)` — reduce a
+   * column of booleans to a single boolean. PG ships both under the
+   * standard names (with `EVERY` as a synonym for `BOOL_AND`); SQLite
+   * added them in 3.45. **MySQL and MSSQL have no equivalent
+   * built-in** — MySQL's `BIT_AND` / `BIT_OR` are bitwise, not boolean,
+   * and silently coerce booleans to 0/1 with no nicely-typed boolean
+   * fold. The portable workaround is `MIN(CAST(b AS int))` /
+   * `MAX(CAST(b AS int))`.
+   */
+  BOOL_AGGREGATES: { label: "BOOL_AND / BOOL_OR aggregates", dialects: ["pg", "sqlite"] },
+  /**
+   * `NTH_VALUE(expr, n)` window function — the Nth value in the window
+   * frame (1-indexed). Supported on PG, MySQL 8, SQLite 3.25+. **MSSQL
+   * has no equivalent** — its `OFFSET FETCH` clause is row-based, not
+   * window-frame-based. Refuses on MSSQL. `FIRST_VALUE` / `LAST_VALUE`
+   * are portable across all four dialects and don't need a flag.
+   */
+  NTH_VALUE_FN: {
+    label: "NTH_VALUE window function",
+    dialects: ["pg", "mysql", "sqlite"],
+  },
 
   // ── Arrays / JSON ─────────────────────────────────────────────────
   ARRAY_LITERALS: { label: "ARRAY[...]", dialects: ["pg"] },

@@ -1,4 +1,5 @@
-import type { DeleteNode, InsertNode } from "../ast/nodes.ts"
+import type { DeleteNode, FunctionCallNode, InsertNode } from "../ast/nodes.ts"
+import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { BasePrinter } from "./base.ts"
 
@@ -36,5 +37,20 @@ export class PgPrinter extends BasePrinter {
       )
     }
     return super.printDelete(node)
+  }
+
+  /**
+   * Refuse `BIT_XOR` via the matrix even though PG 14+ ships a native
+   * aggregate by that name. sumak's `BIT_XOR_AGG` flag lists only MySQL
+   * — older PG versions parse `BIT_XOR` as a UDF lookup that surfaces as
+   * a "function does not exist" execution error, which is worse than a
+   * compile-time refusal. PG 14+ users who want the built-in can reach
+   * for `sqlFn("BIT_XOR", expr)` directly to bypass the flag.
+   */
+  protected override printFunctionCall(node: FunctionCallNode): string {
+    if (node.name.toUpperCase() === "BIT_XOR") {
+      assertFeature("pg", "BIT_XOR_AGG")
+    }
+    return super.printFunctionCall(node)
   }
 }
