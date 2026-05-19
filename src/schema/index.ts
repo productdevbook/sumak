@@ -48,6 +48,8 @@ export type { ColumnDef } from "./column.ts"
 export { defineTable } from "./table.ts"
 export type {
   CheckDef,
+  ExcludeDef,
+  ExcludeElementDef,
   ForeignKeyDef,
   IndexColumn,
   IndexDef,

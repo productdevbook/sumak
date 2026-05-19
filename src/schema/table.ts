@@ -50,11 +50,62 @@ export interface ForeignKeyDef {
   readonly onUpdate?: ForeignKeyAction
 }
 
+/**
+ * Single element of an {@link ExcludeDef} — a column name or expression
+ * paired with the SQL operator that must NOT hold between the row's
+ * value and any other row's value. `expr` is either a raw column name
+ * (passed through `quoteIdentifier` at print time) or a sumak
+ * {@link Expression} whose AST node is preserved. `operator` is the
+ * literal SQL operator token (`=`, `<`, `>`, `&&`, `<>`, etc.) and is
+ * validated for safety before splicing into emitted DDL.
+ */
+export interface ExcludeElementDef {
+  readonly expr: string | Expression<unknown>
+  readonly operator: string
+}
+
+/**
+ * PG `EXCLUDE` table constraint — a generalisation of UNIQUE where
+ * each element specifies its own commutative operator. The flagship
+ * use case is range-overlap exclusion for booking systems:
+ *
+ * ```ts
+ * defineTable("bookings", { ... }, {
+ *   constraints: {
+ *     excludes: [{
+ *       method: "gist",
+ *       elements: [
+ *         { expr: "room",   operator: "=" },
+ *         { expr: "during", operator: "&&" },
+ *       ],
+ *     }],
+ *   },
+ * })
+ * ```
+ *
+ * `method` defaults to `gist` at the printer (the only access method
+ * that supports the range-overlap operator). `where` is the same
+ * partial-predicate shape as on partial indexes — handy for "at most
+ * one active row per priority" patterns. PG only; the DDL printer
+ * throws `UnsupportedDialectFeatureError` on MySQL / SQLite / MSSQL.
+ */
+export interface ExcludeDef {
+  readonly name?: string
+  readonly method?: string
+  readonly elements: ReadonlyArray<ExcludeElementDef>
+  readonly where?: Expression<boolean> | string
+}
+
 export interface TableConstraints {
   readonly primaryKey?: PrimaryKeyDef
   readonly uniques?: readonly UniqueDef[]
   readonly checks?: readonly CheckDef[]
   readonly foreignKeys?: readonly ForeignKeyDef[]
+  /**
+   * PG `EXCLUDE` constraints. Refused on MySQL / SQLite / MSSQL at
+   * print time via the `EXCLUDE_CONSTRAINTS` feature flag.
+   */
+  readonly excludes?: readonly ExcludeDef[]
 }
 
 /**
@@ -262,6 +313,35 @@ export function normalizeUniqueDef(def: UniqueDef): {
   }
   if (obj.name !== undefined) out.name = obj.name
   if (obj.nullsNotDistinct) out.nullsNotDistinct = true
+  return out
+}
+
+/**
+ * Normalize an {@link ExcludeDef} to a stable record for diff
+ * comparison and downstream materialization. Drops `method` / `where`
+ * when unset so the resulting record stays compact, but preserves
+ * `expr` and `operator` per element verbatim — the printer is the
+ * place that quotes identifiers and validates operator tokens, not
+ * this layer.
+ *
+ * @internal
+ */
+export function normalizeExcludeDef(def: ExcludeDef): {
+  name?: string
+  method?: string
+  elements: ExcludeElementDef[]
+  where?: Expression<boolean> | string
+} {
+  const elements = def.elements.map((e) => ({ expr: e.expr, operator: e.operator }))
+  const out: {
+    name?: string
+    method?: string
+    elements: ExcludeElementDef[]
+    where?: Expression<boolean> | string
+  } = { elements }
+  if (def.name !== undefined) out.name = def.name
+  if (def.method !== undefined) out.method = def.method
+  if (def.where !== undefined) out.where = def.where
   return out
 }
 

@@ -11,6 +11,7 @@ import type {
   DropSchemaNode,
   DropTableNode,
   DropViewNode,
+  ExcludeConstraintNode,
   ForeignKeyConstraintNode,
   TableConstraintNode,
   TruncateTableNode,
@@ -20,7 +21,12 @@ import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
 import { quoteIdentifier, quoteTableRef } from "../utils/identifier.ts"
-import { escapeStringLiteral, validateDataType, validateFunctionName } from "../utils/security.ts"
+import {
+  escapeStringLiteral,
+  validateDataType,
+  validateFunctionName,
+  validateOperator,
+} from "../utils/security.ts"
 
 /**
  * Optional callback used by CREATE TABLE ... AS SELECT and CREATE VIEW ... AS
@@ -249,7 +255,42 @@ export class DDLPrinter {
         return `${namePrefix}CHECK (${this.printExpr(c.expression)})`
       case "fk_constraint":
         return this.printForeignKeyConstraint(c, namePrefix)
+      case "exclude_constraint":
+        return this.printExcludeConstraint(c, namePrefix)
     }
+  }
+
+  /**
+   * Emit a PG `EXCLUDE` constraint:
+   *
+   *     EXCLUDE [USING <method>] (<expr> WITH <op>, <expr> WITH <op>, …)
+   *     [WHERE (<predicate>)]
+   *
+   * Method defaults to `gist` when unset (the only access method that
+   * supports the range-overlap operator `&&`). Operator tokens are
+   * passed through `validateOperator` so an attacker-controlled AST
+   * built via `{ type: "exclude_constraint", elements: [...] }` cannot
+   * smuggle in extra DDL through the per-element `WITH <op>` slot.
+   *
+   * Refused on every non-PG dialect — none of MySQL / SQLite / MSSQL
+   * have an equivalent constraint grammar; the closest match is a
+   * unique partial index, which is a different shape and best
+   * expressed via the partial-index API.
+   */
+  private printExcludeConstraint(c: ExcludeConstraintNode, namePrefix: string): string {
+    assertFeature(this.dialect, "EXCLUDE_CONSTRAINTS")
+    const method = c.method ?? "gist"
+    // Method is an identifier — same shape as `CREATE INDEX … USING <method>`.
+    validateFunctionName(method)
+    const elements = c.elements.map((e) => {
+      validateOperator(e.operator)
+      return `${this.printExpr(e.expr)} WITH ${e.operator}`
+    })
+    let out = `${namePrefix}EXCLUDE USING ${method} (${elements.join(", ")})`
+    if (c.where) {
+      out += ` WHERE (${this.printExpr(c.where)})`
+    }
+    return out
   }
 
   private printForeignKeyConstraint(c: ForeignKeyConstraintNode, namePrefix: string): string {

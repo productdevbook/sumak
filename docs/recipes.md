@@ -269,6 +269,72 @@ The predicate is part of the index's identity: change the `where` clause and the
 
 ---
 
+## PostgreSQL EXCLUDE constraints
+
+`EXCLUDE` is a table-level constraint that generalises `UNIQUE`: instead of equality between rows, you specify any commutative SQL operator. The flagship case is **range-overlap exclusion** — a booking system that needs to guarantee no two reservations for the same room can overlap in time. Without the constraint, the same invariant has to be enforced in application code with all the race conditions that come with it.
+
+Declare on the table:
+
+```ts
+const bookings = defineTable(
+  "bookings",
+  {
+    id: serial().primaryKey(),
+    room: text().notNull(),
+    during: new ColumnBuilder<string>("tstzrange").notNull(),
+  },
+  {
+    constraints: {
+      excludes: [
+        {
+          name: "no_overlap",
+          method: "gist",
+          elements: [
+            { expr: "room", operator: "=" },
+            { expr: "during", operator: "&&" },
+          ],
+        },
+      ],
+    },
+  },
+)
+```
+
+Emitted SQL (PG):
+
+```sql
+CREATE TABLE "bookings" (
+  "id" SERIAL PRIMARY KEY,
+  "room" text NOT NULL,
+  "during" tstzrange NOT NULL,
+  CONSTRAINT "no_overlap" EXCLUDE USING gist ("room" WITH =, "during" WITH &&)
+)
+```
+
+Reads as "no two rows may share a `room` AND have overlapping `during`." The `&&` is PG's range-overlap operator. The composite form `(room WITH =, during WITH &&)` requires the `btree_gist` extension (most managed PG providers ship it; install with `CREATE EXTENSION btree_gist`); a single-element exclude on a range column works on stock PG out of the box.
+
+For a partial exclude — "at most one row per priority among active rows" — add a `where` predicate:
+
+```ts
+constraints: {
+  excludes: [
+    {
+      name: "one_active_per_priority",
+      elements: [{ expr: "priority", operator: "=" }],
+      where: "active = true",
+    },
+  ],
+}
+```
+
+The constraint's identity covers the method, the elements, and the `where` predicate. Change any one of them and the migration diff emits a drop + add — there is no in-place `ALTER` for an `EXCLUDE` constraint. The `where` predicate accepts raw SQL (schema-author controlled — never user input) or any `Expression<boolean>`, mirroring the partial-index API.
+
+The operator token is spliced verbatim into the emitted DDL, so sumak runs it through a whitelist (1-4 ASCII punctuation characters from PG's operator alphabet — `+ - * / < > = ~ ! @ # % ^ & | ? ` plus backtick). Anything outside that set raises a `SecurityError` at print time; in practice every common operator (`=`, `<>`, `&&`, `@>`, `<@`, `->>`, etc.) is on the allow-list. The method name goes through `validateFunctionName` (same identifier check as `CREATE INDEX … USING <method>`).
+
+**Dialect support.** PostgreSQL only. MySQL, SQLite, and MSSQL have no equivalent table-constraint grammar — the closest fit on those dialects is a unique partial index, but that only supports equality and so doesn't cover the range-overlap case at all. `compileDDL` throws `UnsupportedDialectFeatureError` (`EXCLUDE_CONSTRAINTS` feature flag) on every non-PG dialect rather than emit SQL the engine will reject.
+
+---
+
 ## Schema comments
 
 Schema-level prose lives in the database, not just the code. PostgreSQL and MySQL both expose comments on tables and columns; sumak surfaces both via the schema DSL and threads the value through `diffSchemas` so a comment edit shows up as a normal additive migration step.

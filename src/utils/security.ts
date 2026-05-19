@@ -62,3 +62,29 @@ export function validateDataType(dataType: string): void {
     `Unsafe CAST data type: "${dataType}". Data types must be standard SQL type identifiers.`,
   )
 }
+
+/**
+ * Whitelist of SQL operator tokens allowed in raw splicing positions
+ * (currently: PG `EXCLUDE` constraint element operators). Built from
+ * the punctuation symbols PG accepts in user-defined and built-in
+ * operators (`+ - * / < > = ~ ! @ # % ^ & | ? ` ASCII set), plus the
+ * keyword operators that are commutative and useful in an EXCLUDE
+ * constraint (`AND`, `OR` are deliberately omitted; they aren't
+ * comparison operators). One-to-four-character runs are accepted;
+ * longer chains are almost always either typos or smuggled-in
+ * statement breaks.
+ *
+ * Common operators this admits: `=`, `<`, `>`, `<=`, `>=`, `<>`, `!=`,
+ * `&&` (range overlap), `<<`, `>>`, `&<`, `&>`, `<<=`, `>>=`, `?`,
+ * `@>`, `<@`, `~`, `~*`, `!~`, `!~*`, `||`, `<->`, `->`, `->>`, `#>`,
+ * `#>>`.
+ */
+const SAFE_OPERATOR_RE = /^[+\-*/<>=~!@#%^&|?`]{1,4}$/
+
+export function validateOperator(operator: string): void {
+  if (!SAFE_OPERATOR_RE.test(operator)) {
+    throw new SecurityError(
+      `Unsafe SQL operator: "${operator}". Operators must be 1-4 punctuation characters.`,
+    )
+  }
+}

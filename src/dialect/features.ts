@@ -263,6 +263,17 @@ export const FEATURES = {
   GIN_INDEX: { label: "GIN index", dialects: ["pg"] },
   GIST_INDEX: { label: "GIST index", dialects: ["pg"] },
   PARTIAL_INDEX: { label: "partial index (WHERE)", dialects: ["pg", "sqlite"] },
+  /**
+   * PG `EXCLUDE` table-level constraint — a generalization of UNIQUE
+   * where each element specifies its own commutative operator (`room
+   * WITH =, during WITH &&` for range-overlap exclusion). Backed by a
+   * GiST / SP-GiST / btree index depending on the operators used.
+   * MySQL / SQLite / MSSQL have no equivalent grammar; the closest
+   * fit is a unique partial index, which is a different shape (only
+   * supports equality) and is best expressed via the partial-index
+   * API. The printer refuses on every non-PG dialect.
+   */
+  EXCLUDE_CONSTRAINTS: { label: "EXCLUDE constraint", dialects: ["pg"] },
   CASCADE_DROP: { label: "DROP ... CASCADE", dialects: ["pg"] },
   /**
    * `COMMENT ON TABLE` / `COMMENT ON COLUMN` (PG syntax) and the
