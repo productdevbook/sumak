@@ -60,6 +60,7 @@ like work.
 | insert-returning        | `INSERT … RETURNING id, name`                                                     |
 | select-case-when        | `SELECT id, CASE WHEN published > 0 THEN 'published' ELSE 'draft' END FROM posts` |
 | select-exists-subquery  | `SELECT … FROM users WHERE EXISTS (SELECT … FROM posts WHERE …)`                  |
+| select-count-distinct   | `SELECT COUNT(DISTINCT author_id) FROM posts`                                     |
 
 ## Plugin overhead microbench
 

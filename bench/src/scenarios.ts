@@ -2,6 +2,7 @@ import {
   and,
   avg,
   count,
+  countDistinct,
   desc,
   eq,
   gt,
@@ -27,6 +28,7 @@ import {
   case_ as scase,
   coalesce as scoalesce,
   count as scount,
+  countDistinct as scountDistinct,
   exists as sexists,
   max as smax,
   or as sor,
@@ -936,6 +938,33 @@ export const scenarios: Scenario[] = [
               .over((ob) => ob.partitionBy("authorId" as never).orderBy("id" as never))
               .as("rn"),
           ])
+          .compile(),
+      ),
+  },
+  {
+    name: "select-count-distinct",
+    // SELECT COUNT(DISTINCT authorId) FROM posts — exercises a
+    // different printer path than plain COUNT (the DISTINCT keyword
+    // is inside the function-call args, not a separate clause).
+    // Common in analytics; cheap to express; drizzle and kysely both
+    // have first-class shapes for it (no raw-sql fallback needed).
+    sumak: () =>
+      s
+        .selectFrom("posts")
+        .select({ uniqueAuthors: scountDistinct(typedCol<number>("authorId")) })
+        .toSQL(),
+    drizzle: () =>
+      drizzleToResult(
+        d
+          .select({ uniqueAuthors: countDistinct(dPosts.authorId) })
+          .from(dPosts)
+          .toSQL(),
+      ),
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom("posts")
+          .select((eb) => eb.fn.count<number>("authorId").distinct().as("uniqueAuthors"))
           .compile(),
       ),
   },

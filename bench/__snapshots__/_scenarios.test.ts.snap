@@ -1497,6 +1497,23 @@ exports[`bench scenarios produce equivalent SQL > select-coalesce > snapshot of 
 }
 `;
 
+exports[`bench scenarios produce equivalent SQL > select-count-distinct > snapshot of generated SQL 1`] = `
+{
+  "drizzle": {
+    "params": [],
+    "sql": "select count(distinct "authorId") from "posts"",
+  },
+  "kysely": {
+    "params": [],
+    "sql": "select count(distinct "authorId") as "uniqueAuthors" from "posts"",
+  },
+  "sumak": {
+    "params": [],
+    "sql": "SELECT COUNT(DISTINCT "authorId") AS "uniqueAuthors" FROM "posts"",
+  },
+}
+`;
+
 exports[`bench scenarios produce equivalent SQL > select-distinct > snapshot of generated SQL 1`] = `
 {
   "drizzle": {
