@@ -259,7 +259,32 @@ export const FEATURES = {
     label: "ALTER TABLE RENAME COLUMN",
     dialects: ["pg", "mysql", "sqlite", "mssql"],
   },
+  /** `CREATE VIEW … AS <select>`. SQL standard — every dialect ships it. */
+  CREATE_VIEW: { label: "CREATE VIEW", dialects: ["pg", "mysql", "sqlite", "mssql"] },
+  /**
+   * `CREATE OR REPLACE VIEW` — PG / MySQL / SQLite emit the standard
+   * form. MSSQL's analogue is `CREATE OR ALTER VIEW` (2016-SP1+), which
+   * the DDL printer emits when this flag is set on the node and the
+   * dialect is `mssql` — the divergence is handled at print time, not
+   * via the feature matrix. SQLite has no `OR REPLACE` and no `OR
+   * ALTER`; the printer refuses there with a pointer at the DROP+CREATE
+   * workaround. The matrix excludes MSSQL because the user-facing
+   * keyword differs; callers who need MSSQL emit via the same builder
+   * (`createView(...).orReplace()`) and rely on the printer rewrite.
+   */
+  OR_REPLACE_VIEW: { label: "CREATE OR REPLACE VIEW", dialects: ["pg", "mysql"] },
   MATERIALIZED_VIEW: { label: "MATERIALIZED VIEW", dialects: ["pg"] },
+  /**
+   * `REFRESH MATERIALIZED VIEW CONCURRENTLY` — PG only. Requires a
+   * UNIQUE index on the view; without one PG raises at execution time.
+   * MySQL / SQLite / MSSQL have no materialized views at all (gated by
+   * {@link MATERIALIZED_VIEW}); this flag adds the concurrent-refresh
+   * subfeature on top.
+   */
+  MATERIALIZED_VIEW_CONCURRENT_REFRESH: {
+    label: "REFRESH MATERIALIZED VIEW CONCURRENTLY",
+    dialects: ["pg"],
+  },
   GIN_INDEX: { label: "GIN index", dialects: ["pg"] },
   GIST_INDEX: { label: "GIST index", dialects: ["pg"] },
   PARTIAL_INDEX: { label: "partial index (WHERE)", dialects: ["pg", "sqlite"] },

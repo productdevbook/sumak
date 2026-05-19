@@ -13,6 +13,7 @@ import type {
   DropViewNode,
   ExcludeConstraintNode,
   ForeignKeyConstraintNode,
+  RefreshMaterializedViewNode,
   TableConstraintNode,
   TruncateTableNode,
 } from "../ast/ddl-nodes.ts"
@@ -68,6 +69,8 @@ export class DDLPrinter {
         return this.printCreateView(node)
       case "drop_view":
         return this.printDropView(node)
+      case "refresh_materialized_view":
+        return this.printRefreshMaterializedView(node)
       case "truncate_table":
         return this.printTruncateTable(node)
       case "create_schema":
@@ -508,21 +511,33 @@ export class DDLPrinter {
   }
 
   private printCreateView(node: CreateViewNode): string {
-    if (node.orReplace && node.ifNotExists) {
+    if ((node.orReplace || node.orAlter) && node.ifNotExists) {
       // PG / MySQL reject the combination; most dialects treat the two
       // as mutually exclusive. Catch it at print time rather than ship
       // a statement the database will refuse.
       throw new Error(
-        "CREATE VIEW: OR REPLACE and IF NOT EXISTS are mutually exclusive — " +
-          "pick one (OR REPLACE overwrites, IF NOT EXISTS leaves the existing view).",
+        "CREATE VIEW: OR REPLACE / OR ALTER and IF NOT EXISTS are mutually exclusive — " +
+          "pick one (OR REPLACE/ALTER overwrites, IF NOT EXISTS leaves the existing view).",
       )
     }
-    const parts: string[] = ["CREATE"]
+    if (node.orReplace && node.orAlter) {
+      // The two flags are mutually exclusive — `orReplace` is the
+      // PG/MySQL form, `orAlter` is the MSSQL form. Setting both is
+      // a builder-side mistake (e.g. chaining both methods).
+      throw new Error(
+        "CREATE VIEW: .orReplace() (PG/MySQL) and .orAlter() (MSSQL) " +
+          "are mutually exclusive — pick the one matching your dialect.",
+      )
+    }
     if (node.orReplace) {
+      // SQL Server has no `OR REPLACE` keyword at all. SQLite likewise
+      // has no `OR REPLACE` form for views. PG / MySQL emit the
+      // standard syntax. MSSQL users want `.orAlter()` (which compiles
+      // to `CREATE OR ALTER VIEW`); SQLite users need DROP+CREATE.
       if (this.dialect === "mssql") {
         throw new UnsupportedDialectFeatureError(
           "mssql",
-          "CREATE OR REPLACE VIEW (MSSQL has no OR REPLACE — use ALTER VIEW instead)",
+          "CREATE OR REPLACE VIEW (SQL Server has no OR REPLACE — call .orAlter() to emit CREATE OR ALTER VIEW instead)",
         )
       }
       if (this.dialect === "sqlite") {
@@ -531,7 +546,17 @@ export class DDLPrinter {
           "CREATE OR REPLACE VIEW (use DROP VIEW IF EXISTS + CREATE VIEW, or CREATE VIEW IF NOT EXISTS)",
         )
       }
-      parts.push("OR REPLACE")
+    }
+    if (node.orAlter && this.dialect !== "mssql") {
+      // `OR ALTER` is SQL-Server-specific (since 2016 SP1). PG / MySQL
+      // use `OR REPLACE`; SQLite has neither. Reject loudly so the
+      // builder caller knows to pick the right method per dialect.
+      throw new UnsupportedDialectFeatureError(
+        this.dialect,
+        `CREATE OR ALTER VIEW (MSSQL-only — use .orReplace() on PG/MySQL${
+          this.dialect === "sqlite" ? ", or DROP VIEW IF EXISTS + CREATE VIEW on SQLite" : ""
+        })`,
+      )
     }
     if (node.materialized && this.dialect !== "pg") {
       // PG and Oracle support materialized views; MySQL / SQLite / MSSQL
@@ -541,6 +566,9 @@ export class DDLPrinter {
         "MATERIALIZED VIEW (PG-only — use a regular view or a table cache on other dialects)",
       )
     }
+
+    const parts: string[] = node.orAlter ? ["CREATE OR ALTER"] : ["CREATE"]
+    if (node.orReplace) parts.push("OR REPLACE")
     if (node.temporary) parts.push("TEMPORARY")
     if (node.materialized) parts.push("MATERIALIZED")
     parts.push("VIEW")
@@ -564,6 +592,43 @@ export class DDLPrinter {
     }
     parts.push("AS")
     parts.push(this.renderSelect(node.asSelect))
+
+    // `WITH [NO] DATA` — PG MATERIALIZED VIEW only. The default at PG
+    // is `WITH DATA` (populate at creation); we only emit the explicit
+    // tail when the user opted into `WITH NO DATA`. Silently dropped
+    // on non-materialized views and non-PG dialects: a plain VIEW has
+    // no storage to populate, so the clause is meaningless.
+    if (node.materialized && this.dialect === "pg" && node.withData === false) {
+      parts.push("WITH NO DATA")
+    }
+    return parts.join(" ")
+  }
+
+  private printRefreshMaterializedView(node: RefreshMaterializedViewNode): string {
+    // `REFRESH MATERIALIZED VIEW` is PG-only — MySQL / SQLite / MSSQL
+    // have no materialized views in the first place. Refuse via the
+    // matrix rather than emit SQL the driver rejects at parse.
+    assertFeature(this.dialect, "MATERIALIZED_VIEW")
+    const parts: string[] = ["REFRESH MATERIALIZED VIEW"]
+    if (node.concurrently) {
+      // `CONCURRENTLY` requires a UNIQUE index on the view's projected
+      // rows; without it PG raises at execution time, not at parse. We
+      // don't have the catalog to check that here, so emit the keyword
+      // verbatim and let PG surface the runtime error.
+      assertFeature(this.dialect, "MATERIALIZED_VIEW_CONCURRENT_REFRESH")
+      parts.push("CONCURRENTLY")
+    }
+    const viewName = node.schema
+      ? `${quoteIdentifier(node.schema, this.dialect)}.${quoteIdentifier(node.name, this.dialect)}`
+      : quoteIdentifier(node.name, this.dialect)
+    parts.push(viewName)
+    if (node.withData === false) {
+      // `WITH NO DATA` — empties the view's storage after the refresh.
+      // Mutually exclusive with `CONCURRENTLY` at the PG side (the
+      // concurrent path is precisely "swap new data in"); the driver
+      // surfaces that conflict directly, so we don't pre-empt it here.
+      parts.push("WITH NO DATA")
+    }
     return parts.join(" ")
   }
 

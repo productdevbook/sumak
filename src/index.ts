@@ -255,7 +255,19 @@ export type {
 } from "./ast/nodes.ts"
 
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
-export type { CommentNode, CreateSchemaNode, DDLNode, DropSchemaNode } from "./ast/ddl-nodes.ts"
+export type {
+  CommentNode,
+  CreateSchemaNode,
+  CreateViewNode,
+  DDLNode,
+  DropSchemaNode,
+  DropViewNode,
+  RefreshMaterializedViewNode,
+} from "./ast/ddl-nodes.ts"
+
+// ─── DDL builders (advanced / custom DDL flows) ────────────────────────────
+export { CreateViewBuilder, RefreshMaterializedViewBuilder } from "./builder/ddl/create-view.ts"
+export { DropViewBuilder } from "./builder/ddl/drop.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"
