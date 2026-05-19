@@ -75,18 +75,21 @@ function normalizeMerge(node: MergeNode, opts: Required<NormalizeOptions>): Merg
     ...node,
     on: normalizeExpression(node.on, opts),
     whens: node.whens.map((w) => {
-      if (w.type === "matched") {
+      if (w.type === "matched" || w.type === "not_matched_by_source") {
         return {
           ...w,
           condition: w.condition ? normalizeExpression(w.condition, opts) : undefined,
           set: w.set?.map((s) => ({ ...s, value: normalizeExpression(s.value, opts) })),
         }
       }
-      return {
-        ...w,
-        condition: w.condition ? normalizeExpression(w.condition, opts) : undefined,
-        values: w.values.map((v) => normalizeExpression(v, opts)),
+      if (w.type === "not_matched") {
+        return {
+          ...w,
+          condition: w.condition ? normalizeExpression(w.condition, opts) : undefined,
+          values: w.values.map((v) => normalizeExpression(v, opts)),
+        }
       }
+      return assertNever(w, "normalizeMerge.when")
     }),
   }
 }

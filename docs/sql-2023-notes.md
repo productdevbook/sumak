@@ -9,12 +9,12 @@ Sumak supports the SQL:2016 core MERGE shape:
 - `INTO target` / `USING source` / `ON predicate`
 - `WHEN MATCHED THEN UPDATE SET …` / `WHEN MATCHED THEN DELETE`
 - `WHEN NOT MATCHED THEN INSERT …`
+- **`WHEN NOT MATCHED BY SOURCE THEN UPDATE SET …` / `THEN DELETE`** — fires for target rows that have no matching source row (the inverse of `WHEN NOT MATCHED [BY TARGET]`). Useful for full-sync MERGE patterns where the source is the new desired state. Builder methods: `.whenNotMatchedBySourceThenUpdate(set, cond?)` and `.whenNotMatchedBySourceThenDelete(cond?)`. AST: third variant `MergeWhenNotMatchedBySource` alongside `MergeWhenMatched` / `MergeWhenNotMatched`. Emitted on PG (17+) and MSSQL; MySQL and SQLite have no `MERGE` at all and throw at print time. ✅
 - Per-branch `AND condition` ("WHEN MATCHED AND <cond>")
 - CTE-prefixed MERGE (`.with(...)`)
 
 **SQL:2023 additions we don't have:**
 
-- **`WHEN NOT MATCHED BY SOURCE`** — fires for target rows that have no matching source row (the inverse of `WHEN NOT MATCHED [BY TARGET]`). PostgreSQL added it in 17; MSSQL has had it forever; MySQL doesn't have MERGE at all. Sumak's `MergeWhenMatched` / `MergeWhenNotMatched` types would need a third variant.
 - **`OVERRIDING { SYSTEM | USER } VALUE`** in `INSERT` actions — controls identity-column overrides on the insert branch. Currently you'd need raw SQL.
 - **`RETURNING` on MERGE** — PG 17+ supports it, the AST has no slot for it on MergeNode.
 
