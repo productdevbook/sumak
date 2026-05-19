@@ -56,6 +56,7 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   "AVG",
   "MIN",
   "MAX",
+  "ANY_VALUE",
   "STDDEV",
   "VARIANCE",
   "STRING_AGG",

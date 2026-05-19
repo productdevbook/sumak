@@ -65,6 +65,7 @@ export type { CaseBuilder, ColumnProxies, WhereCallback } from "./builder/eb.ts"
 
 // ─── Aggregates ────────────────────────────────────────────────────────────
 export {
+  anyValue,
   arrayAgg,
   avg,
   avgDistinct,

@@ -554,6 +554,7 @@ export function unsafeSqlFn(name: string, ...args: Expression<any>[]): Expressio
 // the historical `import { count } from "sumak"` shape so user code
 // is unchanged. See the dedicated file for full JSDoc.
 export {
+  anyValue,
   arrayAgg,
   avg,
   avgDistinct,

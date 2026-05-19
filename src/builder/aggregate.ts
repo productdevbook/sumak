@@ -143,6 +143,27 @@ export function max<T>(expr: Expression<T>): Expression<T> {
   return wrap(rawFn("MAX", [(expr as any).node]))
 }
 
+/**
+ * `ANY_VALUE(expr)` aggregate — returns an arbitrary non-null value
+ * from the group. SQL:2023 standard, also supported on PG 16+,
+ * MySQL 8, SQLite. Useful when a column is functionally dependent on
+ * the GROUP BY keys but isn't itself in `GROUP BY` (the optimizer
+ * already knows the value is constant per group).
+ *
+ * ```ts
+ * db.selectFrom("orders")
+ *   .select({ customer_id: typedCol("customer_id"), city: anyValue(typedCol("city")) })
+ *   .groupBy("customer_id")
+ * // SELECT "customer_id", ANY_VALUE("city") AS "city" FROM "orders" GROUP BY "customer_id"
+ * ```
+ *
+ * The pick is **unspecified** — different rows may surface across
+ * runs. Use `min()` / `max()` if you need a deterministic value.
+ */
+export function anyValue<T>(expr: Expression<T>): Expression<T> {
+  return wrap(rawFn("ANY_VALUE", [exprNode(expr)]))
+}
+
 /** STRING_AGG(expr, delimiter) — aggregate strings with separator */
 export function stringAgg(
   expr: Expression<string>,
