@@ -510,6 +510,21 @@ export class MssqlPrinter extends BasePrinter {
         "JSON_VALUE ... RETURNING type (SQL Server's JSON_VALUE always returns nvarchar — wrap with CAST(JSON_VALUE(...) AS type))",
       )
     }
+    const upper = node.name.toUpperCase()
+    // MSSQL has `DATETRUNC` (one word, SQL Server 2022+) with a
+    // different shape — the field is an identifier, not a string
+    // literal. Refuse PG's `DATE_TRUNC` rather than silently rewrite
+    // (rewrite would still emit the wrong arg type pre-2022) so the
+    // failure points at the builder.
+    if (upper === "DATE_TRUNC") {
+      assertFeature("mssql", "DATE_TRUNC_FN")
+    }
+    // MSSQL has no `AGE`. The interval-difference idiom is
+    // `DATEDIFF(unit, start, end)`, which returns a numeric instead of
+    // an interval — different semantics. Refuse the standard name.
+    if (upper === "AGE") {
+      assertFeature("mssql", "AGE_FN")
+    }
     return super.printFunctionCall(node)
   }
 

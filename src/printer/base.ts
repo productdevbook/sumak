@@ -592,6 +592,24 @@ export class BasePrinter implements Printer {
       }
       return result
     }
+    // SQL standard `EXTRACT(<field> FROM <expr>)` — the field name sits
+    // outside the argument list and uses the `FROM` keyword instead of
+    // a comma, so the regular argument-printing path produces invalid
+    // SQL. Special-case it here when `extractField` is set; the field
+    // name went through an allowlist in the builder, so it's safe to
+    // emit verbatim.
+    if (node.extractField !== undefined) {
+      assertFeature(this.dialect, "EXTRACT_FN")
+      const exprArg = node.args[0]
+      if (!exprArg) {
+        throw new Error("EXTRACT requires exactly one expression argument")
+      }
+      let extractResult = `EXTRACT(${node.extractField} FROM ${this.printExpression(exprArg)})`
+      if (node.alias) {
+        extractResult += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+      }
+      return extractResult
+    }
     const distinctPrefix = node.distinct ? "DISTINCT " : ""
     let inner = `${distinctPrefix}${node.args.map((a) => this.printExpression(a)).join(", ")}`
     if (node.orderBy && node.orderBy.length > 0) {

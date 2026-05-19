@@ -372,6 +372,17 @@ export class MysqlPrinter extends BasePrinter {
     if (upper === "JSON_EXISTS") {
       assertFeature("mysql", "JSON_EXISTS_FN")
     }
+    // MySQL has no `DATE_TRUNC` or `AGE`. The truncation idiom is
+    // `DATE_FORMAT(ts, '%Y-%m-01')` (or `MAKEDATE` for date-only
+    // truncation); the interval-difference idiom is `TIMESTAMPDIFF`.
+    // Refuse the standard names so the failure points at the builder
+    // call, not a generic MySQL parse error.
+    if (upper === "DATE_TRUNC") {
+      assertFeature("mysql", "DATE_TRUNC_FN")
+    }
+    if (upper === "AGE") {
+      assertFeature("mysql", "AGE_FN")
+    }
     return super.printFunctionCall(node)
   }
 }

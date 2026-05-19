@@ -293,6 +293,51 @@ Window frames default to `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, wh
 
 ---
 
+## Date / time component extraction and truncation
+
+```ts
+import { age, count, dateTrunc, extract, typedCol } from "sumak"
+
+// EXTRACT(field FROM expr) — SQL standard, works on all four dialects
+// (the recognised field set varies: YEAR/MONTH/DAY/HOUR/MINUTE/SECOND
+// are portable; PG adds EPOCH, DOW, DOY, ISOYEAR, ISODOW, ...).
+db.selectFrom("events")
+  .select({
+    yr: extract("year", typedCol<Date>("created_at")),
+    mo: extract("month", typedCol<Date>("created_at")),
+    dow: extract("dow", typedCol<Date>("created_at")), // PG-only
+  })
+  .toSQL()
+// SELECT EXTRACT(YEAR FROM "created_at") AS "yr",
+//        EXTRACT(MONTH FROM "created_at") AS "mo",
+//        EXTRACT(DOW FROM "created_at") AS "dow"
+// FROM "events"
+
+// DATE_TRUNC('unit', expr) — PG only. The classic per-bucket aggregate
+// pattern: group rows by truncated month / day / hour.
+const bucket = dateTrunc("month", typedCol<Date>("created_at"))
+db.selectFrom("events")
+  .select({ month: bucket, n: count() })
+  .groupBy(bucket)
+  .orderBy(bucket)
+  .toSQL()
+// SELECT DATE_TRUNC('month', "created_at") AS "month", COUNT(*) AS "n"
+// FROM "events"
+// GROUP BY DATE_TRUNC('month', "created_at")
+// ORDER BY DATE_TRUNC('month', "created_at") ASC
+
+// AGE(end, start) / AGE(start) — PG only. Returns an interval, not a
+// numeric. Wrap with `EXTRACT(EPOCH FROM AGE(...))` to get seconds.
+db.selectFrom("users")
+  .select({ tenure: age(typedCol<Date>("hired_at")) })
+  .toSQL()
+// SELECT AGE("hired_at") AS "tenure" FROM "users"
+```
+
+`dateTrunc` and `age` are PG-only — the printer throws `UnsupportedDialectFeatureError` on MySQL / SQLite / MSSQL. `extract` works on all four dialects for the SQL standard field names; dialect-specific extras (PG's `EPOCH`, `DOW`, `ISOYEAR`) parse on PG and fail at execution time on the others. Reach for `unsafeRawExpr` if you need a portable equivalent (MySQL: `DATE_FORMAT(ts, '%Y-%m-01')`; MSSQL pre-2022: `DATEADD(month, DATEDIFF(month, 0, ts), 0)`; SQLite: `strftime('%Y-%m-01', ts)`).
+
+---
+
 ## EXISTS / NOT EXISTS (correlated subquery)
 
 ```ts

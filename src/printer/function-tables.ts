@@ -109,6 +109,10 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   // Cast / conversion
   "CAST",
   "CONVERT",
+  // Date / time
+  "EXTRACT",
+  "DATE_TRUNC",
+  "AGE",
   // JSON
   "JSON_BUILD_OBJECT",
   "JSONB_BUILD_OBJECT",
