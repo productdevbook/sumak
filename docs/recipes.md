@@ -1063,6 +1063,111 @@ MySQL has `LOCK TABLES name READ|WRITE` but the grammar (no `IN … MODE`, no `N
 
 ---
 
+## Bulk import/export — COPY (PostgreSQL)
+
+PostgreSQL `COPY` moves large amounts of row data between a table (or a SELECT) and a client-streamed channel — orders of magnitude faster than per-row `INSERT`. Sumak emits the statement; the actual row payload is streamed through the connection's COPY protocol by the client driver (e.g. `pg-copy-streams` for the standard `pg` driver). Use it for nightly imports, exports for analytics pipelines, or any "move 10M rows in / out of a table" task.
+
+The first cut covers `STDIN` / `STDOUT` only — server-side file paths require superuser and rarely make sense from application code, and `PROGRAM 'cmd'` runs arbitrary shell on the server. Both are deferred.
+
+### Bulk import — `COPY FROM STDIN`
+
+```ts
+import { copyFrom } from "sumak"
+
+// Plain TEXT format (PG default — tab between fields, "\N" for NULL).
+db.compileDDL(copyFrom("users").build())
+//   COPY "users" FROM STDIN
+
+// CSV with a header row to skip — the common shape for CSV files.
+db.compileDDL(copyFrom("users").csv().header().build())
+//   COPY "users" FROM STDIN WITH (FORMAT csv, HEADER true)
+
+// Subset of columns, custom delimiter, custom NULL token.
+db.compileDDL(copyFrom("users").columns("id", "name", "email").delimiter("|").null("\\N").build())
+//   COPY "users" ("id", "name", "email") FROM STDIN WITH (DELIMITER '|', NULL '\N')
+
+// HEADER MATCH (PG 12+) validates the first row's column names
+// against the column list; the import fails on mismatch.
+db.compileDDL(copyFrom("users").csv().header("MATCH").build())
+//   COPY "users" FROM STDIN WITH (FORMAT csv, HEADER MATCH)
+
+// FREEZE — mark imported tuples as frozen on the way in (skips a
+// later VACUUM FREEZE pass). Requires the target table to have been
+// created or truncated in the same transaction.
+db.compileDDL(copyFrom("users").csv().freeze().build())
+//   COPY "users" FROM STDIN WITH (FORMAT csv, FREEZE)
+```
+
+`db.schema.copyFrom("users")` is the same builder, exposed on the schema-builder for discoverability alongside `createTable`, `dropIndex`, etc.
+
+The driver-side streaming of row data is out of scope for sumak's printer — once `pg.compileDDL(...)` returns `{ sql, params }` you hand that SQL to your COPY-aware driver. For `pg` + `pg-copy-streams` the shape is roughly:
+
+```ts
+import { from as copyFromStream } from "pg-copy-streams"
+import { pipeline } from "node:stream/promises"
+
+const { sql } = db.compileDDL(db.schema.copyFrom("users").csv().header().build())
+await pipeline(fs.createReadStream("users.csv"), client.query(copyFromStream(sql)))
+```
+
+### Bulk export — `COPY TO STDOUT`
+
+```ts
+import { copyTo } from "sumak"
+
+// Whole-table CSV export with a header row.
+db.compileDDL(copyTo("users").csv().header().build())
+//   COPY "users" TO STDOUT WITH (FORMAT csv, HEADER true)
+
+// Filter / transform on the way out via the query form. The inner
+// SELECT routes through the configured printer pipeline — plugins,
+// hooks, normalize, optimize all apply (same model as CREATE VIEW AS
+// SELECT). Crucial for multi-tenant exports: a soft-delete or
+// multi-tenant plugin still scopes the rows.
+db.compileDDL(
+  db.schema
+    .copyTo("users")
+    .query(
+      db
+        .selectFrom("users")
+        .select("id", "email")
+        .where(({ active }) => active.eq(true)),
+    )
+    .csv()
+    .header()
+    .build(),
+)
+//   COPY (SELECT "id", "email" FROM "users" WHERE "active" = true) TO STDOUT
+//     WITH (FORMAT csv, HEADER true)
+```
+
+### Option reference
+
+| Method                             | SQL                                | Notes                                                                       |
+| ---------------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| `.csv()` / `.binary()` / `.text()` | `FORMAT { csv \| binary \| text }` | Default is `TEXT`.                                                          |
+| `.format(value)`                   | `FORMAT <value>`                   | Use when the format comes from config at runtime.                           |
+| `.freeze()`                        | `FREEZE`                           | `COPY FROM`-only. Target table must be created or truncated in the same tx. |
+| `.delimiter(d)`                    | `DELIMITER 'd'`                    | Field separator. Default `\t` (TEXT) or `,` (CSV).                          |
+| `.null(s)`                         | `NULL 's'`                         | Token representing NULL. Default `\N` (TEXT) or `""` (CSV).                 |
+| `.header()` / `.header(true)`      | `HEADER true`                      | Skip (FROM) or emit (TO) one header row.                                    |
+| `.header("MATCH")`                 | `HEADER MATCH`                     | `COPY FROM`-only (PG 12+). Validates header names.                          |
+| `.quote(q)`                        | `QUOTE 'q'`                        | CSV-only at execution time.                                                 |
+| `.escape(e)`                       | `ESCAPE 'e'`                       | CSV-only at execution time.                                                 |
+| `.encoding(enc)`                   | `ENCODING 'enc'`                   | Transcode the data stream.                                                  |
+
+Option strings (`delimiter`, `quote`, `escape`, `null`, `encoding`) are escaped via the same string-literal escaper used for every other DDL literal — embedded `'` characters are doubled, embedded backslashes are duplicated.
+
+### Feature matrix
+
+| Feature | PG  | MySQL                                                    | SQLite                                                  | MSSQL                     |
+| ------- | --- | -------------------------------------------------------- | ------------------------------------------------------- | ------------------------- |
+| `COPY`  | yes | use `LOAD DATA [LOCAL] INFILE` / `SELECT … INTO OUTFILE` | use the `sqlite3` CLI's `.import` / `.export` (not SQL) | use `BULK INSERT` / `bcp` |
+
+`db.compileDDL(...)` on a non-PG dialect throws `UnsupportedDialectFeatureError` with the dialect-native pointer in the message — the dialect's grammar isn't a syntactic re-skin of PG's, so each needs its own AST node. They're deferred for the first cut.
+
+---
+
 ## Default values from runtime context
 
 The `defaults` plugin auto-fills INSERT columns the user omitted by calling a per-column thunk. It is the generic version of the audit plugin (`createdAt` / `updatedAt` / `createdBy` / `updatedBy`): any column, any value provider. Common targets are `tenantId`, `createdBy`, generated UUIDs, or anything that should come from per-request context rather than a SQL `DEFAULT`.

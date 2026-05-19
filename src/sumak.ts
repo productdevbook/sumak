@@ -4,6 +4,7 @@ import type { TclNode } from "./ast/tcl-nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
 import { AlterSequenceBuilder } from "./builder/ddl/alter-sequence.ts"
 import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
+import { CopyFromBuilder, CopyToBuilder } from "./builder/ddl/copy.ts"
 import { CreateIndexBuilder } from "./builder/ddl/create-index.ts"
 import { CreateSequenceBuilder, DropSequenceBuilder } from "./builder/ddl/create-sequence.ts"
 import { CreateTableBuilder } from "./builder/ddl/create-table.ts"
@@ -868,6 +869,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "drop_domain",
   "alter_type_add_value",
   "lock_table",
+  "copy",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1256,6 +1258,52 @@ export class SchemaBuilder {
    */
   lockTable(tables: string | string[]): LockTableBuilder {
     return new LockTableBuilder(tables)
+  }
+
+  /**
+   * PostgreSQL `COPY <table> [(cols)] FROM STDIN [WITH (...)]` — bulk
+   * import direction. The emitted statement opens the COPY protocol
+   * channel; the actual row payload must be streamed by the client
+   * driver. PostgreSQL-only — refuses on MySQL/SQLite/MSSQL with a
+   * pointer at the dialect-native equivalent (`LOAD DATA INFILE` /
+   * `.import` / `BULK INSERT`).
+   *
+   * ```ts
+   * db.compileDDL(db.schema.copyFrom("users").csv().header().build())
+   *   // COPY "users" FROM STDIN WITH (FORMAT csv, HEADER true)
+   * ```
+   */
+  copyFrom(table: string): CopyFromBuilder {
+    return new CopyFromBuilder(table)
+  }
+
+  /**
+   * PostgreSQL `COPY { <table> [(cols)] | (<query>) } TO STDOUT [WITH
+   * (...)]` — bulk export direction. The emitted statement opens the
+   * COPY protocol channel; the actual row payload must be consumed by
+   * the client driver. Same dialect story as {@link copyFrom}.
+   *
+   * The query form (via `.query(selectBuilder)`) routes the embedded
+   * SELECT through the configured printer pipeline — plugins, hooks,
+   * normalize, and optimize all apply just like for
+   * `CREATE VIEW AS SELECT`.
+   *
+   * ```ts
+   * db.compileDDL(db.schema.copyTo("users").csv().header().build())
+   *   // COPY "users" TO STDOUT WITH (FORMAT csv, HEADER true)
+   *
+   * db.compileDDL(
+   *   db.schema
+   *     .copyTo("users")
+   *     .query(db.selectFrom("users").select("id", "email").where(...))
+   *     .csv()
+   *     .build(),
+   * )
+   *   // COPY (SELECT "id", "email" FROM "users" WHERE …) TO STDOUT WITH (FORMAT csv)
+   * ```
+   */
+  copyTo(table: string): CopyToBuilder {
+    return new CopyToBuilder(table)
   }
 }
 

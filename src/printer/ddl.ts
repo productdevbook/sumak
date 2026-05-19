@@ -6,6 +6,7 @@ import type {
   AnalyzeNode,
   ColumnDefinitionNode,
   CommentNode,
+  CopyNode,
   CreateDomainNode,
   CreateExtensionNode,
   CreateIndexNode,
@@ -132,6 +133,8 @@ export class DDLPrinter {
         return this.printAlterTypeAddValue(node)
       case "lock_table":
         return this.printLockTable(node)
+      case "copy":
+        return this.printCopy(node)
     }
   }
 
@@ -1468,6 +1471,197 @@ export class DDLPrinter {
     }
     if (node.noWait) parts.push("NOWAIT")
     return parts.join(" ")
+  }
+
+  /**
+   * Emit `COPY table [(cols)] FROM STDIN [WITH (...)]` or
+   * `COPY { table [(cols)] | (query) } TO STDOUT [WITH (...)]`. PG only —
+   * the printer refuses on every non-PG dialect via `COPY_STMT` and
+   * surfaces a dialect-native pointer (`LOAD DATA INFILE`, `BULK
+   * INSERT`, `.import` / `.export`).
+   *
+   * Validation:
+   *
+   *  - `direction === "from"` requires a table and `source === "STDIN"`.
+   *    The query form is rejected (PG itself doesn't allow it).
+   *  - `direction === "to"` accepts exactly one of `table` / `query`
+   *    (mutually exclusive) and requires `source === "STDOUT"`.
+   *  - Option strings flow through `escapeStringLiteral` to keep the
+   *    `'…'` literal slot tight against injection.
+   *
+   * Options are emitted in a stable order — `FORMAT, FREEZE, DELIMITER,
+   * NULL, HEADER, QUOTE, ESCAPE, ENCODING` — so two builds with the
+   * same inputs serialise identically (handy for test snapshots and
+   * audit-trail diffs).
+   */
+  private printCopy(node: CopyNode): string {
+    if (this.dialect !== "pg") {
+      // Dialect-specific hint at the equivalent surface. The feature
+      // gate would phrase this as "COPY is not supported in mysql"
+      // which is technically accurate but unhelpful — the engine has
+      // an answer to the same question, just under a different name.
+      const hint =
+        this.dialect === "mysql"
+          ? "use LOAD DATA [LOCAL] INFILE for bulk import / SELECT … INTO OUTFILE for bulk export"
+          : this.dialect === "sqlite"
+            ? "use the sqlite3 CLI's .import / .export commands (not SQL)"
+            : "use BULK INSERT for bulk import / bcp for bulk export"
+      throw new UnsupportedDialectFeatureError(this.dialect, `COPY (${hint})`)
+    }
+
+    if (node.direction !== "from" && node.direction !== "to") {
+      throw new Error(
+        `COPY: direction must be "from" or "to" — got "${String(
+          (node as { direction: string }).direction,
+        )}".`,
+      )
+    }
+
+    // Direction-specific source/destination guards. STDIN/STDOUT are
+    // the only legal values; anything else (a hand-rolled AST with a
+    // file path or PROGRAM token) bails up front.
+    if (node.direction === "from") {
+      if (node.source !== "STDIN") {
+        throw new Error(
+          `COPY FROM: source must be "STDIN" (file paths and PROGRAM are deferred) — got "${String(
+            (node as { source: string }).source,
+          )}".`,
+        )
+      }
+      if (node.query) {
+        throw new Error("COPY FROM does not accept a query — pass a table instead.")
+      }
+      if (!node.table) {
+        throw new Error("COPY FROM requires a table — call copyFrom(table) at the call site.")
+      }
+    } else {
+      if (node.source !== "STDOUT") {
+        throw new Error(
+          `COPY TO: source must be "STDOUT" (file paths and PROGRAM are deferred) — got "${String(
+            (node as { source: string }).source,
+          )}".`,
+        )
+      }
+      if (node.table && node.query) {
+        throw new Error("COPY TO: table and query are mutually exclusive — set only one.")
+      }
+      if (!node.table && !node.query) {
+        throw new Error(
+          "COPY TO requires either a table or a query — call copyTo(table) or .query(select) at the call site.",
+        )
+      }
+      if (node.query && node.table?.columns && node.table.columns.length > 0) {
+        // Defensive — `.query()` clears the table side, but a
+        // hand-built AST could still set both. PG would reject the
+        // statement; surface a clearer message here.
+        throw new Error(
+          "COPY TO: column list is only valid with the table form, not the query form.",
+        )
+      }
+    }
+
+    const parts: string[] = ["COPY"]
+
+    if (node.direction === "from" || (node.direction === "to" && node.table)) {
+      const t = node.table!
+      const namePart = quoteIdentifier(t.name, this.dialect)
+      if (t.columns && t.columns.length > 0) {
+        const cols = t.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")
+        parts.push(`${namePart} (${cols})`)
+      } else {
+        parts.push(namePart)
+      }
+    } else {
+      // Query form (only valid for COPY TO). Routes through the
+      // configured SELECT printer so plugins/hooks/normalize/optimize
+      // all apply to the inner query — same model as CREATE VIEW AS
+      // SELECT.
+      parts.push(`(${this.renderSelect(node.query!)})`)
+    }
+
+    parts.push(node.direction === "from" ? "FROM" : "TO")
+    parts.push(node.source)
+
+    if (node.options) {
+      const optsSql = this.formatCopyOptions(node)
+      if (optsSql.length > 0) {
+        parts.push(`WITH (${optsSql.join(", ")})`)
+      }
+    }
+
+    return parts.join(" ")
+  }
+
+  /**
+   * Render the `WITH ( option [, ...] )` payload for a {@link CopyNode}.
+   * Returns the option fragments only (no parens, no `WITH`) so the
+   * caller can decide whether to emit the wrapper. Direction-aware:
+   * `FREEZE` is `COPY FROM`-only, `HEADER MATCH` is `COPY FROM`-only.
+   */
+  private formatCopyOptions(node: CopyNode): string[] {
+    const o = node.options!
+    const out: string[] = []
+
+    if (o.format !== undefined) {
+      switch (o.format) {
+        case "TEXT":
+        case "CSV":
+        case "BINARY":
+          // PG accepts the format token bare without quoting; lowercase
+          // matches the form PG itself prints in `\copy --help` output
+          // and what every COPY example in the docs uses.
+          out.push(`FORMAT ${o.format.toLowerCase()}`)
+          break
+        default:
+          throw new Error(
+            `COPY: format must be one of TEXT / CSV / BINARY — got "${String(
+              (o as { format: string }).format,
+            )}".`,
+          )
+      }
+    }
+
+    if (o.freeze) {
+      if (node.direction !== "from") {
+        throw new Error("COPY: FREEZE is only valid on COPY FROM.")
+      }
+      out.push("FREEZE")
+    }
+
+    if (o.delimiter !== undefined) {
+      out.push(`DELIMITER '${escapeStringLiteral(o.delimiter)}'`)
+    }
+
+    if (o.nullString !== undefined) {
+      out.push(`NULL '${escapeStringLiteral(o.nullString)}'`)
+    }
+
+    if (o.header !== undefined) {
+      if (o.header === "MATCH") {
+        if (node.direction !== "from") {
+          throw new Error("COPY: HEADER MATCH is only valid on COPY FROM.")
+        }
+        out.push("HEADER MATCH")
+      } else if (typeof o.header === "boolean") {
+        out.push(`HEADER ${o.header ? "true" : "false"}`)
+      } else {
+        throw new Error(`COPY: header must be a boolean or "MATCH" — got "${String(o.header)}".`)
+      }
+    }
+
+    if (o.quote !== undefined) {
+      out.push(`QUOTE '${escapeStringLiteral(o.quote)}'`)
+    }
+
+    if (o.escape !== undefined) {
+      out.push(`ESCAPE '${escapeStringLiteral(o.escape)}'`)
+    }
+
+    if (o.encoding !== undefined) {
+      out.push(`ENCODING '${escapeStringLiteral(o.encoding)}'`)
+    }
+
+    return out
   }
 
   /**
