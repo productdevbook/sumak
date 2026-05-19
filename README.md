@@ -597,11 +597,11 @@ db.selectFrom("users")
 ```ts
 import { over, rowNumber, rank, denseRank, lag, lead, ntile, count, sum } from "sumak"
 
-// ROW_NUMBER
+// ROW_NUMBER — number rows within each dept, highest salary first
 db.selectFrom("employees")
-  .select({ DESC: over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary" })),
-    "rn",
-  )
+  .select({
+    rn: over(rowNumber(), (w) => w.partitionBy("dept").orderBy("salary", "DESC")),
+  })
   .toSQL()
 
 // RANK / DENSE_RANK
