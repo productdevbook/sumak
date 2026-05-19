@@ -264,6 +264,17 @@ export const FEATURES = {
   GIST_INDEX: { label: "GIST index", dialects: ["pg"] },
   PARTIAL_INDEX: { label: "partial index (WHERE)", dialects: ["pg", "sqlite"] },
   CASCADE_DROP: { label: "DROP ... CASCADE", dialects: ["pg"] },
+  /**
+   * `COMMENT ON TABLE` / `COMMENT ON COLUMN` (PG syntax) and the
+   * equivalent MySQL forms (`ALTER TABLE … COMMENT = '…'` for table
+   * comments; inline `<col_def> COMMENT '…'` for column comments
+   * inside `CREATE TABLE`). PG and MySQL only — MSSQL uses the
+   * separate `sp_addextendedproperty` stored procedure (out of scope)
+   * and SQLite has no equivalent at all (the keyword is accepted as a
+   * no-op in some grammars but not portably). The DDL printer refuses
+   * on the unsupported dialects rather than emit silent no-ops.
+   */
+  OBJECT_COMMENTS: { label: "COMMENT ON TABLE / COLUMN", dialects: ["pg", "mysql"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {

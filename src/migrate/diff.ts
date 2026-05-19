@@ -2,6 +2,7 @@ import type {
   AlterTableAction,
   AlterTableNode,
   ColumnDefinitionNode,
+  CommentNode,
   CreateIndexNode,
   CreateTableNode,
   DDLNode,
@@ -212,6 +213,19 @@ export function diffSchemas(
     }
   }
 
+  // ── COMMENT ON for newly created tables ───────────────────────
+  // PG's `CREATE TABLE` syntax has no inline comment form, so a table-
+  // or column-level comment on a freshly created table is emitted as a
+  // follow-up `COMMENT ON …` statement. MySQL's DDL printer reads the
+  // inline column-level comment off `ColumnDefinitionNode.comment`
+  // directly (set by `columnDefinitionFromBuilder`) and ignores these
+  // CommentNodes for table-comments-on-create. (Table-comment on
+  // create still emits a separate node — MySQL's printer rewrites it
+  // to `ALTER TABLE … COMMENT = …`; on PG it's the canonical form.)
+  for (const t of createdInOrder) {
+    additive.push(...commentNodesForTable(t, undefined, afterNorm[t]!))
+  }
+
   // ── ALTER (per shared table) ──────────────────────────────────
   const columnRenames = opts.renames?.columns ?? {}
   // Normalize typeMigrations entries to bare `ExpressionNode` — the
@@ -409,7 +423,86 @@ function diffTable(
     } satisfies AlterTableNode)
   }
   for (const n of indexDelta.added) result.additive.push(n)
+
+  // ── COMMENT ON diff for the shared table ──────────────────────
+  // Comment changes never qualify as destructive — they're metadata
+  // only — so they always land on the additive side.
+  for (const n of commentNodesForTable(name, before, after)) result.additive.push(n)
   return result
+}
+
+/**
+ * Compute the {@link CommentNode}s needed to bring the comment state
+ * of a single table from `before` to `after`. Handles both the
+ * table-level comment and per-column comments (only for columns that
+ * appear in both before and after — added/removed columns carry their
+ * comments through the create/alter column path on MySQL and through
+ * a follow-up CommentNode on PG via the "created table" branch).
+ *
+ * Passing `before === undefined` switches the function into "freshly
+ * created table" mode: every non-empty comment in `after` is emitted
+ * as a CommentNode.
+ *
+ * Returns `[]` when the comment state already matches — including
+ * "both sides unset," "both sides equal," and "MySQL inline-only
+ * column comments without a table change" (the inline form lives on
+ * `ColumnDefinitionNode.comment` instead, handled at print time).
+ */
+function commentNodesForTable(
+  name: string,
+  before: NormalizedTable | undefined,
+  after: NormalizedTable,
+): CommentNode[] {
+  const out: CommentNode[] = []
+  // Table-level comment.
+  const beforeTableComment = before?.comment
+  const afterTableComment = after.comment
+  if (beforeTableComment !== afterTableComment) {
+    out.push({
+      type: "comment_on",
+      target: "table",
+      tableName: name,
+      comment: afterTableComment ?? null,
+    })
+  }
+
+  // Per-column comments. On the create path (before === undefined) we
+  // emit a CommentNode for every column that has a non-empty comment.
+  // On the alter path we only emit when the value changed; columns that
+  // exist on only one side are out of scope here (their comment travels
+  // with the add/drop column action's column definition).
+  if (before === undefined) {
+    for (const [col, builder] of Object.entries(after.columns)) {
+      const c = builder._def.comment
+      if (c !== undefined) {
+        out.push({
+          type: "comment_on",
+          target: "column",
+          tableName: name,
+          columnName: col,
+          comment: c,
+        })
+      }
+    }
+    return out
+  }
+
+  for (const [col, builder] of Object.entries(after.columns)) {
+    const beforeBuilder = before.columns[col]
+    if (!beforeBuilder) continue // added column — comment travels with the add_column action
+    const beforeComment = beforeBuilder._def.comment
+    const afterComment = builder._def.comment
+    if (beforeComment !== afterComment) {
+      out.push({
+        type: "comment_on",
+        target: "column",
+        tableName: name,
+        columnName: col,
+        comment: afterComment ?? null,
+      })
+    }
+  }
+  return out
 }
 
 // ── Index diff / materialization ──────────────────────────────────────
@@ -581,6 +674,12 @@ function columnDefinitionFromBuilder(
         ? { expression: def.generated.expression }
         : { expression: def.generated.expression, stored: def.generated.stored }
   }
+  // Per-column comment. The MySQL DDL printer reads this inline inside
+  // `CREATE TABLE`; the PG printer leaves it out of `CREATE TABLE` and
+  // the diff engine emits a follow-up CommentNode in its place (see
+  // commentNodesForTable). Setting the field on both paths is fine —
+  // the inline-vs-standalone choice happens at print time.
+  if (def.comment !== undefined) node.comment = def.comment
   return node
 }
 
@@ -717,11 +816,11 @@ function normalizeSchema(schema: SchemaDef): Record<string, NormalizedTable> {
   const out: Record<string, NormalizedTable> = {}
   for (const [name, entry] of Object.entries(schema)) {
     if (isTableDefinition(entry)) {
-      out[name] = buildNormalized(entry.columns, entry.constraints, entry.indexes)
+      out[name] = buildNormalized(entry.columns, entry.constraints, entry.indexes, entry.comment)
       continue
     }
     if (isNormalizedTable(entry)) {
-      out[name] = buildNormalized(entry.columns, entry.constraints, entry.indexes)
+      out[name] = buildNormalized(entry.columns, entry.constraints, entry.indexes, entry.comment)
       continue
     }
     out[name] = { columns: entry }
@@ -733,10 +832,12 @@ function buildNormalized(
   columns: Record<string, ColumnBuilder<any, any, any>>,
   constraints: TableConstraints | undefined,
   indexes: readonly IndexDef[] | undefined,
+  comment: string | undefined,
 ): NormalizedTable {
   const out: NormalizedTable = { columns }
   if (constraints) (out as { constraints?: TableConstraints }).constraints = constraints
   if (indexes) (out as { indexes?: readonly IndexDef[] }).indexes = indexes
+  if (comment !== undefined) (out as { comment?: string }).comment = comment
   return out
 }
 

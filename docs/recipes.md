@@ -269,6 +269,58 @@ The predicate is part of the index's identity: change the `where` clause and the
 
 ---
 
+## Schema comments
+
+Schema-level prose lives in the database, not just the code. PostgreSQL and MySQL both expose comments on tables and columns; sumak surfaces both via the schema DSL and threads the value through `diffSchemas` so a comment edit shows up as a normal additive migration step.
+
+Declare on the column or table:
+
+```ts
+const users = defineTable(
+  "users",
+  {
+    id: serial().primaryKey(),
+    email: text().notNull().comment("Primary contact; case-folded on insert"),
+    deletedAt: timestamp().nullable().comment("NULL = live; set by softDelete plugin"),
+  },
+  {
+    comment: "User accounts (renamed from old_users in v1.2)",
+  },
+)
+```
+
+Emitted SQL (PG — two statements per object):
+
+```sql
+CREATE TABLE "users" (
+  "id" SERIAL PRIMARY KEY,
+  "email" text NOT NULL,
+  "deletedAt" timestamp
+);
+COMMENT ON TABLE "users" IS 'User accounts (renamed from old_users in v1.2)';
+COMMENT ON COLUMN "users"."email" IS 'Primary contact; case-folded on insert';
+COMMENT ON COLUMN "users"."deletedAt" IS 'NULL = live; set by softDelete plugin';
+```
+
+MySQL inlines the column comment and uses `ALTER TABLE` for the table-level form:
+
+```sql
+CREATE TABLE `users` (
+  `id` integer PRIMARY KEY AUTO_INCREMENT,
+  `email` text NOT NULL COMMENT 'Primary contact; case-folded on insert',
+  `deletedAt` timestamp COMMENT 'NULL = live; set by softDelete plugin'
+);
+ALTER TABLE `users` COMMENT = 'User accounts (renamed from old_users in v1.2)';
+```
+
+Editing a comment after the table already exists is metadata-only — the diff never trips the destructive-gate. Passing a `null` comment to `diffSchemas`' machinery (via dropping the `.comment(...)` call on the column) emits `COMMENT ON … IS NULL` on PG and `ALTER TABLE … COMMENT = ''` on MySQL.
+
+Single quotes in the comment text are escaped automatically (doubled `''`), so `text().comment("Alice's note")` prints `COMMENT 'Alice''s note'` on every supported dialect.
+
+**Dialect support.** PG and MySQL only. SQLite has no portable equivalent — its grammar accepts the keyword in some dialects but treats it as a no-op comment in the DDL text, which is silent-loss territory. MSSQL exposes object metadata via the separate `sp_addextendedproperty` stored procedure, which is a completely different surface; sumak refuses to bridge it under the `COMMENT ON` builder. Compile a `CommentNode` against SQLite or MSSQL and `compileDDL` throws `UnsupportedDialectFeatureError` (`OBJECT_COMMENTS` feature flag). MySQL also refuses the standalone _column_-comment form because the underlying `ALTER TABLE … MODIFY COLUMN` requires the column's full type at modification time — use the inline `.comment("…")` on the column when defining the table instead.
+
+---
+
 ## Multi-tenant scoping
 
 ```ts

@@ -254,7 +254,7 @@ export type {
 } from "./ast/nodes.ts"
 
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
-export type { DDLNode, CreateSchemaNode, DropSchemaNode } from "./ast/ddl-nodes.ts"
+export type { CommentNode, CreateSchemaNode, DDLNode, DropSchemaNode } from "./ast/ddl-nodes.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"

@@ -75,6 +75,16 @@ export interface ColumnDef {
     onDelete?: ForeignKeyAction
     onUpdate?: ForeignKeyAction
   }
+  /**
+   * Optional human-readable comment attached to the column. Set via
+   * `.comment("…")` on the column builder; threaded onto
+   * {@link ColumnDefinitionNode.comment} by the diff engine and into
+   * either a standalone {@link CommentNode} (PG) or an inline `COMMENT
+   * 'text'` clause inside `CREATE TABLE` (MySQL) at print time. SQLite
+   * and MSSQL refuse via `UnsupportedDialectFeatureError`. See
+   * {@link FEATURES.OBJECT_COMMENTS}.
+   */
+  readonly comment?: string
 }
 
 export class ColumnBuilder<S, I = S, U = I> {
@@ -253,6 +263,27 @@ export class ColumnBuilder<S, I = S, U = I> {
   check(expr: Expression<boolean> | string, opts?: { name?: string }): ColumnBuilder<S, I, U> {
     const check = normalizeCheck(expr, opts?.name)
     return new ColumnBuilder(this._def.dataType, { ...this._def, check })
+  }
+
+  /**
+   * Attach a human-readable comment to this column. Surfaces as a
+   * `COMMENT ON COLUMN "tbl"."col" IS '…'` statement on PG and as an
+   * inline `COMMENT '…'` clause inside `CREATE TABLE` on MySQL. SQLite
+   * and MSSQL refuse at print time — SQLite has no equivalent at all
+   * and MSSQL uses the separate `sp_addextendedproperty` surface that
+   * sumak doesn't bridge.
+   *
+   * ```ts
+   * email: text().notNull().comment("Primary contact; case-folded on insert")
+   * ```
+   *
+   * The comment string is escaped for safe embedding in the SQL
+   * literal — embedded single quotes are doubled. The diff engine
+   * treats comment changes as additive (no destructive flag) so adding
+   * or editing a comment never trips the destructive-gate.
+   */
+  comment(text: string): ColumnBuilder<S, I, U> {
+    return new ColumnBuilder(this._def.dataType, { ...this._def, comment: text })
   }
 }
 
