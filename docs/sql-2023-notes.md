@@ -27,9 +27,12 @@ The `WindowBuilder` exposes:
 - `partitionBy(...)`, `orderBy(...)`, `rows()` / `range()` / `groups()` frames.
 - Frame bounds: `unbounded_preceding`, `preceding N`, `current_row`, `following N`, `unbounded_following`.
 
+**Supported SQL:2003+ extensions:**
+
+- **Named `WINDOW` clause** — `SELECT … WINDOW w AS (PARTITION BY x), w2 AS (w ORDER BY y)`. Register a window once via `.window(name, build)` on the SELECT builder, then reference it from multiple `over(fn, name)` calls. Includes window inheritance (`.window("w2", b => b.orderBy("y"), { from: "w" })`). AST: `SelectNode.windows: NamedWindow[]` + `WindowFunctionNode.windowName?: string`. The printer emits `WINDOW name AS (...)` between HAVING and ORDER BY on PG / MySQL / SQLite; MSSQL throws `UnsupportedDialectFeatureError` because SQL Server has no `WINDOW` clause. ✅
+
 **SQL:2023 additions we don't have:**
 
-- **Named `WINDOW` clause** — `SELECT … WINDOW w AS (PARTITION BY x), w2 AS (w ORDER BY y)`. Lets you reuse window definitions across multiple window-function calls without copy-paste. Currently each `over(…)` carries its own window spec. AST would need a `windows: NamedWindow[]` slot on `SelectNode` plus a `WindowRef` node that lookup-resolves at print time.
 - **`EXCLUDE { CURRENT ROW | GROUP | TIES | NO OTHERS }`** frame-exclude clause. The `FrameSpec` type has no `exclude` field.
 - **`PERCENTILE_CONT` / `PERCENTILE_DISC`** (inverse distribution aggregates with `WITHIN GROUP`) — these are technically pre-2023 (introduced in 2003) but still missing. PG supports them natively; would need a `withinGroup()` builder method.
 
@@ -59,4 +62,4 @@ These are all standardized but uniformly opt-in across DB engines — adding bui
 
 ## Summary
 
-Sumak's coverage is roughly "core SQL:2016 + vendor-portable parts of SQL:2023". The named `WINDOW` clause and `JSON_TABLE` are the two most-likely-to-be-requested gaps; everything else is either niche or trivially reachable via `unsafeRawExpr`. If you find a gap that affects your use case, open an issue with the exact statement you want to compile and the dialect — that pins down the AST change needed.
+Sumak's coverage is roughly "core SQL:2016 + vendor-portable parts of SQL:2023". `JSON_TABLE` and frame-`EXCLUDE` are the two most-likely-to-be-requested remaining gaps; everything else is either niche or trivially reachable via `unsafeRawExpr`. If you find a gap that affects your use case, open an issue with the exact statement you want to compile and the dialect — that pins down the AST change needed.

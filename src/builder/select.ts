@@ -3,6 +3,7 @@ import type {
   CTENode,
   ExpressionNode,
   JoinNode,
+  NamedWindow,
   OrderByNode,
   QueryFlags as QueryFlagsType,
   SelectNode,
@@ -211,6 +212,19 @@ export class SelectBuilder {
   with(name: string, query: SelectNode, recursive = false): SelectBuilder {
     const cte: CTENode = { name, query, recursive }
     return new SelectBuilder({ ...this.node, ctes: [...this.node.ctes, cte] })
+  }
+
+  /**
+   * Register a named WINDOW definition on this SELECT. The spec is
+   * appended to `node.windows`; later `over(fn, name)` calls reference
+   * it. Each call appends — re-using the same `name` later does not
+   * replace the earlier entry, which keeps the AST a pure record of
+   * caller intent (the printer will reject duplicates upstream when we
+   * grow that guard).
+   */
+  window(entry: NamedWindow): SelectBuilder {
+    const existing = this.node.windows ?? []
+    return new SelectBuilder({ ...this.node, windows: [...existing, entry] })
   }
 
   union(query: SelectNode): SelectBuilder {

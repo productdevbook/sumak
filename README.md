@@ -625,6 +625,26 @@ over(count(), (w) =>
 over(lag(col.price, 1), (w) => w.orderBy("date"))
 over(lead(col.price, 1), (w) => w.orderBy("date"))
 over(ntile(4), (w) => w.orderBy("salary", "DESC"))
+
+// Named WINDOW — register a spec once on the SELECT, reference it from
+// multiple OVER calls. SQL:2003 idiom; supported on PG / MySQL / SQLite.
+// MSSQL has no `WINDOW` clause and throws at compile time.
+db.selectFrom("sales")
+  .window("w", (b) => b.partitionBy("region").orderBy("date"))
+  .select({
+    rn: over(rowNumber(), "w"),
+    running: over(sum(col.amount), "w"),
+  })
+// → SELECT ROW_NUMBER() OVER "w", SUM("amount") OVER "w" FROM "sales"
+//   WINDOW "w" AS (PARTITION BY "region" ORDER BY "date" ASC)
+
+// Window inheritance: w2 extends w
+db.selectFrom("sales")
+  .window("w", (b) => b.partitionBy("region"))
+  .window("w2", (b) => b.orderBy("date"), { from: "w" })
+  .select({ r: over(rank(), "w2") })
+// → WINDOW "w" AS (PARTITION BY "region"),
+//   "w2" AS ("w" ORDER BY "date" ASC)
 ```
 
 ---

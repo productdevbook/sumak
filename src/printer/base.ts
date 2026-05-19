@@ -22,6 +22,7 @@ import type {
   JoinNode,
   JsonAccessNode,
   LiteralNode,
+  NamedWindow,
   OnConflictNode,
   OrderByNode,
   ParamNode,
@@ -166,6 +167,13 @@ export class BasePrinter implements Printer {
 
     if (node.having) {
       parts.push("HAVING", this.printExpression(node.having))
+    }
+
+    // `WINDOW name AS (...)` lives between HAVING and ORDER BY in the
+    // PG / MySQL / SQLite grammars (per SQL:2003). Skip it when empty so
+    // existing inline-spec queries are unchanged.
+    if (node.windows && node.windows.length > 0) {
+      parts.push("WINDOW", this.printNamedWindows(node.windows))
     }
 
     // SET OP ordering is tricky: in standard SQL, `ORDER BY / LIMIT / OFFSET`
@@ -934,6 +942,17 @@ export class BasePrinter implements Printer {
     }
     parts.push("OVER")
 
+    // Named-window reference: `OVER <name>` — partitionBy/orderBy/frame
+    // on this node are ignored even if non-empty; the actual spec lives
+    // on the enclosing SelectNode's `windows` entry.
+    if (node.windowName !== undefined) {
+      parts.push(quoteIdentifier(node.windowName, this.dialect))
+      if (node.alias) {
+        parts.push("AS", quoteIdentifier(node.alias, this.dialect))
+      }
+      return parts.join(" ")
+    }
+
     const overParts: string[] = []
     if (node.partitionBy.length > 0) {
       overParts.push(
@@ -953,6 +972,38 @@ export class BasePrinter implements Printer {
       parts.push("AS", quoteIdentifier(node.alias, this.dialect))
     }
     return parts.join(" ")
+  }
+
+  /**
+   * Emit the comma-separated list inside the `WINDOW` clause on a
+   * SELECT. Each entry renders as `<name> AS (<spec>)`, where the
+   * inner spec is the same PG-grammar `[ basename ] [ PARTITION BY ]
+   * [ ORDER BY ] [ frame ]` we use for inline OVER specs.
+   *
+   * Window inheritance: when `baseName` is set the spec opens with
+   * the base name as a bare identifier — `w2 AS (w ORDER BY "y")`.
+   * The DB validates the combination at parse (a derived window can't
+   * redeclare PARTITION BY, etc.); we copy intent verbatim.
+   */
+  protected printNamedWindows(windows: NamedWindow[]): string {
+    return windows.map((w) => this.printNamedWindow(w)).join(", ")
+  }
+
+  protected printNamedWindow(w: NamedWindow): string {
+    const inner: string[] = []
+    if (w.baseName !== undefined) {
+      inner.push(quoteIdentifier(w.baseName, this.dialect))
+    }
+    if (w.partitionBy.length > 0) {
+      inner.push(`PARTITION BY ${w.partitionBy.map((p) => this.printExpression(p)).join(", ")}`)
+    }
+    if (w.orderBy.length > 0) {
+      inner.push(`ORDER BY ${w.orderBy.map((o) => this.printOrderBy(o)).join(", ")}`)
+    }
+    if (w.frame) {
+      inner.push(this.printFrameSpec(w.frame))
+    }
+    return `${quoteIdentifier(w.name, this.dialect)} AS (${inner.join(" ")})`
   }
 
   protected printFrameSpec(frame: FrameSpec): string {
