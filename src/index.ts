@@ -307,6 +307,7 @@ export type {
 
 // ─── DDL AST types (for typing `db.compileDDL` / custom DDL flows) ─────────
 export type {
+  AlterSequenceNode,
   CommentNode,
   CreateSchemaNode,
   CreateSequenceNode,
@@ -328,6 +329,7 @@ export {
   DropSequenceBuilder,
   dropSequence,
 } from "./builder/ddl/create-sequence.ts"
+export { AlterSequenceBuilder, alterSequence } from "./builder/ddl/alter-sequence.ts"
 export { TruncateBuilder, truncate, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.

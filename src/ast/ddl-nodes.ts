@@ -516,6 +516,101 @@ export interface DropSequenceNode {
   cascade?: boolean
 }
 
+// ── ALTER SEQUENCE ──
+
+/**
+ * `ALTER SEQUENCE` — change a sequence's properties post-creation. The
+ * common workflows are resetting the current value (`RESTART [WITH n]`),
+ * changing the increment / start, retuning the cache size, or toggling
+ * cycle behaviour. PG and MSSQL both ship the statement; MySQL and
+ * SQLite have no sequence object at all — the printer refuses via the
+ * `SEQUENCES` feature flag.
+ *
+ * Grammar (loose superset across PG and MSSQL):
+ *
+ *     ALTER SEQUENCE [IF EXISTS] <name>
+ *       [AS <int_type>]                        -- PG only on ALTER
+ *       [INCREMENT [BY] <step>]
+ *       [MINVALUE <n> | NO MINVALUE]
+ *       [MAXVALUE <n> | NO MAXVALUE]
+ *       [START [WITH] <n>]                     -- PG only on ALTER
+ *       [RESTART [[WITH] <n>]]
+ *       [CACHE <n> | NO CACHE]                 -- NO CACHE is MSSQL-only
+ *       [CYCLE | NO CYCLE]
+ *       [OWNED BY { table.column | NONE }]     -- PG only
+ *
+ * Divergence the printer handles:
+ *
+ *  - `IF EXISTS` — PG only on `ALTER SEQUENCE`. MSSQL has no first-class
+ *    form on this statement and the printer refuses.
+ *  - `AS <int_type>` — PG only on `ALTER SEQUENCE`. MSSQL has no
+ *    grammar for changing the data type after creation; the printer
+ *    refuses if set there.
+ *  - `START WITH` — PG only on `ALTER SEQUENCE`. MSSQL has no
+ *    equivalent on ALTER (set it at CREATE time or via `RESTART`).
+ *  - `OWNED BY` — PG only.
+ *  - `NO CACHE` — MSSQL form. PG has no `NO CACHE` keyword on ALTER;
+ *    pass `cache: 1` (the implicit minimum) instead.
+ *  - `minValue` / `maxValue`: `null` → `NO MINVALUE` / `NO MAXVALUE`,
+ *    `undefined` → leave unchanged.
+ *  - `cache`: `null` → `NO CACHE` (MSSQL only), `undefined` → leave
+ *    unchanged.
+ *
+ * For the first cut we expose only the option-changing forms — RENAME,
+ * SET SCHEMA, OWNER TO each need a distinct AST shape and are
+ * deferred. PG's `ALTER SEQUENCE … RENAME TO …` etc. live on a
+ * separate roadmap entry.
+ */
+export interface AlterSequenceNode {
+  type: "alter_sequence"
+  name: string
+  schema?: string
+  /**
+   * `IF EXISTS` — PG only on `ALTER SEQUENCE`. MSSQL has no first-class
+   * form; the printer refuses if set on that dialect.
+   */
+  ifExists?: boolean
+  /**
+   * `AS <int_type>` — PG only on `ALTER SEQUENCE`. MSSQL has no
+   * grammar for changing the data type after creation; the printer
+   * refuses if set there.
+   */
+  dataType?: string
+  /** `INCREMENT BY <n>`. Negative values reverse the sequence. */
+  increment?: number
+  /** `MINVALUE <n>` when a number; `null` → `NO MINVALUE`; `undefined` → unchanged. */
+  minValue?: number | null
+  /** `MAXVALUE <n>` when a number; `null` → `NO MAXVALUE`; `undefined` → unchanged. */
+  maxValue?: number | null
+  /**
+   * `START WITH <n>` — PG only on `ALTER SEQUENCE`. Note that PG only
+   * applies this to the sequence's *recorded start*; the next value
+   * produced is still determined by the current sequence state until a
+   * `RESTART` is issued. MSSQL has no `START WITH` clause on `ALTER
+   * SEQUENCE`; the printer refuses if set there.
+   */
+  start?: number
+  /**
+   * `RESTART` (current value reset to the recorded start) or
+   * `RESTART WITH <n>` (current value reset to the given number).
+   * `restart: true` → bare `RESTART`; `restart: { value: n }` →
+   * `RESTART WITH n`; `undefined` → no restart clause emitted.
+   */
+  restart?: true | { value: number }
+  /**
+   * `CACHE <n>` when a number; `null` → `NO CACHE` (MSSQL only — PG
+   * has no `NO CACHE` keyword on ALTER); `undefined` → unchanged.
+   */
+  cache?: number | null
+  /** `CYCLE` when true; `NO CYCLE` when false; `undefined` → unchanged. */
+  cycle?: boolean
+  /**
+   * `OWNED BY <table>.<column> | NONE` — PG only. MSSQL has no
+   * equivalent on ALTER; the printer refuses if set on that dialect.
+   */
+  ownedBy?: { table: string; column: string } | "NONE"
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -533,3 +628,4 @@ export type DDLNode =
   | CommentNode
   | CreateSequenceNode
   | DropSequenceNode
+  | AlterSequenceNode

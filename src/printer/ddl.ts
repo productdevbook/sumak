@@ -1,4 +1,5 @@
 import type {
+  AlterSequenceNode,
   AlterTableNode,
   ColumnDefinitionNode,
   CommentNode,
@@ -85,6 +86,8 @@ export class DDLPrinter {
         return this.printCreateSequence(node)
       case "drop_sequence":
         return this.printDropSequence(node)
+      case "alter_sequence":
+        return this.printAlterSequence(node)
     }
   }
 
@@ -917,6 +920,166 @@ export class DDLPrinter {
     return parts.join(" ")
   }
 
+  /**
+   * Emit `ALTER SEQUENCE [IF EXISTS] <name>
+   *   [AS <type>] [INCREMENT BY n] [MINVALUE n | NO MINVALUE]
+   *   [MAXVALUE n | NO MAXVALUE] [START WITH n] [RESTART [WITH n]]
+   *   [CACHE n | NO CACHE] [CYCLE | NO CYCLE] [OWNED BY t.c | NONE]`.
+   *
+   * Dialect divergence handled here:
+   *
+   *  - `IF EXISTS` — PG only on this statement. MSSQL has no
+   *    first-class form on `ALTER SEQUENCE`; refuse with the same
+   *    wrapper hint we use for `CREATE SEQUENCE`.
+   *  - `AS <type>` — PG only on this statement. MSSQL has no grammar
+   *    for changing the data type after creation.
+   *  - `START WITH <n>` — PG only on this statement. MSSQL has no
+   *    `START WITH` clause on `ALTER SEQUENCE` (use the CREATE-time
+   *    setting, or `RESTART WITH` for value changes).
+   *  - `OWNED BY` — PG only.
+   *  - `NO CACHE` — MSSQL only. PG has no `NO CACHE` keyword on
+   *    ALTER; pass `CACHE 1` (the implicit minimum) instead.
+   *
+   * If no option is set, the statement is meaningless — `ALTER
+   * SEQUENCE <name>` with no clauses is a parse error on both PG and
+   * MSSQL. Refuse early so the caller sees a clear builder-side error
+   * rather than a cryptic database error.
+   */
+  private printAlterSequence(node: AlterSequenceNode): string {
+    assertFeature(this.dialect, "SEQUENCES")
+
+    // MSSQL-only refusals on ALTER SEQUENCE clauses.
+    if (this.dialect === "mssql") {
+      if (node.ifExists) {
+        throw new UnsupportedDialectFeatureError(
+          "mssql",
+          "ALTER SEQUENCE IF EXISTS — wrap in IF EXISTS(SELECT * FROM sys.sequences WHERE name = '…') BEGIN … END",
+        )
+      }
+      if (node.dataType !== undefined) {
+        throw new UnsupportedDialectFeatureError(
+          "mssql",
+          "ALTER SEQUENCE … AS <type> (PG only; MSSQL has no grammar for changing the data type after creation — drop and recreate the sequence)",
+        )
+      }
+      if (node.start !== undefined) {
+        throw new UnsupportedDialectFeatureError(
+          "mssql",
+          "ALTER SEQUENCE … START WITH (PG only; MSSQL has no START WITH clause on ALTER — use .restartWith(n) to reset the current value, or set START WITH at CREATE time)",
+        )
+      }
+      if (node.ownedBy !== undefined) {
+        throw new UnsupportedDialectFeatureError(
+          "mssql",
+          "ALTER SEQUENCE … OWNED BY (PG only; sequences on MSSQL aren't auto-dropped with their column)",
+        )
+      }
+    } else if (node.cache === null) {
+      // `NO CACHE` is MSSQL-only on this statement — PG has no
+      // equivalent keyword on ALTER. Refuse rather than silently emit
+      // SQL that fails at parse time.
+      throw new UnsupportedDialectFeatureError(
+        this.dialect,
+        "ALTER SEQUENCE … NO CACHE (MSSQL only; PG has no NO CACHE keyword on ALTER — use .cache(1) instead)",
+      )
+    }
+
+    // Reject the all-defaults form early — both engines reject an
+    // empty option list at parse, and a clearer error helps the caller
+    // notice a no-op builder chain.
+    if (!this.hasAnyAlterSequenceOption(node)) {
+      throw new Error(
+        "ALTER SEQUENCE requires at least one option — set increment / restart / cache / cycle / etc. before compiling.",
+      )
+    }
+
+    const parts: string[] = ["ALTER SEQUENCE"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(this.qualifiedName(node.name, node.schema))
+
+    if (node.dataType !== undefined) {
+      validateDataType(node.dataType)
+      parts.push("AS", node.dataType)
+    }
+
+    if (node.increment !== undefined) {
+      this.assertFiniteInteger("increment", node.increment)
+      parts.push("INCREMENT BY", String(node.increment))
+    }
+
+    if (node.minValue === null) {
+      parts.push("NO MINVALUE")
+    } else if (node.minValue !== undefined) {
+      this.assertFiniteInteger("minValue", node.minValue)
+      parts.push("MINVALUE", String(node.minValue))
+    }
+
+    if (node.maxValue === null) {
+      parts.push("NO MAXVALUE")
+    } else if (node.maxValue !== undefined) {
+      this.assertFiniteInteger("maxValue", node.maxValue)
+      parts.push("MAXVALUE", String(node.maxValue))
+    }
+
+    if (node.start !== undefined) {
+      this.assertFiniteInteger("start", node.start)
+      parts.push("START WITH", String(node.start))
+    }
+
+    if (node.restart !== undefined) {
+      if (node.restart === true) {
+        parts.push("RESTART")
+      } else {
+        this.assertFiniteInteger("restart", node.restart.value)
+        parts.push("RESTART WITH", String(node.restart.value))
+      }
+    }
+
+    if (node.cache === null) {
+      // Guarded above on non-MSSQL — only MSSQL reaches here.
+      parts.push("NO CACHE")
+    } else if (node.cache !== undefined) {
+      this.assertFiniteInteger("cache", node.cache)
+      parts.push("CACHE", String(node.cache))
+    }
+
+    if (node.cycle === true) parts.push("CYCLE")
+    else if (node.cycle === false) parts.push("NO CYCLE")
+
+    if (node.ownedBy !== undefined) {
+      // Guarded above — only PG reaches here.
+      if (node.ownedBy === "NONE") {
+        parts.push("OWNED BY NONE")
+      } else {
+        parts.push(
+          "OWNED BY",
+          `${quoteIdentifier(node.ownedBy.table, this.dialect)}.${quoteIdentifier(node.ownedBy.column, this.dialect)}`,
+        )
+      }
+    }
+
+    return parts.join(" ")
+  }
+
+  /**
+   * Does the {@link AlterSequenceNode} carry at least one effective
+   * option? Used to refuse the bare `ALTER SEQUENCE <name>` form,
+   * which both engines reject at parse.
+   */
+  private hasAnyAlterSequenceOption(node: AlterSequenceNode): boolean {
+    return (
+      node.dataType !== undefined ||
+      node.increment !== undefined ||
+      node.minValue !== undefined ||
+      node.maxValue !== undefined ||
+      node.start !== undefined ||
+      node.restart !== undefined ||
+      node.cache !== undefined ||
+      node.cycle !== undefined ||
+      node.ownedBy !== undefined
+    )
+  }
+
   /** Shared schema-qualified name helper for sequence DDL. */
   private qualifiedName(name: string, schema?: string): string {
     return schema
@@ -933,7 +1096,7 @@ export class DDLPrinter {
    */
   private assertFiniteInteger(field: string, value: number): void {
     if (!Number.isFinite(value) || !Number.isInteger(value)) {
-      throw new Error(`CREATE SEQUENCE: ${field} must be a finite integer, got ${String(value)}.`)
+      throw new Error(`SEQUENCE: ${field} must be a finite integer, got ${String(value)}.`)
     }
   }
 

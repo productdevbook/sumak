@@ -559,6 +559,28 @@ db.compileDDL(db.schema.dropSequence("order_no").ifExists().cascade().build())
 // PG only: DROP SEQUENCE IF EXISTS "order_no" CASCADE
 ```
 
+### Changing a sequence post-creation — `ALTER SEQUENCE`
+
+Use `alterSequence` when you want to retune a sequence without dropping and recreating it. The most common workflows are resetting the current value with `.restart()` / `.restartWith(n)`, changing the increment, retuning the cache, or toggling cycle behaviour.
+
+```ts
+// Reset the counter so the next nextval returns 1.
+db.compileDDL(db.schema.alterSequence("order_no").restartWith(1).build())
+// PG / MSSQL: ALTER SEQUENCE "order_no" RESTART WITH 1
+
+// Coarsen the step so multiple workers can claim non-overlapping ranges.
+db.compileDDL(db.schema.alterSequence("order_no").increment(10).cache(100).build())
+// PG / MSSQL: ALTER SEQUENCE "order_no" INCREMENT BY 10 CACHE 100
+
+// PG-only — make the sequence safe to leave behind when the owning column drops.
+db.compileDDL(db.schema.alterSequence("order_no").ownedBy("orders", "id").build())
+// PG: ALTER SEQUENCE "order_no" OWNED BY "orders"."id"
+```
+
+`.restart()` is the bare form (resets the current value back to the sequence's recorded start); `.restartWith(n)` resets to an explicit target. `.start(n)` changes the _recorded_ start — used by future bare-`.restart()` calls — without moving the current value. Note that PG-side `.dataType(t)`, `.start(n)`, `.ownedBy(...)`, and `.ifExists()` are all rejected on MSSQL at print time; pass them only when targeting PG. MSSQL has its own `.noCache()` form (PG has no `NO CACHE` keyword on `ALTER SEQUENCE` — pass `.cache(1)`, the implicit minimum, instead). MySQL and SQLite refuse `ALTER SEQUENCE` outright via the `SEQUENCES` feature flag — neither dialect has a sequence object to alter.
+
+For the first cut `alterSequence` only handles the option-changing forms. `RENAME TO`, `SET SCHEMA`, and `OWNER TO` are reachable in PG but rarely needed and need separate AST node variants; reach for `unsafeRaw` if you need them.
+
 ### Runtime access — `nextval` / `currval` / `setval`
 
 On PostgreSQL the three function-shape sequence accessors are the standard idiom. `nextval('seq')` advances the sequence and returns the new value; `currval('seq')` returns the most recent value handed out _in the current session_; `setval('seq', n[, is_called])` sets the sequence's current value (the optional third arg controls whether the next `nextval` returns `n + increment` or `n`).
@@ -614,6 +636,13 @@ The sequence name passed to `nextval` / `currval` / `setval` is captured as a SQ
 | `DROP SEQUENCE`                 | yes | —     | —      | yes   |
 | `DROP SEQUENCE IF EXISTS`       | yes | —     | —      | yes   |
 | `DROP SEQUENCE … CASCADE`       | yes | —     | —      | —     |
+| `ALTER SEQUENCE … RESTART`      | yes | —     | —      | yes   |
+| `ALTER SEQUENCE … INCREMENT`    | yes | —     | —      | yes   |
+| `ALTER SEQUENCE … AS <type>`    | yes | —     | —      | —     |
+| `ALTER SEQUENCE … START WITH`   | yes | —     | —      | —     |
+| `ALTER SEQUENCE … OWNED BY`     | yes | —     | —      | —     |
+| `ALTER SEQUENCE IF EXISTS`      | yes | —     | —      | —     |
+| `ALTER SEQUENCE … NO CACHE`     | —   | —     | —      | yes   |
 | `nextval / currval / setval`    | yes | —     | —      | —     |
 
 ---
