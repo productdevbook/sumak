@@ -173,6 +173,15 @@ export class Sumak<DB> {
   private _driver?: Driver
   private _onQuery?: OnQueryListener
   /**
+   * Extra `onQuery` listeners attached via plugin `setup()`. The
+   * combined listener exposed by {@link onQuery} fans events out to
+   * each entry in registration order, after the user-provided
+   * `config.onQuery`.
+   */
+  private _pluginOnQuery: OnQueryListener[] = []
+  /** Cached combined listener — recomputed when plugins push. */
+  private _combinedOnQuery?: OnQueryListener
+  /**
    * Back-compat flat view: table name → columns map. The rest of the
    * codebase (diff, introspect fallback paths, test helpers) reads
    * tables this way, so we keep it synchronous with `_schema`.
@@ -199,6 +208,15 @@ export class Sumak<DB> {
       rules?: RewriteRule[]
       driver?: Driver
       onQuery?: OnQueryListener
+      /**
+       * Internal: skip `plugin.setup()` calls when this Sumak is a
+       * scoped child (e.g. inside a transaction). The parent already
+       * registered the plugin hooks / listeners on the shared
+       * registry, and the child inherits them. Re-running setup would
+       * double-fire every observer.
+       * @internal
+       */
+      _skipPluginSetup?: boolean
     } = {},
   ) {
     this._dialect = dialect
@@ -222,6 +240,25 @@ export class Sumak<DB> {
           ? pipelineOpts.optimizeQueries
           : {}
     this._customRules = pipelineOpts.rules ?? []
+    // Plugin setup runs after every other Sumak field is wired up so
+    // setup handlers can call `hook(...)` / `addOnQuery(...)` and
+    // observe the same registry the runtime path uses. Scoped tx
+    // children pass `_skipPluginSetup` because the parent already
+    // registered the same plugins — re-running setup would double the
+    // listeners and emit each event twice.
+    if (!pipelineOpts._skipPluginSetup) {
+      for (const p of this._pluginsList) {
+        if (p.setup) {
+          p.setup({
+            hook: (name, handler) => this._hooks.hook(name, handler),
+            addOnQuery: (listener) => {
+              this._pluginOnQuery.push(listener)
+              this._combinedOnQuery = undefined
+            },
+          })
+        }
+      }
+    }
   }
 
   /**
@@ -256,9 +293,36 @@ export class Sumak<DB> {
    * Expose the configured observability listener to the execute
    * helpers. `undefined` when none is set; callers should short-circuit
    * without emitting anything.
+   *
+   * When a plugin has appended its own listener via
+   * `setup({ addOnQuery })`, the returned function fans events out to
+   * the user-provided listener first, then to each plugin listener in
+   * registration order. Thrown errors from any listener are swallowed
+   * so an observability bug never takes down a query.
    */
   onQuery(): OnQueryListener | undefined {
-    return this._onQuery
+    if (this._pluginOnQuery.length === 0) return this._onQuery
+    if (this._combinedOnQuery) return this._combinedOnQuery
+    const own = this._onQuery
+    const plugins = this._pluginOnQuery
+    const combined: OnQueryListener = (event) => {
+      if (own) {
+        try {
+          own(event)
+        } catch {
+          // Same swallow policy as driver/execute.ts emit().
+        }
+      }
+      for (const l of plugins) {
+        try {
+          l(event)
+        } catch {
+          // Same swallow policy as driver/execute.ts emit().
+        }
+      }
+    }
+    this._combinedOnQuery = combined
+    return combined
   }
 
   /**
@@ -273,7 +337,7 @@ export class Sumak<DB> {
       query,
       (r) => this.transformResult(r) as Row[],
       undefined,
-      this._onQuery,
+      this.onQuery(),
     )
     return rows
   }
@@ -284,7 +348,7 @@ export class Sumak<DB> {
    * `{ affected: number }`.
    */
   async executeCompiledNoRows(query: CompiledQuery): Promise<ExecuteResult> {
-    return runExecute(this.driver(), query, undefined, this._onQuery)
+    return runExecute(this.driver(), query, undefined, this.onQuery())
   }
 
   /**
@@ -314,6 +378,7 @@ export class Sumak<DB> {
     opts: TransactionOptions = {},
   ): Promise<T> {
     const driver = this.driver()
+    const combinedOnQuery = this.onQuery()
     return runInTransaction(
       driver,
       this._dialect.name,
@@ -324,14 +389,19 @@ export class Sumak<DB> {
           rules: this._customRules,
           driver: scoped,
           onQuery: this._onQuery,
+          _skipPluginSetup: true,
         })
         // Inherit registered hooks on the scoped instance so the tx
         // block sees the same `result:transform` / `query:before` wiring
-        // the parent does.
+        // the parent does. Plugin-registered `onQuery` listeners ride
+        // along on the same shared array — the parent already
+        // populated it from `setup()`, and the scoped child must see
+        // the same observations the parent does.
         scopedDb._hooks = this._hooks
+        scopedDb._pluginOnQuery = this._pluginOnQuery
         return fn(scopedDb)
       },
-      { ...opts, onQuery: this._onQuery },
+      { ...opts, onQuery: combinedOnQuery },
     )
   }
 

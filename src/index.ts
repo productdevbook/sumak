@@ -245,6 +245,7 @@ export {
   camelCase,
   caslAuthz,
   dataMasking,
+  debugLogger,
   defaults,
   multiTenant,
   normalizeStrings,
@@ -256,13 +257,14 @@ export {
   withSchema,
 } from "./plugin/factories.ts"
 export type { CaslAuthzConfig, SubjectTypeConfig } from "./plugin/factories.ts"
+export type { DebugLogEntry, DebugLoggerConfig, DebugLogPhase } from "./plugin/debug-logger.ts"
 export type { DefaultsConfig, DefaultThunk, TableDefaults } from "./plugin/defaults.ts"
 export type {
   NormalizeStringsConfig,
   NormalizeTransform,
   NormalizeTransformSpec,
 } from "./plugin/normalize-strings.ts"
-export type { ResultContext, SumakPlugin } from "./plugin/types.ts"
+export type { ResultContext, SumakPlugin, SumakPluginSetupContext } from "./plugin/types.ts"
 export type { Validator, ValidatorsConfig } from "./plugin/validators.ts"
 
 // ─── CASL integration — opt-in utility path (no plugin required) ───────────
