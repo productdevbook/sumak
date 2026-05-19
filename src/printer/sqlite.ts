@@ -244,6 +244,17 @@ export class SqlitePrinter extends BasePrinter {
     if (upper === "REGEXP_SUBSTR") {
       assertFeature("sqlite", "REGEXP_SUBSTR_FN")
     }
+    // SQLite has no `OVERLAY` — there's no native substring-replace
+    // by position. (The standard idiom on SQLite is `SUBSTR(target, 1,
+    // from - 1) || replacement || SUBSTR(target, from + count)`, but
+    // there's no single function that expresses it.) Refuse so the
+    // failure points at the builder call. The base printer also catches
+    // the marked-overlay form via OVERLAY_FN, but a bare `sqlFn("OVERLAY",
+    // ...)` (comma-arg form) would slip past — gate on the function name
+    // here too.
+    if (upper === "OVERLAY") {
+      assertFeature("sqlite", "OVERLAY_FN")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently

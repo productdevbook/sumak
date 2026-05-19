@@ -1419,6 +1419,161 @@ export function length(expr: Expression<string>): Expression<number> {
 }
 
 /**
+ * `REPLACE(haystack, needle, replacement)` — non-regex substring
+ * replace. Replaces every occurrence of `needle` in `haystack` with
+ * `replacement`. All four dialects support the standard three-arg
+ * shape with identical semantics. For pattern-based replacement reach
+ * for {@link regexpReplace} instead.
+ *
+ * ```ts
+ * replace(typedCol<string>("body"), val("foo"), val("bar"))
+ *   // REPLACE("body", $1, $2)
+ * ```
+ *
+ * NULL handling: PG/MSSQL return NULL when any argument is NULL;
+ * MySQL/SQLite likewise. There's no dialect divergence on the
+ * 3-arg form.
+ */
+export function replace(
+  haystack: Expression<string>,
+  needle: Expression<string>,
+  replacement: Expression<string>,
+): Expression<string> {
+  return wrap(
+    rawFn("REPLACE", [(haystack as any).node, (needle as any).node, (replacement as any).node]),
+  )
+}
+
+/**
+ * `POSITION(needle IN haystack)` — 1-based index of the first
+ * occurrence of `needle` in `haystack`, or 0 when not found. SQL
+ * standard form. PG, MySQL, and SQLite emit the `IN`-keyword form
+ * natively. MSSQL has no `POSITION` keyword grammar — the MSSQL
+ * printer translates the same builder call into `CHARINDEX(needle,
+ * haystack)`, which has identical 1-based-or-0 semantics.
+ *
+ * Note the argument order: **needle first, haystack second** — this
+ * matches the SQL standard `POSITION(<substring> IN <string>)`
+ * grammar (and MSSQL's `CHARINDEX(<substring>, <string>)`). It's
+ * the opposite of JavaScript's `String.prototype.indexOf`, which
+ * has the haystack as the receiver. SQLite's `INSTR(haystack,
+ * needle)` is the only common-name function with the haystack first
+ * — sumak emits the standard form and lets each dialect translate.
+ *
+ * ```ts
+ * position(val("@"), typedCol<string>("email"))
+ *   // PG / MySQL / SQLite: POSITION($1 IN "email")
+ *   // MSSQL:               CHARINDEX(@p0, [email])
+ * ```
+ */
+export function position(
+  needle: Expression<string>,
+  haystack: Expression<string>,
+): Expression<number> {
+  const fnNode: FunctionCallNode = {
+    type: "function_call",
+    name: "POSITION",
+    args: [(needle as any).node, (haystack as any).node],
+    isPositionCall: true,
+  }
+  return wrap<number>(fnNode)
+}
+
+/**
+ * `OVERLAY(target PLACING replacement FROM from [FOR count])` —
+ * replace `count` characters of `target` starting at 1-based position
+ * `from` with `replacement`. SQL standard form. When `count` is
+ * omitted, dialects default to the length of `replacement` (so a
+ * same-length swap leaves the surrounding text untouched).
+ *
+ * ```ts
+ * overlay(typedCol<string>("phone"), val("***"), 4, 3)
+ *   // PG / MySQL 8 / MSSQL: OVERLAY("phone" PLACING $1 FROM 4 FOR 3)
+ * ```
+ *
+ * Dialect support (via {@link OVERLAY_FN}):
+ * - **PG** — full support.
+ * - **MSSQL 2017+** — accepts the standard form 1:1.
+ * - **MySQL 8 (8.0.4+)** — accepts the standard form 1:1.
+ * - **SQLite** — no equivalent function; the printer refuses (the
+ *   SQLite idiom is a hand-rolled `SUBSTR(target, 1, from - 1) ||
+ *   replacement || SUBSTR(target, from + count)`).
+ *
+ * `from` and `count` are emitted as integer literals rather than
+ * parameters — they're typically constants and inlining keeps the
+ * statement-cache key stable when only the haystack varies.
+ */
+export function overlay(
+  target: Expression<string>,
+  replacement: Expression<string>,
+  from: number,
+  count?: number,
+): Expression<string> {
+  const args: ExpressionNode[] = [(target as any).node, (replacement as any).node, rawLit(from)]
+  if (count !== undefined) args.push(rawLit(count))
+  const fnNode: FunctionCallNode = {
+    type: "function_call",
+    name: "OVERLAY",
+    args,
+    isOverlayCall: true,
+  }
+  return wrap(fnNode)
+}
+
+/**
+ * `LTRIM(expr [, chars])` — strip leading characters from `expr`.
+ * With no `chars` argument, strips ASCII whitespace (every dialect
+ * defaults to space / tab / newline). With `chars` provided, strips
+ * any character that appears in the `chars` set (set semantics —
+ * order doesn't matter, it's not prefix-matching).
+ *
+ * ```ts
+ * ltrim(typedCol<string>("name"))             // LTRIM("name")
+ * ltrim(typedCol<string>("name"), val("0 "))  // LTRIM("name", $1)
+ * ```
+ *
+ * All four dialects support both shapes — PG (`ltrim(text [, text])`),
+ * MySQL (`LTRIM(str [, remstr])`, 8.0.28+ for the 2-arg form; older
+ * MySQL only accepts the 1-arg whitespace-strip), SQLite (`ltrim(X,
+ * Y)`), MSSQL 2022+ (the 2-arg form; older MSSQL only has 1-arg). The
+ * SQL is emitted identically on every dialect; engine-version
+ * mismatch on the 2-arg form surfaces at execution.
+ */
+export function ltrim(expr: Expression<string>, chars?: Expression<string>): Expression<string> {
+  const args: ExpressionNode[] = [(expr as any).node]
+  if (chars !== undefined) args.push((chars as any).node)
+  return wrap(rawFn("LTRIM", args))
+}
+
+/**
+ * `RTRIM(expr [, chars])` — strip trailing characters from `expr`.
+ * Mirror of {@link ltrim}; same dialect / version caveats apply.
+ *
+ * ```ts
+ * rtrim(typedCol<string>("name"))             // RTRIM("name")
+ * rtrim(typedCol<string>("name"), val("0 "))  // RTRIM("name", $1)
+ * ```
+ */
+export function rtrim(expr: Expression<string>, chars?: Expression<string>): Expression<string> {
+  const args: ExpressionNode[] = [(expr as any).node]
+  if (chars !== undefined) args.push((chars as any).node)
+  return wrap(rawFn("RTRIM", args))
+}
+
+/**
+ * `REVERSE(expr)` — return the input string with character order
+ * reversed. All four dialects ship the function under this name
+ * (PG built-in, MySQL built-in, MSSQL built-in, SQLite 3.0+).
+ *
+ * ```ts
+ * reverse(val("abc"))   // REVERSE($1) — evaluates to 'cba'
+ * ```
+ */
+export function reverse(expr: Expression<string>): Expression<string> {
+  return wrap(rawFn("REVERSE", [(expr as any).node]))
+}
+
+/**
  * `REGEXP_REPLACE(haystack, pattern, replacement[, flags])` — search
  * `haystack` for matches of `pattern` and substitute `replacement`.
  *

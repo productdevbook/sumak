@@ -102,6 +102,8 @@ export const STANDARD_FUNCTIONS: ReadonlySet<string> = new Set([
   "CHAR_LENGTH",
   "REPLACE",
   "POSITION",
+  "OVERLAY",
+  "REVERSE",
   // Regex
   "REGEXP_REPLACE",
   "REGEXP_LIKE",

@@ -122,6 +122,31 @@ export interface FunctionCallNode {
    * this slot at print time.
    */
   extractField?: string
+  /**
+   * SQL standard `POSITION(<needle> IN <haystack>)` marker. The form
+   * uses an `IN` keyword inside the call instead of a comma, so the
+   * regular argument-printing path produces invalid SQL. When this
+   * flag is set the base printer emits the IN-keyword form
+   * `POSITION(args[0] IN args[1])`; MSSQL has no native `POSITION`
+   * so its printer translates the same node into `CHARINDEX(needle,
+   * haystack)` (regular function call, same 1-based-or-0 semantics).
+   *
+   * Only meaningful when `name === "POSITION"`; other function names
+   * ignore this slot at print time.
+   */
+  isPositionCall?: boolean
+  /**
+   * SQL standard `OVERLAY(<target> PLACING <replacement> FROM <from>
+   * [FOR <count>])` marker. The form uses `PLACING` / `FROM` / `FOR`
+   * keywords inside the call instead of commas. When this flag is set
+   * the base printer emits the keyword form; PG, MSSQL, and MySQL 8
+   * accept it natively. SQLite has no equivalent and the SQLite
+   * printer refuses via {@link OVERLAY_FN}.
+   *
+   * Only meaningful when `name === "OVERLAY"`; other function names
+   * ignore this slot at print time.
+   */
+  isOverlayCall?: boolean
   alias?: string
 }
 

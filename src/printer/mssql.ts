@@ -579,6 +579,19 @@ export class MssqlPrinter extends BasePrinter {
       }
       return result
     }
+    // MSSQL has no `POSITION(needle IN haystack)` form. The native
+    // equivalent is `CHARINDEX(needle, haystack)`, which has the same
+    // 1-based result and 0 on a miss. Rewrite the marked node into a
+    // regular function call so the base printer emits the comma form
+    // without the IN keyword. Arg order matches POSITION's
+    // (needle, haystack) — CHARINDEX uses the same.
+    if (node.isPositionCall) {
+      return super.printFunctionCall({
+        ...node,
+        name: "CHARINDEX",
+        isPositionCall: false,
+      })
+    }
     if (node.filter) {
       throw new UnsupportedDialectFeatureError(
         "mssql",

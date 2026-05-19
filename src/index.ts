@@ -132,6 +132,15 @@ export type { DateIntervalUnit } from "./builder/eb.ts"
 // SQLite (with the regexp extension), `regexpSubstr` is PG/MySQL.
 export { regexpReplace, regexpLike, regexpMatches, regexpSubstr } from "./builder/eb.ts"
 
+// ─── String manipulation helpers ───────────────────────────────────────────
+// Typed string functions sitting alongside the flat `upper` / `lower` /
+// `concat` / `substring` / `trim` / `length` (which are surfaced via the
+// `str` namespace). `overlay` is PG/MySQL 8/MSSQL only (SQLite refuses);
+// `position` is PG/MySQL/SQLite natively + MSSQL via printer translation
+// to `CHARINDEX`. The remaining four (`replace`, `ltrim`, `rtrim`,
+// `reverse`) are portable across all four dialects.
+export { replace, position, overlay, ltrim, rtrim, reverse } from "./builder/eb.ts"
+
 // ─── Full-text search & JSON helpers (stable subset) ───────────────────────
 export {
   textSearch,
