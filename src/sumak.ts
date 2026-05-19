@@ -835,6 +835,7 @@ const DDL_NODE_TYPES = new Set<string>([
   "truncate_table",
   "create_schema",
   "drop_schema",
+  "comment_on",
 ])
 
 function isDDLNode(node: { type: string }): boolean {

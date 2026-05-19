@@ -1,6 +1,7 @@
 import type {
   AlterTableNode,
   ColumnDefinitionNode,
+  CommentNode,
   CreateIndexNode,
   CreateSchemaNode,
   CreateTableNode,
@@ -67,6 +68,8 @@ export class DDLPrinter {
         return this.printCreateSchema(node)
       case "drop_schema":
         return this.printDropSchema(node)
+      case "comment_on":
+        return this.printCommentOn(node)
     }
   }
 
@@ -207,6 +210,16 @@ export class DDLPrinter {
     if (col.generatedAs) {
       parts.push("GENERATED ALWAYS AS", `(${this.printExpr(col.generatedAs.expression)})`)
       if (col.generatedAs.stored) parts.push("STORED")
+    }
+    // Inline column comment — MySQL only. PG has no inline form in
+    // `CREATE TABLE`; the diff engine emits a follow-up `COMMENT ON
+    // COLUMN` statement instead, so we leave the field alone on PG.
+    // SQLite / MSSQL silently drop the inline comment (they're refused
+    // at the standalone-CommentNode path; including the inline form in
+    // CREATE TABLE would be a parse error or a no-op depending on the
+    // engine, so we omit on those dialects too).
+    if (col.comment !== undefined && this.dialect === "mysql") {
+      parts.push("COMMENT", `'${escapeStringLiteral(col.comment)}'`)
     }
     return parts.join(" ")
   }
@@ -581,6 +594,47 @@ export class DDLPrinter {
       parts.push("CASCADE")
     }
     return parts.join(" ")
+  }
+
+  private printCommentOn(node: CommentNode): string {
+    // PG and MySQL only — SQLite has no equivalent, MSSQL uses the
+    // separate `sp_addextendedproperty` stored-procedure surface that
+    // sumak doesn't bridge. Refuse loudly rather than ship a no-op or
+    // half-correct SQL.
+    if (this.dialect === "sqlite" || this.dialect === "mssql") {
+      // MSSQL gets a pointer at the right escape hatch in the error
+      // message; SQLite has no equivalent at all and the generic label
+      // covers it.
+      assertFeature(this.dialect, "OBJECT_COMMENTS")
+    }
+    const literal = node.comment === null ? "NULL" : `'${escapeStringLiteral(node.comment)}'`
+
+    if (this.dialect === "pg") {
+      if (node.target === "table") {
+        return `COMMENT ON TABLE ${quoteIdentifier(node.tableName, this.dialect)} IS ${literal}`
+      }
+      // Column comment: requires the column name.
+      if (!node.columnName) {
+        throw new Error("CommentNode target='column' requires columnName — got undefined.")
+      }
+      return `COMMENT ON COLUMN ${quoteIdentifier(node.tableName, this.dialect)}.${quoteIdentifier(node.columnName, this.dialect)} IS ${literal}`
+    }
+
+    // MySQL path. For table comments the idiomatic form is `ALTER
+    // TABLE … COMMENT = '…'`. For column comments MySQL has no
+    // standalone statement — `ALTER TABLE … MODIFY COLUMN <col> <type>
+    // COMMENT '…'` requires knowing the column's current type, which
+    // we don't carry through to this layer. Refuse at print time and
+    // point the caller at the inline form on CREATE TABLE / the
+    // typed-builder ALTER COLUMN path (future work).
+    if (node.target === "table") {
+      const valueLiteral = node.comment === null ? "''" : `'${escapeStringLiteral(node.comment)}'`
+      return `ALTER TABLE ${quoteIdentifier(node.tableName, this.dialect)} COMMENT = ${valueLiteral}`
+    }
+    throw new UnsupportedDialectFeatureError(
+      "mysql",
+      "standalone COMMENT ON COLUMN (MySQL requires ALTER TABLE … MODIFY COLUMN <name> <type> COMMENT '…' with the column's full type; use the inline `.comment(\"…\")` form on the column when defining the table instead)",
+    )
   }
 
   private printExpr(node: import("../ast/nodes.ts").ExpressionNode): string {

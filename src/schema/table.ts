@@ -94,6 +94,15 @@ export interface IndexDef {
 export interface TableOptions {
   readonly constraints?: TableConstraints
   readonly indexes?: readonly IndexDef[]
+  /**
+   * Human-readable comment attached to the table itself. Surfaces as
+   * `COMMENT ON TABLE "tbl" IS '…'` on PG and as `ALTER TABLE … COMMENT
+   * = '…'` on MySQL (MySQL also accepts the comment inline in `CREATE
+   * TABLE`, but sumak's standalone CommentNode emits the ALTER form so
+   * the diff path is uniform across "create" vs "edit"). SQLite and
+   * MSSQL refuse at print time. See {@link FEATURES.OBJECT_COMMENTS}.
+   */
+  readonly comment?: string
 }
 
 export interface TableDefinition<
@@ -107,6 +116,7 @@ export interface TableDefinition<
   readonly columns: TColumns
   readonly constraints?: TableConstraints
   readonly indexes?: readonly IndexDef[]
+  readonly comment?: string
 }
 
 /**
@@ -143,7 +153,9 @@ export function defineTable<
   const withIndexes = options?.indexes
     ? { ...withConstraints, indexes: options.indexes }
     : withConstraints
-  return Object.freeze(withIndexes)
+  const withComment =
+    options?.comment !== undefined ? { ...withIndexes, comment: options.comment } : withIndexes
+  return Object.freeze(withComment)
 }
 
 // ── Runtime helpers ───────────────────────────────────────────────────
@@ -160,6 +172,8 @@ export interface NormalizedTable {
   readonly columns: Record<string, ColumnBuilder<any, any, any>>
   readonly constraints?: TableConstraints
   readonly indexes?: readonly IndexDef[]
+  /** Table-level comment; same surface as {@link TableOptions.comment}. */
+  readonly comment?: string
 }
 
 const TABLE_DEF_MARKERS = ["name", "columns"] as const
@@ -191,6 +205,7 @@ export function normalizeTableEntry(
     if (entry.constraints)
       (out as { constraints?: TableConstraints }).constraints = entry.constraints
     if (entry.indexes) (out as { indexes?: readonly IndexDef[] }).indexes = entry.indexes
+    if (entry.comment !== undefined) (out as { comment?: string }).comment = entry.comment
     return out
   }
   return { columns: entry }

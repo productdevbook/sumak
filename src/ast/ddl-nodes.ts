@@ -33,6 +33,18 @@ export interface ColumnDefinitionNode {
     expression: ExpressionNode
     stored?: boolean
   }
+  /**
+   * Optional human-readable comment attached to the column. PG and MySQL
+   * both support comments on columns. On MySQL the comment is emitted
+   * **inline** in `CREATE TABLE` (`<col_def> COMMENT 'text'`); on PG the
+   * `CREATE TABLE` syntax has no inline form and the DDL printer leaves
+   * this field out of `CREATE TABLE` — the diff engine emits a separate
+   * {@link CommentNode} instead. SQLite has no equivalent at all (its
+   * SQL grammar accepts the keyword but only as a no-op comment in the
+   * DDL text); MSSQL uses `sp_addextendedproperty`, a separate surface
+   * we don't bridge. See {@link FEATURES.OBJECT_COMMENTS}.
+   */
+  comment?: string
 }
 
 // ── Table Constraints ──
@@ -229,6 +241,35 @@ export interface DropSchemaNode {
   cascade?: boolean
 }
 
+// ── COMMENT ON TABLE / COLUMN ──
+
+/**
+ * Standalone object-comment statement — PG's `COMMENT ON TABLE` /
+ * `COMMENT ON COLUMN`, also lowered to MySQL's `ALTER TABLE … COMMENT
+ * = 'text'` for table comments at print time. Used by the migration
+ * diff engine when a comment is added, changed, or cleared on an
+ * already-existing schema object; new tables fold the comment back
+ * into the per-column field on MySQL and emit a follow-up CommentNode
+ * on PG.
+ *
+ * - `target: "table"` → comment refers to `tableName`; `columnName`
+ *   must be undefined.
+ * - `target: "column"` → comment refers to `tableName.columnName`;
+ *   `columnName` is required.
+ * - `comment: null` → drop the comment (PG emits `IS NULL`; MySQL
+ *   emits `COMMENT = ''` for the table form).
+ *
+ * SQLite has no equivalent and the DDL printer refuses. MSSQL uses
+ * `sp_addextendedproperty` — also refused for the first cut.
+ */
+export interface CommentNode {
+  type: "comment_on"
+  target: "table" | "column"
+  tableName: string
+  columnName?: string
+  comment: string | null
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -242,3 +283,4 @@ export type DDLNode =
   | TruncateTableNode
   | CreateSchemaNode
   | DropSchemaNode
+  | CommentNode
