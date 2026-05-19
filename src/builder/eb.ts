@@ -738,7 +738,7 @@ export class CaseBuilder<T> {
       // expression — `CASE END` and `CASE ELSE … END` are both syntax
       // errors. Surface the bug at the builder call rather than at
       // `toSQL()` time where the stack trace points at the printer.
-      throw new Error(
+      throw new InvalidExpressionError(
         "case_().end() — CASE requires at least one .when(cond, result) before .end().",
       )
     }
@@ -1205,7 +1205,7 @@ function buildQuantified<T>(
     node.type !== "literal" &&
     node.type !== "raw"
   ) {
-    throw new Error(
+    throw new InvalidExpressionError(
       `${quantifier}(…) operand must be a subquery, array literal, or array param; got ${node.type}.`,
     )
   }
