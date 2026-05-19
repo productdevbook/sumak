@@ -340,6 +340,12 @@ export class MysqlPrinter extends BasePrinter {
    * Rewrite is possible with `CASE WHEN ... THEN value END` but it
    * changes semantics subtly for `COUNT` vs `COUNT(expr)`; refuse
    * instead and point the caller at the manual rewrite.
+   *
+   * Also refuses MySQL-absent SQL:2016 JSON functions. MySQL 8 has
+   * `JSON_EXTRACT` (closest to `JSON_QUERY`) and `JSON_CONTAINS_PATH`
+   * (closest to `JSON_EXISTS`, but takes a `'one'`/`'all'` flag), and
+   * neither name parses as a function in MySQL. Refuse with a clear
+   * error rather than emit SQL that fails at parse time.
    */
   protected override printFunctionCall(node: FunctionCallNode): string {
     if (node.filter) {
@@ -347,6 +353,13 @@ export class MysqlPrinter extends BasePrinter {
         "mysql",
         "FILTER (WHERE ...) aggregate clause (rewrite as COUNT(CASE WHEN ... THEN 1 END) or SUM(CASE ...))",
       )
+    }
+    const upper = node.name.toUpperCase()
+    if (upper === "JSON_QUERY") {
+      assertFeature("mysql", "JSON_QUERY_FN")
+    }
+    if (upper === "JSON_EXISTS") {
+      assertFeature("mysql", "JSON_EXISTS_FN")
     }
     return super.printFunctionCall(node)
   }

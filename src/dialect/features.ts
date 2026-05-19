@@ -139,6 +139,24 @@ export const FEATURES = {
    * missing-vs-null semantics) and the printer refuses.
    */
   JSON_VALUE_FN: { label: "JSON_VALUE function", dialects: ["pg", "mysql", "mssql"] },
+  /**
+   * `JSON_QUERY(json_expr, '$.path' [RETURNING type])` — SQL:2016
+   * JSON-typed extraction (returns JSON / JSONB rather than a coerced
+   * scalar). PG 17+ accepts both the bare and `RETURNING` forms;
+   * MSSQL accepts only the bare form (its `JSON_QUERY` always returns
+   * nvarchar). MySQL 8 has no `JSON_QUERY` — `JSON_EXTRACT` is the
+   * closest fit. SQLite has no equivalent at all.
+   */
+  JSON_QUERY_FN: { label: "JSON_QUERY function", dialects: ["pg", "mssql"] },
+  /**
+   * `JSON_EXISTS(json_expr, '$.path')` — SQL:2016 boolean predicate
+   * that returns TRUE when the path resolves to a value in the JSON
+   * document. PG 17+, MSSQL accept the standard syntax. MySQL has
+   * `JSON_CONTAINS_PATH` with different argument shape (no native
+   * `JSON_EXISTS`), and SQLite has nothing equivalent — both refuse
+   * via this flag.
+   */
+  JSON_EXISTS_FN: { label: "JSON_EXISTS function", dialects: ["pg", "mssql"] },
 
   // ── Full-text search ──────────────────────────────────────────────
   FTS_TSVECTOR: { label: "to_tsvector / to_tsquery", dialects: ["pg"] },

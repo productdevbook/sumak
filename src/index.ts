@@ -113,7 +113,14 @@ export { excluded } from "./builder/eb.ts"
 export { now, currentTimestamp } from "./builder/eb.ts"
 
 // ─── Full-text search & JSON helpers (stable subset) ───────────────────────
-export { textSearch, jsonRef, jsonBuildObject, jsonValue } from "./builder/eb.ts"
+export {
+  textSearch,
+  jsonRef,
+  jsonBuildObject,
+  jsonValue,
+  jsonQuery,
+  jsonExists,
+} from "./builder/eb.ts"
 
 // ─── JSON optics (composable, typed JSON navigation) ───────────────────────
 export { JsonOptic, JsonExpr, jsonCol, jsonExpr } from "./builder/json-optics.ts"

@@ -809,6 +809,81 @@ export function jsonValue<T = unknown>(
 }
 
 /**
+ * `JSON_QUERY(json_expr, '$.path' [RETURNING type])` — SQL:2016
+ * JSON-returning sibling of {@link jsonValue}. Where `JSON_VALUE`
+ * coerces the extracted value to a SQL scalar (text by default),
+ * `JSON_QUERY` returns a JSON-typed value — useful when the path
+ * resolves to an object or array.
+ *
+ * ```ts
+ * jsonQuery(body, "$.address")
+ *   // JSON_QUERY("body", '$.address')
+ *
+ * jsonQuery(body, "$.tags", { returning: "jsonb" })
+ *   // JSON_QUERY("body", '$.tags' RETURNING jsonb)  -- PG 17+
+ * ```
+ *
+ * Dialect support: PG 17+ (bare + RETURNING) and MSSQL (bare only —
+ * MSSQL's `JSON_QUERY` always returns nvarchar). MySQL 8 has no
+ * `JSON_QUERY` (use `JSON_EXTRACT`); SQLite has nothing equivalent.
+ * The printer refuses on MySQL / SQLite via the {@link JSON_QUERY_FN}
+ * flag; MSSQL refuses the `returning` clause via the same
+ * `returningType` guard used for `JSON_VALUE`.
+ *
+ * The empty / error handlers (`NULL ON EMPTY`, `EMPTY ARRAY ON
+ * ERROR`, etc.) and `WRAPPER` / `KEEP QUOTES` clauses from the full
+ * SQL:2016 grammar are not surfaced here — write the raw clause via
+ * `unsafeRawExpr` if needed.
+ */
+export function jsonQuery<T = unknown>(
+  jsonExpr: Expression<any> | Col<any>,
+  path: string,
+  opts?: { returning?: string },
+): Expression<T> {
+  const node = jsonExpr instanceof Col ? jsonExpr._node : (jsonExpr as Expression<any>).node
+  const fnNode: FunctionCallNode = {
+    type: "function_call",
+    name: "JSON_QUERY",
+    args: [node, rawLit(path)],
+  }
+  if (opts?.returning !== undefined) {
+    fnNode.returningType = opts.returning
+  }
+  return wrap<T>(fnNode)
+}
+
+/**
+ * `JSON_EXISTS(json_expr, '$.path')` — SQL:2016 boolean predicate
+ * that returns TRUE when the path resolves to a value in the JSON
+ * document. Closer to `column ? 'key'` on PG (existence test) than
+ * to `JSON_VALUE`/`JSON_QUERY` (extraction).
+ *
+ * ```ts
+ * .where(() => jsonExists(body, "$.email"))
+ *   // WHERE JSON_EXISTS("body", '$.email')
+ * ```
+ *
+ * Dialect support: PG 17+ and MSSQL accept the standard form. MySQL
+ * 8 has `JSON_CONTAINS_PATH(json, 'one'|'all', '$.path', …)` with a
+ * different argument shape, so this builder refuses on MySQL
+ * (callers wanting that semantics should write it via `sqlFn`).
+ * SQLite has no equivalent at all.
+ *
+ * No `RETURNING` clause — the result is always boolean.
+ */
+export function jsonExists(
+  jsonExpr: Expression<any> | Col<any>,
+  path: string,
+): Expression<boolean> {
+  const node = jsonExpr instanceof Col ? jsonExpr._node : (jsonExpr as Expression<any>).node
+  return wrap<boolean>({
+    type: "function_call",
+    name: "JSON_EXISTS",
+    args: [node, rawLit(path)],
+  })
+}
+
+/**
  * JSON access operator: expr->path, expr->>path, etc.
  *
  * ```ts
