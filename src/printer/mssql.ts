@@ -719,6 +719,29 @@ export class MssqlPrinter extends BasePrinter {
     ) {
       assertFeature("mssql", "PG_ARRAY_FNS")
     }
+    // MSSQL has no `BIT_AND` / `BIT_OR` / `BIT_XOR` aggregates — T-SQL
+    // exposes only the per-row bitwise operators (`&`, `|`, `^`), no
+    // multi-row reduction. Refuse via the dedicated flags so the failure
+    // points at the builder.
+    if (upper === "BIT_AND" || upper === "BIT_OR") {
+      assertFeature("mssql", "BIT_AGGREGATES")
+    }
+    if (upper === "BIT_XOR") {
+      assertFeature("mssql", "BIT_XOR_AGG")
+    }
+    // MSSQL has no `BOOL_AND` / `BOOL_OR` aggregates. Booleans round-
+    // trip as `bit` in T-SQL; the portable workaround is
+    // `MIN(CAST(b AS int))` / `MAX(CAST(b AS int))`. Refuse with a
+    // pointer at the workaround.
+    if (upper === "BOOL_AND" || upper === "BOOL_OR") {
+      assertFeature("mssql", "BOOL_AGGREGATES")
+    }
+    // MSSQL has no `NTH_VALUE` window function. `FIRST_VALUE` and
+    // `LAST_VALUE` exist and pass through; `NTH_VALUE` refuses via the
+    // dedicated flag.
+    if (upper === "NTH_VALUE") {
+      assertFeature("mssql", "NTH_VALUE_FN")
+    }
     return super.printFunctionCall(node)
   }
 

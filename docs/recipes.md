@@ -189,6 +189,49 @@ import { coalesce, corr, val } from "sumak"
 db.selectFrom("features").select({ corrSafe: coalesce(corr(typedCol("y"), typedCol("x")), val(0)) })
 ```
 
+### Bitwise and boolean aggregates
+
+`bitAnd` / `bitOr` reduce an integer column with the matching bitwise operator — useful for flag-mask folds ("common bits across the group", "any-bit-set mask"). `bitXor` is the parity fold. `boolAnd` / `boolOr` are the boolean equivalent — TRUE iff every / at least one row's flag is set.
+
+```ts
+import { bitAnd, bitOr, bitXor, boolAnd, boolOr, typedCol } from "sumak"
+
+db.selectFrom("perms")
+  .select("user_id")
+  .select({
+    commonBits: bitAnd(typedCol<number>("flags")),
+    unionBits: bitOr(typedCol<number>("flags")),
+    allAdmin: boolAnd(typedCol<boolean>("is_admin")),
+    anyAdmin: boolOr(typedCol<boolean>("is_admin")),
+  })
+  .groupBy("user_id")
+  .toSQL()
+
+// SELECT "user_id",
+//   BIT_AND("flags") AS "commonBits",
+//   BIT_OR("flags")  AS "unionBits",
+//   BOOL_AND("is_admin") AS "allAdmin",
+//   BOOL_OR("is_admin")  AS "anyAdmin"
+// FROM "perms" GROUP BY "user_id"
+```
+
+Dialect support diverges sharply on these — keep the matrix in mind:
+
+| Function  | PG  | MySQL | SQLite | MSSQL |
+| --------- | --- | ----- | ------ | ----- |
+| `bitAnd`  | Y   | Y     | 3.44+  | N     |
+| `bitOr`   | Y   | Y     | 3.44+  | N     |
+| `bitXor`  | N\* | Y     | N      | N     |
+| `boolAnd` | Y   | N     | 3.45+  | N     |
+| `boolOr`  | Y   | N     | 3.45+  | N     |
+
+\* PG 14+ does ship a native `bit_xor` aggregate, but the matrix only lists MySQL because older PG versions parse it as a UDF lookup that surfaces as a runtime error. PG 14+ callers who want the built-in can reach for `sqlFn("BIT_XOR", expr)` to bypass the flag.
+
+For the unsupported dialects, fall back to:
+
+- **MSSQL** `BIT_AND` / `BIT_OR` — no built-in; combine `MIN`/`MAX` with the per-row `&` / `|` operators if you can flatten the input to a single column.
+- **MySQL / MSSQL** `BOOL_AND` / `BOOL_OR` — `MIN(CAST(b AS int))` / `MAX(CAST(b AS int))` returns 0 or 1 with identical semantics.
+
 ---
 
 ## Soft delete on the read path
@@ -663,6 +706,59 @@ db.selectFrom("orders")
 ```
 
 Window frames default to `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, which is "all rows up to and including ties on the ORDER BY column". `.rows(...)` is the row-count-anchored version — usually what you want for a running total. The difference matters when the ORDER BY column has ties.
+
+### Window-value functions — `firstValue` / `lastValue` / `nthValue`
+
+`firstValue(expr)`, `lastValue(expr)`, and `nthValue(expr, n)` pick a positional value from the window frame. Useful for opening/closing prices, leaderboard winners, "Nth row in the partition" style projections. They're window-only — must be wrapped in `over(...)`.
+
+```ts
+import { firstValue, lastValue, nthValue, over, typedCol } from "sumak"
+
+const price = typedCol<number>("price")
+
+db.selectFrom("ticks")
+  .select("id", "price", {
+    opening: over(firstValue(price), (w) => w.partitionBy("symbol").orderBy("ts")),
+    closing: over(lastValue(price), (w) =>
+      w
+        .partitionBy("symbol")
+        .orderBy("ts")
+        .rows({ type: "unbounded_preceding" }, { type: "unbounded_following" }),
+    ),
+    third: over(nthValue(price, 3), (w) =>
+      w
+        .partitionBy("symbol")
+        .orderBy("ts")
+        .rows({ type: "unbounded_preceding" }, { type: "unbounded_following" }),
+    ),
+  })
+  .toSQL()
+
+// SELECT id, "price",
+//        FIRST_VALUE("price") OVER (PARTITION BY "symbol" ORDER BY "ts") AS "opening",
+//        LAST_VALUE("price")  OVER (PARTITION BY "symbol" ORDER BY "ts"
+//                                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS "closing",
+//        NTH_VALUE("price", 3) OVER (PARTITION BY "symbol" ORDER BY "ts"
+//                                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS "third"
+// FROM "ticks"
+```
+
+**Frame-default footgun.** `lastValue` and `nthValue` interact with the _default_ frame (`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`) in a way that surprises every SQL user the first time:
+
+- `lastValue(price)` with the default frame returns the _current row's_ price (the "last" so far), not the partition's actual closing price.
+- `nthValue(price, 3)` returns NULL for the first two rows (the frame hasn't reached row 3 yet), then row 3's value for row 3 and beyond — not the same as "row 3's value, broadcast to every row".
+
+To get the "real" last / Nth value across the whole partition, set the frame to `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` as in the example above. `firstValue` is immune — the first row is the first row regardless of frame.
+
+Dialect support:
+
+| Function     | PG  | MySQL | SQLite | MSSQL |
+| ------------ | --- | ----- | ------ | ----- |
+| `firstValue` | Y   | 8+    | 3.25+  | Y     |
+| `lastValue`  | Y   | 8+    | 3.25+  | Y     |
+| `nthValue`   | Y   | 8+    | 3.25+  | N     |
+
+`nthValue` has no MSSQL equivalent (T-SQL's `OFFSET FETCH` is row-based, not window-frame-based) — the printer refuses with `UnsupportedDialectFeatureError`.
 
 ---
 

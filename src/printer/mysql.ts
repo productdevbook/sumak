@@ -433,6 +433,14 @@ export class MysqlPrinter extends BasePrinter {
     ) {
       assertFeature("mysql", "PG_ARRAY_FNS")
     }
+    // MySQL has `BIT_AND` / `BIT_OR` / `BIT_XOR` natively — pass through.
+    // It has *no* `BOOL_AND` / `BOOL_OR` aggregates (its booleans are
+    // TINYINT(1), and the closest fit is `MIN(b)` / `MAX(b)` after the
+    // implicit 0/1 coercion — but the standard names don't exist as
+    // built-ins). Refuse so the failure points at the builder.
+    if (upper === "BOOL_AND" || upper === "BOOL_OR") {
+      assertFeature("mysql", "BOOL_AGGREGATES")
+    }
     return super.printFunctionCall(node)
   }
 
