@@ -49,6 +49,12 @@ export class MysqlPrinter extends BasePrinter {
         `${node.insertMode} (SQLite-only syntax — use onDuplicateKeyUpdate, or raw \`INSERT IGNORE\` via sql.unsafe)`,
       )
     }
+    if (node.overriding) {
+      // MySQL has no `OVERRIDING` clause. AUTO_INCREMENT columns
+      // accept user values directly, so this clause is also semantically
+      // unnecessary — refuse with a hint rather than silently emit it.
+      assertFeature("mysql", "INSERT_OVERRIDING")
+    }
 
     let sql = super.printInsert(node)
 

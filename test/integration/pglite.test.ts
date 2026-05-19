@@ -247,6 +247,45 @@ describe("PGlite Integration — INSERT", () => {
     const result = await run(q)
     expect(result.rows.length).toBe(0)
   })
+
+  it("INSERT OVERRIDING SYSTEM VALUE — inserts user-supplied value into GENERATED ALWAYS column", async () => {
+    // Create a fresh table with an identity column declared
+    // GENERATED ALWAYS — PG normally rejects user-provided values for
+    // such columns. With OVERRIDING SYSTEM VALUE the INSERT is allowed
+    // to bypass that protection. We use raw SQL for setup because the
+    // schema layer does not yet expose `GENERATED ALWAYS AS IDENTITY`.
+    await pg.exec(`
+      CREATE TABLE orders_gen_always (
+        id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        customer_id INTEGER NOT NULL
+      )
+    `)
+
+    // Sanity check: without OVERRIDING this would fail.
+    const ordersDb = sumak({
+      dialect: pgDialect(),
+      tables: {
+        orders_gen_always: {
+          id: integer().primaryKey(),
+          customer_id: integer().notNull(),
+        },
+      },
+    })
+    const ordersPrinter = ordersDb.printer()
+
+    const insertWithOverride = ordersDb
+      .insertInto("orders_gen_always")
+      .values({ id: 7000, customer_id: 1 })
+      .overridingSystemValue()
+      .returningAll()
+      .compile(ordersPrinter)
+
+    expect(insertWithOverride.sql).toContain("OVERRIDING SYSTEM VALUE")
+    const result = await run(insertWithOverride)
+    expect(result.rows.length).toBe(1)
+    expect(result.rows[0].id).toBe(7000)
+    expect(result.rows[0].customer_id).toBe(1)
+  })
 })
 
 describe("PGlite Integration — UPDATE", () => {

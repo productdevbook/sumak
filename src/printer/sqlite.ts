@@ -49,6 +49,13 @@ export class SqlitePrinter extends BasePrinter {
         "WITH RECURSIVE in INSERT (SQLite allows recursive CTEs only in SELECT)",
       )
     }
+    if (node.overriding) {
+      // SQLite has no OVERRIDING clause and no SQL-standard identity
+      // columns either — `INTEGER PRIMARY KEY` rowid columns accept
+      // user-supplied values directly, so the clause is unnecessary
+      // and would not parse.
+      assertFeature("sqlite", "INSERT_OVERRIDING")
+    }
     return super.printInsert(node)
   }
 

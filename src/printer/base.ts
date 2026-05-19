@@ -245,6 +245,14 @@ export class BasePrinter implements Printer {
       parts.push(`(${node.columns.map((c) => quoteIdentifier(c, this.dialect)).join(", ")})`)
     }
 
+    // SQL:2003 `OVERRIDING { SYSTEM | USER } VALUE` sits between the
+    // column list and the VALUES / SELECT source. The base printer
+    // emits it unconditionally; dialect overrides gate availability
+    // via the `INSERT_OVERRIDING` feature flag before super-calling.
+    if (node.overriding) {
+      parts.push(`OVERRIDING ${node.overriding} VALUE`)
+    }
+
     if (node.defaultValues) {
       parts.push("DEFAULT VALUES")
     } else if (node.source) {
