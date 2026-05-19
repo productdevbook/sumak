@@ -542,6 +542,21 @@ export const FEATURES = {
    * PostgreSQL only. MySQL has a different statement; MSSQL uses table hints.
    */
   LOCK_TABLE_STMT: { label: "LOCK TABLE", dialects: ["pg"] },
+  /**
+   * `COPY table FROM STDIN` / `COPY { table | (query) } TO STDOUT`
+   * — PostgreSQL only as a SQL statement. MySQL has `LOAD DATA
+   * INFILE` (file-path + character-set surface, a different AST
+   * shape); SQLite uses CLI shell commands (`.import` / `.export`)
+   * which aren't SQL at all; MSSQL has `BULK INSERT` and the `bcp`
+   * utility, again a separate surface. The printer refuses on
+   * non-PG with a pointer at the dialect-native equivalent.
+   *
+   * Scope of the first cut: `STDIN` / `STDOUT` only (no `PROGRAM`,
+   * no server-side file paths) and the high-value options (`FORMAT`,
+   * `FREEZE`, `DELIMITER`, `NULL`, `HEADER`, `QUOTE`, `ESCAPE`,
+   * `ENCODING`).
+   */
+  COPY_STMT: { label: "COPY", dialects: ["pg"] },
 
   // ── TCL (transactions) ────────────────────────────────────────────
   TX_ISOLATION_INLINE: {

@@ -1185,6 +1185,170 @@ export interface LockTableNode {
   noWait?: boolean
 }
 
+// ── COPY (bulk import / export) ──
+
+/**
+ * PostgreSQL `COPY` — bulk row transfer between a table (or a SELECT)
+ * and a client-streamed `STDIN` / `STDOUT` channel. The fast path for
+ * loading or extracting large data sets — orders of magnitude faster
+ * than per-row `INSERT` because PG bypasses the SQL planner per row and
+ * batches the parse / write into a binary protocol message.
+ *
+ * Two directions share the same node:
+ *
+ *  - `direction: "from"` — `COPY table [(cols)] FROM STDIN [WITH (...)]`.
+ *    Requires {@link table}; {@link query} is rejected. The client side
+ *    (sumak's driver layer) is responsible for streaming row data into
+ *    the connection's COPY protocol channel after the statement is
+ *    issued. The printer only emits the statement itself.
+ *  - `direction: "to"` — `COPY { table [(cols)] | (query) } TO STDOUT
+ *    [WITH (...)]`. Accepts either a table (with optional column list)
+ *    or an embedded SELECT — the query form is the only way to filter,
+ *    join, or transform on the way out. {@link source} must be
+ *    `STDOUT`.
+ *
+ * Grammar (loose superset across PG):
+ *
+ *     COPY table [ (col [, ...]) ]
+ *       FROM STDIN
+ *       [ [ WITH ] ( option [, ...] ) ]
+ *
+ *     COPY { table [ (col [, ...]) ] | (query) }
+ *       TO STDOUT
+ *       [ [ WITH ] ( option [, ...] ) ]
+ *
+ *     where option is one of:
+ *       FORMAT { TEXT | CSV | BINARY }
+ *       FREEZE [ boolean ]
+ *       DELIMITER 'd'
+ *       NULL 'string'
+ *       HEADER [ MATCH | boolean ]
+ *       QUOTE 'q'
+ *       ESCAPE 'e'
+ *       ENCODING 'enc'
+ *
+ * Scope of the first cut:
+ *
+ *  - **`STDIN` / `STDOUT` only.** Server-side file paths require
+ *    superuser and are rarely usable from client code; `PROGRAM 'cmd'`
+ *    runs arbitrary shell on the server and is a security hazard. Both
+ *    are deferred — the printer rejects any other source/destination at
+ *    compile time.
+ *  - **PostgreSQL only.** MySQL has `LOAD DATA INFILE` (a different
+ *    statement with file-path / character-set / line-terminator
+ *    surface), SQLite has the `.import` / `.export` shell commands
+ *    (CLI-only, not SQL), MSSQL has `BULK INSERT` and the `bcp` utility.
+ *    Each is its own AST shape. The printer refuses on every non-PG
+ *    dialect with a pointer at the dialect-native equivalent.
+ *  - Options shipped: `FORMAT`, `FREEZE`, `DELIMITER`, `NULL`, `HEADER`,
+ *    `QUOTE`, `ESCAPE`, `ENCODING`. The other PG options (`FORCE_QUOTE`,
+ *    `FORCE_NOT_NULL`, `FORCE_NULL`, `ON_ERROR`, `LOG_VERBOSITY`,
+ *    `WHERE`, the `DEFAULT` token, etc.) are deferred.
+ *
+ * Validation at print time:
+ *
+ *  - `direction === "from"` requires {@link table} and {@link source}
+ *    === `"STDIN"`; the printer refuses the query form and any
+ *    `STDOUT` source.
+ *  - `direction === "to"` accepts either {@link table} or
+ *    {@link query} (mutually exclusive) and requires {@link source}
+ *    === `"STDOUT"`.
+ *  - Option string slots (`delimiter`, `quote`, `escape`, `nullString`,
+ *    `encoding`) flow through `escapeStringLiteral` so embedded quotes
+ *    don't break out of the literal.
+ */
+export interface CopyNode {
+  type: "copy"
+  /**
+   * Transfer direction. `"from"` → COPY FROM STDIN (bulk import);
+   * `"to"` → COPY TO STDOUT (bulk export). The two forms share most
+   * of the grammar but differ on what's allowed on the source/sink
+   * side — see the {@link CopyNode} doc for the exact rules.
+   */
+  direction: "from" | "to"
+  /**
+   * The relation being read from / written into. Required for
+   * `direction === "from"`. For `direction === "to"` exactly one of
+   * {@link table} or {@link query} must be set — the query form is
+   * the only path to filter or transform on export.
+   *
+   * `columns` is the optional column list `(c1, c2, …)`. PG uses it
+   * to restrict the COPY to a subset of the table's columns (in the
+   * given order); without it every column participates in the
+   * declared table order. The same syntax applies to FROM and TO.
+   */
+  table?: { name: string; columns?: string[] }
+  /**
+   * Embedded SELECT for the `COPY (query) TO STDOUT` form — only
+   * valid when `direction === "to"`. Mutually exclusive with
+   * {@link table}; the printer refuses if both are set or both are
+   * unset. The SELECT itself routes through the configured
+   * SELECT printer (so plugins / hooks / normalize / optimize all
+   * apply to the inner query just like `CREATE VIEW AS SELECT`).
+   */
+  query?: SelectNode
+  /**
+   * Where the data flows. `"STDIN"` is the only legal value when
+   * `direction === "from"`; `"STDOUT"` is the only legal value when
+   * `direction === "to"`. File paths and `PROGRAM 'cmd'` are
+   * deferred (see the {@link CopyNode} doc) — the printer refuses
+   * any other value.
+   */
+  source: "STDIN" | "STDOUT"
+  /**
+   * Optional `WITH ( option [, ...] )` payload. Options are emitted
+   * in a stable order so two builds with the same inputs serialize
+   * identically. String-valued options flow through
+   * `escapeStringLiteral`.
+   */
+  options?: CopyOptions
+}
+
+/**
+ * Option list for the COPY statement's `WITH ( ... )` clause. PG
+ * accepts the legacy keyword form (`COPY ... CSV HEADER`) too, but
+ * sumak emits the modern parenthesized form unconditionally — it's
+ * unambiguous, version-stable, and the only form PG actively
+ * documents as of PG 9.0+.
+ *
+ * Per-option detail:
+ *
+ *  - `format` — `FORMAT { TEXT | CSV | BINARY }`. Default is `TEXT`
+ *    (PG's default). `CSV` is the common choice; `BINARY` is faster
+ *    but tied to the exact PG version's wire format.
+ *  - `freeze` — `FREEZE` (PG only on `COPY FROM`). Marks the imported
+ *    tuples as frozen at load time, skipping the later VACUUM FREEZE
+ *    pass. Requires the table to have been created or truncated in
+ *    the same transaction; otherwise PG raises at execution.
+ *  - `delimiter` — `DELIMITER 'd'`. Single-character separator
+ *    between fields. Default is tab (`\t`) for `TEXT`, comma (`,`)
+ *    for `CSV`.
+ *  - `nullString` — `NULL 'string'`. Token representing a NULL in
+ *    the data stream. Defaults to `\N` for TEXT, empty string for
+ *    CSV.
+ *  - `header` — `HEADER [ MATCH | true | false ]`. PG 12+ accepts
+ *    the `MATCH` form which validates the first row against the
+ *    column list; the older boolean form just skips (FROM) or emits
+ *    (TO) a single header row.
+ *  - `quote` — `QUOTE 'q'` (CSV-only at execution time, but the
+ *    printer doesn't gate that — PG will tell the user if they pair
+ *    it with `FORMAT TEXT`).
+ *  - `escape` — `ESCAPE 'e'` (also CSV-only at execution time).
+ *  - `encoding` — `ENCODING 'enc'`. Lets PG transcode the data
+ *    stream — useful when the source isn't in the database's
+ *    server_encoding.
+ */
+export interface CopyOptions {
+  format?: "TEXT" | "CSV" | "BINARY"
+  freeze?: boolean
+  delimiter?: string
+  nullString?: string
+  header?: boolean | "MATCH"
+  quote?: string
+  escape?: string
+  encoding?: string
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -1217,3 +1381,4 @@ export type DDLNode =
   | DropDomainNode
   | AlterTypeAddValueNode
   | LockTableNode
+  | CopyNode

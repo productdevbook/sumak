@@ -314,6 +314,8 @@ export type {
   AlterTypeAddValueNode,
   AnalyzeNode,
   CommentNode,
+  CopyNode,
+  CopyOptions,
   CreateDomainNode,
   CreateExtensionNode,
   CreatePolicyNode,
@@ -377,6 +379,7 @@ export {
   dropType,
 } from "./builder/ddl/custom-types.ts"
 export { LockTableBuilder, type LockMode, lockTable } from "./builder/ddl/lock-table.ts"
+export { CopyFromBuilder, CopyToBuilder, copyFrom, copyTo } from "./builder/ddl/copy.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"
