@@ -255,6 +255,14 @@ export class SqlitePrinter extends BasePrinter {
     if (upper === "OVERLAY") {
       assertFeature("sqlite", "OVERLAY_FN")
     }
+    // SQLite has no built-in `PI()` (no math constants at all). It
+    // does, however, ship `LN` / `LOG` / `EXP` / `SIN` / `COS` /
+    // `TAN` / `DEGREES` / `RADIANS` since 3.35, so those pass through.
+    // Older SQLite engines will surface a driver-level "no such
+    // function" error — sumak's supported SQLite version is 3.35+.
+    if (upper === "PI" && node.args.length === 0) {
+      assertFeature("sqlite", "PI_FN")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently

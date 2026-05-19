@@ -299,6 +299,30 @@ export const FEATURES = {
    */
   AGE_FN: { label: "AGE", dialects: ["pg"] },
 
+  // ── Math ──────────────────────────────────────────────────────────
+  /**
+   * `PI()` — the niladic constant function. PG / MySQL / MSSQL all
+   * ship it natively. **SQLite has no built-in `PI`** — the constant
+   * needs to be written as a literal (`3.141592653589793`) or computed
+   * via `acos(-1)` (which requires SQLite 3.35+). The printer refuses
+   * rather than emit a call SQLite will reject as "no such function".
+   */
+  PI_FN: { label: "PI()", dialects: ["pg", "mysql", "mssql"] },
+  /**
+   * Trigonometric and angle-unit-conversion built-ins — `SIN`, `COS`,
+   * `TAN`, `DEGREES`, `RADIANS`. PG / MySQL / MSSQL ship them
+   * unconditionally; SQLite added them in **3.35** alongside the rest
+   * of the math-extension built-ins. Older SQLite builds reject the
+   * names at parse — the printer can't gate per-version, so engines
+   * older than 3.35 will surface a driver-level "no such function"
+   * error. The feature is gated as available on `sqlite` because the
+   * supported version line for sumak is 3.35+.
+   */
+  TRIGONOMETRY_FNS: {
+    label: "SIN / COS / TAN / DEGREES / RADIANS",
+    dialects: ["pg", "mysql", "sqlite", "mssql"],
+  },
+
   // ── Temporal ──────────────────────────────────────────────────────
   TEMPORAL_FOR_SYSTEM_TIME: {
     label: "FOR SYSTEM_TIME (SQL:2011 temporal tables)",

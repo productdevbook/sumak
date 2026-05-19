@@ -2415,6 +2415,170 @@ export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
 }
 
+// ─── Math helpers ──────────────────────────────────────────────────────────
+//
+// Typed builders over `STANDARD_FUNCTIONS` math entries. Each accepts an
+// `Expression<number>` operand (typically a `typedCol<number>(...)`,
+// the result of `add` / `sub` / `mul` / `div`, or `val(N)`) and returns
+// `Expression<number>`. The functions are emitted uppercase via the
+// printer's `STANDARD_FUNCTIONS` allowlist; dialect-specific name
+// rewrites (e.g. MSSQL has no `LN`, MySQL/MSSQL `LOG` is natural log
+// not base-10) live in the per-dialect printer overrides.
+
+/**
+ * `POWER(base, exponent)` — `base ^ exponent`. PG / MySQL / SQLite /
+ * MSSQL all accept `POWER`; MySQL also accepts `POW` as a synonym but
+ * `POWER` parses on every dialect so we emit it unconditionally. NULL
+ * in either argument produces NULL out.
+ *
+ * ```ts
+ * power(col.x, val(2))            // POWER("x", 2) — squared
+ * power(val(2), col.exponent)     // POWER(2, "exponent") — 2 ^ n
+ * ```
+ *
+ * Domain: undefined for negative `base` with a fractional `exponent`
+ * (each dialect raises its own error; PG raises `value out of range`,
+ * MySQL returns NULL, SQLite returns NaN as text). Callers wanting
+ * portable behaviour should guard the base with a CASE expression.
+ */
+export function power(base: Expression<number>, exponent: Expression<number>): Expression<number> {
+  return wrap(rawFn("POWER", [(base as any).node, (exponent as any).node]))
+}
+
+/**
+ * `SQRT(expr)` — non-negative square root. PG / MySQL / SQLite /
+ * MSSQL all support it. NULL in → NULL out. Negative input behaves
+ * dialect-specifically: PG raises `cannot take square root of a
+ * negative number`, MySQL returns NULL, SQLite returns NaN, MSSQL
+ * raises an arithmetic error. Guard with `CASE WHEN x < 0 ...` if
+ * you need portable handling.
+ */
+export function sqrt(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("SQRT", [(expr as any).node]))
+}
+
+/**
+ * `LN(expr)` — natural logarithm (base e). PG / MySQL / SQLite (3.35+)
+ * emit `LN(x)` natively. **MSSQL has no `LN` keyword** — its `LOG(x)`
+ * is the natural log. The MSSQL printer rewrites `LN(x)` to `LOG(x)`
+ * automatically, so the builder call is portable.
+ *
+ * ```ts
+ * ln(col.intensity)            // PG/MySQL/SQLite: LN("intensity")
+ *                              // MSSQL: LOG("intensity")
+ * ```
+ *
+ * Domain: undefined for non-positive input; each dialect raises its
+ * own error. Guard with `CASE WHEN x > 0 ...` for portable handling.
+ */
+export function ln(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("LN", [(expr as any).node]))
+}
+
+/**
+ * `LOG(expr)` — base-10 logarithm. The single-arg `LOG` function has
+ * dialect-divergent meaning at the SQL level:
+ *
+ * - **PG**: `log(x)` = base-10.
+ * - **SQLite (3.35+)**: `log(x)` = base-10.
+ * - **MySQL**: `LOG(x)` = natural log; `LOG10(x)` is base-10.
+ * - **MSSQL**: `LOG(x)` = natural log; `LOG10(x)` is base-10.
+ *
+ * sumak normalises the user-visible semantics to **base-10** on every
+ * dialect — the MySQL and MSSQL printers rewrite `LOG(x)` to
+ * `LOG10(x)` so the builder call portably means base-10. Use
+ * {@link ln} for natural log explicitly.
+ *
+ * The two-argument PG/MySQL form `log(b, x)` (log-b of x) is **not**
+ * exposed here because MSSQL spells it `LOG(x, b)` with the arguments
+ * reversed, and silently picking one would change semantics on the
+ * other dialect. If you need a base-b log, write `ln(x).div(ln(val(b)))`
+ * or reach for `unsafeRawExpr` and own the dialect divergence.
+ *
+ * Domain: undefined for non-positive input; each dialect raises its
+ * own error. Guard with `CASE WHEN x > 0 ...` if you need portable
+ * handling.
+ */
+export function log(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("LOG", [(expr as any).node]))
+}
+
+/**
+ * `EXP(expr)` — e raised to `expr`. PG / MySQL / SQLite / MSSQL all
+ * support `EXP`. Inverse of {@link ln}. NULL in → NULL out.
+ */
+export function exp(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("EXP", [(expr as any).node]))
+}
+
+/**
+ * `SIGN(expr)` — `-1` for negative, `0` for zero, `1` for positive.
+ * PG / MySQL / SQLite / MSSQL all support it. Returns NULL on NULL
+ * input. Useful for branchless arithmetic (e.g. clamping signs in
+ * range comparisons).
+ */
+export function sign(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("SIGN", [(expr as any).node]))
+}
+
+/**
+ * `PI()` — the mathematical constant π. PG / MySQL / MSSQL all
+ * support the niladic call. **SQLite has no `PI` built-in** — the
+ * SQLite printer throws via {@link PI_FN}; substitute the constant
+ * (`val(3.141592653589793)`) at the call site if you need SQLite
+ * coverage.
+ *
+ * ```ts
+ * pi()              // PG/MySQL/MSSQL: PI()
+ * mul(pi(), col.r)  // π × r
+ * ```
+ */
+export function pi(): Expression<number> {
+  return wrap(rawFn("PI", []))
+}
+
+/**
+ * `DEGREES(expr)` — convert radians to degrees. PG / MySQL / SQLite
+ * (3.35+) / MSSQL all support it. NULL in → NULL out.
+ */
+export function degrees(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("DEGREES", [(expr as any).node]))
+}
+
+/**
+ * `RADIANS(expr)` — convert degrees to radians. PG / MySQL / SQLite
+ * (3.35+) / MSSQL all support it. NULL in → NULL out.
+ */
+export function radians(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("RADIANS", [(expr as any).node]))
+}
+
+/**
+ * `SIN(expr)` — sine. Argument is in **radians** on every dialect; use
+ * {@link radians} to convert from degrees. PG / MySQL / SQLite (3.35+)
+ * / MSSQL all support it. NULL in → NULL out.
+ */
+export function sin(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("SIN", [(expr as any).node]))
+}
+
+/**
+ * `COS(expr)` — cosine. Argument is in **radians**. PG / MySQL /
+ * SQLite (3.35+) / MSSQL. NULL in → NULL out.
+ */
+export function cos(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("COS", [(expr as any).node]))
+}
+
+/**
+ * `TAN(expr)` — tangent. Argument is in **radians**. PG / MySQL /
+ * SQLite (3.35+) / MSSQL. NULL in → NULL out. Undefined at
+ * `pi/2 + k*pi`; engines raise per-dialect arithmetic errors.
+ */
+export function tan(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("TAN", [(expr as any).node]))
+}
+
 /**
  * Row-value tuple for comparisons.
  *
