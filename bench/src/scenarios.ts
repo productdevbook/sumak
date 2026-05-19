@@ -605,6 +605,37 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "insert-from-select",
+    // INSERT INTO users (id, name, email, createdAt) SELECT ... FROM users
+    // Common "copy-modify-insert" pattern (e.g. clone a row, populate
+    // a backup table). sumak's `.fromSelect(node)` vs drizzle's
+    // `db.insert(t).select(qb)` vs kysely's
+    // `.insertInto(...).columns(...).expression(...)`.
+    sumak: () => {
+      const src = s.selectFrom("users").select("id", "name", "email", "createdAt").build()
+      return s.insertInto("users").fromSelect(src).toSQL()
+    },
+    drizzle: () => {
+      const src = d
+        .select({
+          id: dUsers.id,
+          name: dUsers.name,
+          email: dUsers.email,
+          createdAt: dUsers.createdAt,
+        })
+        .from(dUsers)
+      return drizzleToResult(d.insert(dUsers).select(src).toSQL())
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .insertInto("users")
+          .columns(["id", "name", "email", "createdAt"])
+          .expression((eb) => eb.selectFrom("users").select(["id", "name", "email", "createdAt"]))
+          .compile(),
+      ),
+  },
+  {
     name: "select-coalesce",
     // SELECT id, COALESCE(name, 'unknown') FROM users — null-safe
     // fallback. Three-arg COALESCE is the standard shape; sumak
