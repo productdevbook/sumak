@@ -8,6 +8,7 @@ import { OptimisticLockPlugin } from "./optimistic-lock.ts"
 import { QueryLimitPlugin } from "./query-limit.ts"
 import { SoftDeletePlugin } from "./soft-delete.ts"
 import type { SumakPlugin } from "./types.ts"
+import { validators as validatorsImpl } from "./validators.ts"
 import { WithSchemaPlugin } from "./with-schema.ts"
 
 /**
@@ -74,6 +75,8 @@ export function dataMasking(
 export const normalizeStrings = normalizeStringsImpl
 
 export const defaults = defaultsImpl
+
+export const validators = validatorsImpl
 
 export { subjectType } from "./subject-type.ts"
 export type { SubjectTypeConfig } from "./subject-type.ts"

@@ -61,6 +61,31 @@ export class CrossTenantJoinError extends SecurityError {
 }
 
 /**
+ * Thrown by the {@link validators} plugin when a value supplied to an
+ * INSERT or UPDATE fails one of its per-column validator predicates.
+ *
+ * Carries the offending `table` / `column` / `value` plus the validator's
+ * own message so callers can surface a precise error to the user. The
+ * `message` defaults to `"<table>.<column>: invalid value"` if the
+ * validator returned `false` instead of a string.
+ *
+ * The error is raised eagerly at `.toSQL()` / compile time — well before
+ * the query reaches the database — so bad input never costs a round trip.
+ */
+export class ValidationError extends SumakError {
+  readonly table: string
+  readonly column: string
+  readonly value: unknown
+  constructor(args: { table: string; column: string; value: unknown; message: string }) {
+    super(`${args.table}.${args.column}: ${args.message}`)
+    this.name = "ValidationError"
+    this.table = args.table
+    this.column = args.column
+    this.value = args.value
+  }
+}
+
+/**
  * Thrown when an AST traversal reaches a node type it doesn't handle.
  *
  * Paired with {@link assertNever} / `const _: never = node` patterns in
