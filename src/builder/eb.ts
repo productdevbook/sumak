@@ -674,32 +674,63 @@ export function not(expr: Expression<boolean>): Expression<boolean> {
   return wrap(rawNot((expr as any).node))
 }
 
-/** Add: a + b */
+/**
+ * `a + b` — numeric addition. Use `concat()` for string
+ * concatenation; the `+` operator on strings is dialect-specific
+ * (MSSQL only) and sumak's typed builder won't let you mix them.
+ *
+ * **Integer division surprise** on PG / MySQL: `add(val(1), val(2))`
+ * is fine, but `div(val(7), val(2))` returns 3, not 3.5 — integer
+ * operands stay integer. Cast one operand to numeric/float to opt
+ * into floating-point math.
+ */
 export function add(a: Expression<number>, b: Expression<number>): Expression<number> {
   return wrap(binOp("+", (a as any).node, (b as any).node))
 }
 
-/** Subtract: a - b */
+/**
+ * `a - b` — numeric subtraction. Same NULL semantics as `+`:
+ * NULL operand makes the whole expression NULL.
+ */
 export function sub(a: Expression<number>, b: Expression<number>): Expression<number> {
   return wrap(binOp("-", (a as any).node, (b as any).node))
 }
 
-/** Multiply: a * b */
+/**
+ * `a * b` — numeric multiplication. Use `coalesce` to short-circuit
+ * NULL operands if you want a sensible default.
+ */
 export function mul(a: Expression<number>, b: Expression<number>): Expression<number> {
   return wrap(binOp("*", (a as any).node, (b as any).node))
 }
 
-/** Divide: a / b */
+/**
+ * `a / b` — numeric division. Two footguns:
+ *
+ * 1. **Integer division** — on PG / MySQL, integer ÷ integer stays
+ *    integer (`7/2 = 3`). Cast one operand: `div(cast(col("hits"),
+ *    "numeric"), col("total"))`.
+ * 2. **Divide-by-zero** — every dialect throws on `x / 0`. The
+ *    standard guard is `div(a, nullif(b, val(0)))`, which yields
+ *    NULL instead of an error.
+ */
 export function div(a: Expression<number>, b: Expression<number>): Expression<number> {
   return wrap(binOp("/", (a as any).node, (b as any).node))
 }
 
-/** Modulo: a % b */
+/**
+ * `a % b` — modulo. PG / MySQL / SQLite use `%`; MSSQL also accepts
+ * it. Divide-by-zero behaves the same as `div` — guard with `nullif`.
+ */
 export function mod(a: Expression<number>, b: Expression<number>): Expression<number> {
   return wrap(binOp("%", (a as any).node, (b as any).node))
 }
 
-/** Unary minus: -expr */
+/**
+ * `-expr` — unary minus. NULL input → NULL output. Prefer
+ * `mul(val(-1), expr)` only if you specifically want the `*` printed
+ * (e.g. to keep operator precedence visible in raw SQL).
+ */
 export function neg(expr: Expression<number>): Expression<number> {
   return wrap({
     type: "unary_op",
@@ -1062,17 +1093,35 @@ export function ntile(n: number): Expression<number> {
 
 // ── Common SQL functions ──
 
-/** UPPER(expr) */
+/**
+ * `UPPER(expr)` — uppercase the string. Standard SQL; supported on
+ * all four dialects. NULL input produces NULL output.
+ */
 export function upper(expr: Expression<string>): Expression<string> {
   return wrap(rawFn("UPPER", [(expr as any).node]))
 }
 
-/** LOWER(expr) */
+/**
+ * `LOWER(expr)` — lowercase the string. Standard SQL; supported on
+ * all four dialects. NULL input produces NULL output.
+ */
 export function lower(expr: Expression<string>): Expression<string> {
   return wrap(rawFn("LOWER", [(expr as any).node]))
 }
 
-/** CONCAT(a, b, ...) */
+/**
+ * `CONCAT(a, b, …)` — variadic string concatenation. Minimum arity
+ * is 1 (single-arg `CONCAT` is a no-op but legal).
+ *
+ * **NULL handling differs across dialects** — sumak emits the same
+ * `CONCAT(...)` call everywhere and lets the database decide:
+ * - **PostgreSQL** silently skips NULL arguments: `CONCAT('a', NULL, 'b')` → `'ab'`.
+ * - **MySQL** returns NULL if any argument is NULL: same input → `NULL`.
+ * - **SQLite** doesn't ship `CONCAT` at all on older builds (added in 3.44, 2023). Use `||` if portability matters.
+ *
+ * Wrap NULL-prone arguments in `coalesce(x, val(""))` if you need
+ * portable behavior.
+ */
 export function concat(...args: Expression<string>[]): Expression<string> {
   assertMinArity("concat", args, 1)
   return wrap(
@@ -1083,7 +1132,15 @@ export function concat(...args: Expression<string>[]): Expression<string> {
   )
 }
 
-/** SUBSTRING(expr, start, length?) */
+/**
+ * `SUBSTRING(expr FROM start [FOR length])` — substring extraction.
+ * Indexes are **1-based** in SQL, not 0-based like JavaScript;
+ * `substring(s, 1, 3)` returns the first 3 characters.
+ *
+ * `start` and `length` are emitted as integer literals rather than
+ * parameters — they're usually constants and inlining keeps the
+ * statement-cache key stable when only data varies.
+ */
 export function substring(
   expr: Expression<string>,
   start: number,
@@ -1094,32 +1151,72 @@ export function substring(
   return wrap(rawFn("SUBSTRING", args))
 }
 
-/** TRIM(expr) */
+/**
+ * `TRIM(expr)` — strip leading and trailing whitespace. For
+ * single-side trim use the SQL standard `LTRIM` / `RTRIM` via
+ * `sqlFn("LTRIM", expr)` / `sqlFn("RTRIM", expr)` (both in sumak's
+ * known-function allowlist).
+ */
 export function trim(expr: Expression<string>): Expression<string> {
   return wrap(rawFn("TRIM", [(expr as any).node]))
 }
 
-/** LENGTH(expr) / CHAR_LENGTH(expr) */
+/**
+ * `LENGTH(expr)` — number of characters in the string. PG/MySQL/
+ * SQLite return character length; on MSSQL `LENGTH` isn't standard,
+ * use `sqlFn("LEN", expr)` instead. For byte length see
+ * `sqlFn("OCTET_LENGTH", expr)` or dialect-specific variants.
+ */
 export function length(expr: Expression<string>): Expression<number> {
   return wrap(rawFn("LENGTH", [(expr as any).node]))
 }
 
-/** NOW() */
+/**
+ * `NOW()` — current transaction timestamp. PG / MySQL idiom; on
+ * MSSQL and SQLite use `currentTimestamp()` instead, which compiles
+ * to the SQL-standard `CURRENT_TIMESTAMP` keyword.
+ *
+ * Within a single transaction, `NOW()` returns the same value for
+ * every call — it's the *transaction* start time on PG.
+ */
 export function now(): Expression<Date> {
   return wrap(rawFn("NOW", []))
 }
 
-/** CURRENT_TIMESTAMP */
+/**
+ * `CURRENT_TIMESTAMP` — SQL-standard timestamp keyword. Supported
+ * on all four dialects (unlike `NOW()`, which is PG/MySQL-flavor).
+ * Reach for this in cross-dialect code.
+ */
 export function currentTimestamp(): Expression<Date> {
   return wrap(rawFn("CURRENT_TIMESTAMP", []))
 }
 
-/** NULLIF(a, b) */
+/**
+ * `NULLIF(a, b)` — returns NULL when `a = b`, otherwise `a`.
+ * Common idiom for guarding against divide-by-zero:
+ *
+ * ```ts
+ * .select({ ratio: div(col("hits"), nullif(col("total"), val(0))) })
+ * // hits / NULLIF(total, 0) — division by NULL yields NULL, never an error
+ * ```
+ */
 export function nullif<T>(a: Expression<T>, b: Expression<T>): Expression<T | null> {
   return wrap(rawFn("NULLIF", [(a as any).node, (b as any).node]))
 }
 
-/** GREATEST(a, b, ...) */
+/**
+ * `GREATEST(a, b, …)` — variadic max-of. Minimum arity 2 (a single-
+ * arg `GREATEST` is nonsensical, and the zero-arg form is rejected
+ * by every dialect that supports the function).
+ *
+ * **NULL handling differs across dialects** (same as `concat`):
+ * - PG / MSSQL: NULL arguments are **ignored** in the comparison.
+ * - MySQL: NULL anywhere makes the whole expression NULL.
+ * - SQLite: NULL counts as smaller than every value (i.e. ignored).
+ *
+ * Use `coalesce(x, val(0))` to neutralize NULLs portably.
+ */
 export function greatest<T>(...args: Expression<T>[]): Expression<T> {
   // Each dialect that supports GREATEST rejects the zero-arg form;
   // one-arg is technically legal on some but nonsensical.
@@ -1132,7 +1229,10 @@ export function greatest<T>(...args: Expression<T>[]): Expression<T> {
   )
 }
 
-/** LEAST(a, b, ...) */
+/**
+ * `LEAST(a, b, …)` — variadic min-of. Mirror of `greatest`; same
+ * NULL caveats apply per-dialect.
+ */
 export function least<T>(...args: Expression<T>[]): Expression<T> {
   assertMinArity("least", args, 2)
   return wrap(
@@ -1143,29 +1243,58 @@ export function least<T>(...args: Expression<T>[]): Expression<T> {
   )
 }
 
-/** ABS(expr) */
+/**
+ * `ABS(expr)` — absolute value. Standard SQL; supported on all four
+ * dialects. NULL input produces NULL output.
+ */
 export function abs(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("ABS", [(expr as any).node]))
 }
 
-/** ROUND(expr, precision?) */
+/**
+ * `ROUND(expr [, precision])` — half-away-from-zero rounding by
+ * default, but PG uses banker's rounding (half-to-even) and the
+ * default precision differs across dialects. When the exact rounding
+ * mode matters, multiply / divide explicitly instead of relying on
+ * `ROUND`.
+ *
+ * Precision is a literal integer (positive → decimal places,
+ * negative → tens / hundreds place).
+ */
 export function round(expr: Expression<number>, precision?: number): Expression<number> {
   const args: ExpressionNode[] = [(expr as any).node]
   if (precision !== undefined) args.push(rawLit(precision))
   return wrap(rawFn("ROUND", args))
 }
 
-/** CEIL(expr) */
+/**
+ * `CEIL(expr)` — smallest integer ≥ `expr`. The standard spells it
+ * `CEILING`; PG / MySQL / SQLite accept both, MSSQL only accepts
+ * `CEILING`. Use `sqlFn("CEILING", expr)` if cross-dialect MSSQL
+ * support matters.
+ */
 export function ceil(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("CEIL", [(expr as any).node]))
 }
 
-/** JSON_AGG(expr) — aggregate rows into JSON array (PG) */
+/**
+ * `JSON_AGG(expr)` — aggregate rows into a JSON array. **PG-only**;
+ * MySQL has `JSON_ARRAYAGG`, SQLite has `json_group_array`, MSSQL
+ * has nothing equivalent. Reach for `stringAgg` or build the array
+ * in application code for portability.
+ *
+ * Often paired with `over(...)` for windowed aggregation, or with
+ * `groupBy` for row-grouping.
+ */
 export function jsonAgg<T>(expr: Expression<T>): Expression<T[]> {
   return wrap(rawFn("JSON_AGG", [(expr as any).node]))
 }
 
-/** TO_JSON(expr) — convert value to JSON (PG) */
+/**
+ * `TO_JSON(expr)` — convert any value to its JSON representation.
+ * **PG-only**. MySQL emits the closest equivalent via
+ * `CAST(expr AS JSON)`; SQLite has no equivalent.
+ */
 export function toJson<T>(expr: Expression<T>): Expression<unknown> {
   return wrap(rawFn("TO_JSON", [(expr as any).node]))
 }
@@ -1403,7 +1532,10 @@ function buildQuantified<T>(
   return wrap<T>({ type: "quantified", quantifier, operand: node })
 }
 
-/** FLOOR(expr) */
+/**
+ * `FLOOR(expr)` — largest integer ≤ `expr`. Standard SQL; supported
+ * on all four dialects. NULL input produces NULL output.
+ */
 export function floor(expr: Expression<number>): Expression<number> {
   return wrap(rawFn("FLOOR", [(expr as any).node]))
 }
