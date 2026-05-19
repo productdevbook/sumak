@@ -2229,6 +2229,188 @@ export function arrayLiteral<T>(elements: Expression<T>[]): Expression<T[]> {
   })
 }
 
+// ── PostgreSQL array functions ──
+//
+// Function-call helpers that complement the `@>` / `<@` / `&&` operator
+// trio above. PG ships these under standard names (`array_append`,
+// `array_prepend`, `array_cat`, `array_length`, `array_positions`,
+// `array_position`, `array_remove`, `array_replace`, `array_to_string`,
+// `unnest`) — none of MySQL / SQLite / MSSQL has analogous built-ins
+// (their array story is either JSON arrays or nothing), so all of them
+// are gated behind the single `PG_ARRAY_FNS` feature flag and the
+// printer overrides on the non-PG dialects refuse rather than emit
+// SQL the engine would reject.
+
+/**
+ * `array_append(arr, element)` — return a new array equal to
+ * `arr || ARRAY[element]`. PG-only.
+ *
+ * ```ts
+ * arrayAppend(typedCol<string[]>("tags"), val("new"))
+ *   // ARRAY_APPEND("tags", $1)
+ * ```
+ */
+export function arrayAppend<T>(arr: Expression<T[]>, element: Expression<T>): Expression<T[]> {
+  return wrap<T[]>(rawFn("ARRAY_APPEND", [(arr as any).node, (element as any).node]))
+}
+
+/**
+ * `array_prepend(element, arr)` — return a new array equal to
+ * `ARRAY[element] || arr`. Note the argument order matches PG's
+ * function shape (element first), which is the reverse of
+ * {@link arrayAppend}. PG-only.
+ *
+ * ```ts
+ * arrayPrepend(val("first"), typedCol<string[]>("tags"))
+ *   // ARRAY_PREPEND($1, "tags")
+ * ```
+ */
+export function arrayPrepend<T>(element: Expression<T>, arr: Expression<T[]>): Expression<T[]> {
+  return wrap<T[]>(rawFn("ARRAY_PREPEND", [(element as any).node, (arr as any).node]))
+}
+
+/**
+ * `array_cat(arr1, arr2)` — concatenate two arrays of the same
+ * element type. PG-only. (PG also accepts the `||` operator for the
+ * same effect, but the function form is friendlier when one of the
+ * operands is itself the result of another function call.)
+ *
+ * ```ts
+ * arrayCat(typedCol<string[]>("tags"), arrayLiteral([val("a"), val("b")]))
+ *   // ARRAY_CAT("tags", ARRAY[$1, $2])
+ * ```
+ */
+export function arrayCat<T>(arr1: Expression<T[]>, arr2: Expression<T[]>): Expression<T[]> {
+  return wrap<T[]>(rawFn("ARRAY_CAT", [(arr1 as any).node, (arr2 as any).node]))
+}
+
+/**
+ * `array_length(arr, dim)` — length of `arr` along dimension `dim`
+ * (1-indexed). Defaults to dimension 1 — the usual case for flat
+ * arrays. Returns NULL on an empty array (PG semantics). PG-only.
+ *
+ * ```ts
+ * arrayLength(typedCol<string[]>("tags"))
+ *   // ARRAY_LENGTH("tags", 1)
+ *
+ * arrayLength(typedCol<number[][]>("matrix"), 2)
+ *   // ARRAY_LENGTH("matrix", 2)
+ * ```
+ */
+export function arrayLength<T>(arr: Expression<T[]>, dim: number = 1): Expression<number> {
+  return wrap<number>(rawFn("ARRAY_LENGTH", [(arr as any).node, rawLit(dim)]))
+}
+
+/**
+ * `array_positions(arr, element)` — array of 1-based positions of
+ * `element` in `arr` (every occurrence), or an empty array if not
+ * found. PG-only.
+ *
+ * ```ts
+ * arrayPositions(typedCol<string[]>("tags"), val("sql"))
+ *   // ARRAY_POSITIONS("tags", $1)
+ * ```
+ */
+export function arrayPositions<T>(
+  arr: Expression<T[]>,
+  element: Expression<T>,
+): Expression<number[]> {
+  return wrap<number[]>(rawFn("ARRAY_POSITIONS", [(arr as any).node, (element as any).node]))
+}
+
+/**
+ * `array_position(arr, element)` — 1-based index of the FIRST match
+ * of `element` in `arr`, or NULL when not present. Use
+ * {@link arrayPositions} when you need every occurrence. PG-only.
+ *
+ * ```ts
+ * arrayPosition(typedCol<string[]>("tags"), val("sql"))
+ *   // ARRAY_POSITION("tags", $1)
+ * ```
+ */
+export function arrayPosition<T>(arr: Expression<T[]>, element: Expression<T>): Expression<number> {
+  return wrap<number>(rawFn("ARRAY_POSITION", [(arr as any).node, (element as any).node]))
+}
+
+/**
+ * `array_remove(arr, element)` — return `arr` with every occurrence
+ * of `element` removed. Does NOT mutate the column — it produces a
+ * new array. PG-only.
+ *
+ * ```ts
+ * arrayRemove(typedCol<string[]>("tags"), val("draft"))
+ *   // ARRAY_REMOVE("tags", $1)
+ * ```
+ */
+export function arrayRemove<T>(arr: Expression<T[]>, element: Expression<T>): Expression<T[]> {
+  return wrap<T[]>(rawFn("ARRAY_REMOVE", [(arr as any).node, (element as any).node]))
+}
+
+/**
+ * `array_replace(arr, find, replacement)` — return `arr` with every
+ * occurrence of `find` replaced by `replacement`. PG-only.
+ *
+ * ```ts
+ * arrayReplace(typedCol<string[]>("tags"), val("old"), val("new"))
+ *   // ARRAY_REPLACE("tags", $1, $2)
+ * ```
+ */
+export function arrayReplace<T>(
+  arr: Expression<T[]>,
+  find: Expression<T>,
+  replacement: Expression<T>,
+): Expression<T[]> {
+  return wrap<T[]>(
+    rawFn("ARRAY_REPLACE", [(arr as any).node, (find as any).node, (replacement as any).node]),
+  )
+}
+
+/**
+ * `array_to_string(arr, separator [, nullString])` — flatten an
+ * array to a single string, joining elements with `separator`.
+ * `nullString`, when provided, is substituted for NULL elements;
+ * omitting it skips NULL elements entirely (PG semantics). PG-only.
+ *
+ * ```ts
+ * arrayToString(typedCol<string[]>("tags"), val(","))
+ *   // ARRAY_TO_STRING("tags", $1)
+ *
+ * arrayToString(typedCol<string[]>("tags"), val(","), val("NULL"))
+ *   // ARRAY_TO_STRING("tags", $1, $2)
+ * ```
+ */
+export function arrayToString<T>(
+  arr: Expression<T[]>,
+  separator: Expression<string>,
+  nullString?: Expression<string>,
+): Expression<string> {
+  const args: ExpressionNode[] = [(arr as any).node, (separator as any).node]
+  if (nullString !== undefined) {
+    args.push((nullString as any).node)
+  }
+  return wrap<string>(rawFn("ARRAY_TO_STRING", args))
+}
+
+/**
+ * `unnest(arr)` — table-returning function that expands an array
+ * into a set of rows (one per element). On PG, `unnest` is most
+ * commonly used in a `FROM` clause via `selectFrom(unnest(...))`,
+ * but it also works as a projection (`SELECT unnest(arr)` returns
+ * one row per element with the value in a single anonymous column).
+ *
+ * The TypeScript type is `Expression<T>` (one row per element) —
+ * not `Expression<T[]>` — because the result is row-shaped, not
+ * array-shaped. PG-only.
+ *
+ * ```ts
+ * unnest(typedCol<string[]>("tags"))
+ *   // UNNEST("tags")
+ * ```
+ */
+export function unnest<T>(arr: Expression<T[]>): Expression<T> {
+  return wrap<T>(rawFn("UNNEST", [(arr as any).node]))
+}
+
 /**
  * `ANY(<subquery | array>)` — quantified comparison. Used as the
  * right-hand side of a comparison operator:

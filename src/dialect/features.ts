@@ -145,6 +145,21 @@ export const FEATURES = {
   ARRAY_LITERALS: { label: "ARRAY[...]", dialects: ["pg"] },
   ARRAY_CONTAINS_OPS: { label: "array operators (@>, <@, &&)", dialects: ["pg"] },
   /**
+   * PG array function-call helpers — `array_append`, `array_prepend`,
+   * `array_cat`, `array_length`, `array_positions`, `array_position`,
+   * `array_remove`, `array_replace`, `array_to_string`, and `unnest`.
+   * All ten share the same PG-only support: MySQL / SQLite / MSSQL have
+   * no first-class array type, so none of these functions exist on them
+   * under the same names with the same semantics. A user-defined
+   * function with one of these names would have a colliding signature
+   * and silently mis-evaluate; the printer refuses on every non-PG
+   * dialect so the failure points at the builder call.
+   */
+  PG_ARRAY_FNS: {
+    label: "PostgreSQL array functions (array_append / array_cat / unnest / …)",
+    dialects: ["pg"],
+  },
+  /**
    * `col <op> ANY/ALL (subquery)`. PG supports all six comparison
    * ops; MySQL 8 supports the subquery-operand form; MSSQL and
    * SQLite reject both.

@@ -117,6 +117,25 @@ export {
   valuesClause,
 } from "./builder/eb.ts"
 
+// ─── PostgreSQL array function builders (PG-only) ──────────────────────────
+// `arrayAppend` / `arrayPrepend` / `arrayCat` / `arrayLength` /
+// `arrayPositions` / `arrayPosition` / `arrayRemove` / `arrayReplace` /
+// `arrayToString` / `unnest` — function-call helpers around PG's first-class
+// array type, gated by the single `PG_ARRAY_FNS` feature flag. Each non-PG
+// printer override throws `UnsupportedDialectFeatureError` at compile time.
+export {
+  arrayAppend,
+  arrayPrepend,
+  arrayCat,
+  arrayLength,
+  arrayPositions,
+  arrayPosition,
+  arrayRemove,
+  arrayReplace,
+  arrayToString,
+  unnest,
+} from "./builder/eb.ts"
+
 // ─── ON CONFLICT helpers ───────────────────────────────────────────────────
 // `excluded("name")` → `EXCLUDED."name"` — PG's pseudo-table reference
 // for the row that would have been inserted (use inside `.onConflict()`).

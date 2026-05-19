@@ -976,6 +976,131 @@ Older SQLite engines (< 3.35) lack `LN` / `LOG` / `EXP` / `SIN` / `COS` / `TAN` 
 
 ---
 
+## PostgreSQL arrays (operators + functions)
+
+```ts
+import {
+  arr,
+  arrayAppend,
+  arrayCat,
+  arrayLength,
+  arrayLiteral,
+  arrayPosition,
+  arrayPositions,
+  arrayPrepend,
+  arrayRemove,
+  arrayReplace,
+  arrayToString,
+  typedCol,
+  unnest,
+  val,
+} from "sumak"
+
+// PG's array type has no first-class column factory in sumak yet, so
+// lift the column with `typedCol<T[]>(...)`. The emit is the same as
+// for any other column reference.
+const tags = typedCol<string[]>("tags")
+
+// ── Set-membership operators (covered earlier) ─────────────────────
+// arr.contains(tags, arr.literal([val("sql")]))    // tags @> ARRAY['sql']
+// arr.containedBy(tags, arr.literal([val("sql"), val("ts")]))  // <@
+// arr.overlaps(tags, arr.literal([val("sql")]))    // &&
+
+// ── Mutation builders ──────────────────────────────────────────────
+// arrayAppend(arr, element) — tail-add.  Returns a NEW array, doesn't
+// mutate the column.
+db.selectFrom("posts")
+  .select({ updated: arrayAppend(tags, val("new")) })
+  .toSQL()
+// PG: SELECT ARRAY_APPEND("tags", 'new') AS "updated" FROM "posts"
+
+// arrayPrepend(element, arr) — head-add.  Note the reversed arg order
+// (matches PG's `array_prepend` signature).
+db.selectFrom("posts")
+  .select({ x: arrayPrepend(val("first"), tags) })
+  .toSQL()
+// PG: SELECT ARRAY_PREPEND('first', "tags") AS "x" FROM "posts"
+
+// arrayCat(arr1, arr2) — concatenate.  Equivalent to PG's `||`
+// operator, but reads more naturally when one side is itself a
+// function-call result.
+db.selectFrom("posts")
+  .select({ merged: arrayCat(tags, arrayLiteral([val("a"), val("b")])) })
+  .toSQL()
+// PG: SELECT ARRAY_CAT("tags", ARRAY['a', 'b']) AS "merged" FROM "posts"
+
+// arrayRemove(arr, element) — strip every occurrence.
+db.selectFrom("posts")
+  .select({ cleaned: arrayRemove(tags, val("draft")) })
+  .toSQL()
+// PG: SELECT ARRAY_REMOVE("tags", 'draft') AS "cleaned" FROM "posts"
+
+// arrayReplace(arr, find, replacement) — swap every occurrence.
+db.selectFrom("posts")
+  .select({ x: arrayReplace(tags, val("old"), val("new")) })
+  .toSQL()
+// PG: SELECT ARRAY_REPLACE("tags", 'old', 'new') AS "x" FROM "posts"
+
+// ── Inspection builders ────────────────────────────────────────────
+// arrayLength(arr, dim?) — element count along `dim` (default 1).
+// Returns NULL on an empty array (PG semantics).
+db.selectFrom("posts")
+  .select({ n: arrayLength(tags) })
+  .toSQL()
+// PG: SELECT ARRAY_LENGTH("tags", 1) AS "n" FROM "posts"
+
+// arrayPosition(arr, element) — 1-based index of the FIRST match, or
+// NULL when not present.
+db.selectFrom("posts")
+  .select({ idx: arrayPosition(tags, val("sql")) })
+  .toSQL()
+// PG: SELECT ARRAY_POSITION("tags", 'sql') AS "idx" FROM "posts"
+
+// arrayPositions(arr, element) — array of every 1-based match, or [].
+db.selectFrom("posts")
+  .select({ hits: arrayPositions(tags, val("sql")) })
+  .toSQL()
+// PG: SELECT ARRAY_POSITIONS("tags", 'sql') AS "hits" FROM "posts"
+
+// arrayToString(arr, sep [, nullString]) — flatten to text.  Without
+// a `nullString`, NULL elements are skipped entirely.
+db.selectFrom("posts")
+  .select({ csv: arrayToString(tags, val(",")) })
+  .toSQL()
+// PG: SELECT ARRAY_TO_STRING("tags", ',') AS "csv" FROM "posts"
+
+// unnest(arr) — table-returning function.  As a projection on a
+// SELECT, it yields one row per element with the value in a single
+// (aliased) column.
+db.selectFrom("posts")
+  .select({ tag: unnest(tags) })
+  .toSQL()
+// PG: SELECT UNNEST("tags") AS "tag" FROM "posts"
+```
+
+The `arr.*` namespace mirrors the bare exports — `arr.append`, `arr.prepend`, `arr.cat`, `arr.length`, `arr.position`, `arr.positions`, `arr.remove`, `arr.replace`, `arr.toString`, `arr.unnest` — alongside the existing operator helpers (`arr.contains`, `arr.overlaps`, …). Either spelling is fine.
+
+All ten function builders are **PG-only**, gated by the single `PG_ARRAY_FNS` feature flag. The MySQL / SQLite / MSSQL printers refuse with `UnsupportedDialectFeatureError` at compile time — neither dialect has a first-class array type, and silently emitting a function name that happens to collide with a user-defined function would be worse than failing fast.
+
+Dialect support, at a glance:
+
+| Builder          | PG  | MySQL | SQLite | MSSQL |
+| ---------------- | --- | ----- | ------ | ----- |
+| `arrayAppend`    | yes | no    | no     | no    |
+| `arrayPrepend`   | yes | no    | no     | no    |
+| `arrayCat`       | yes | no    | no     | no    |
+| `arrayLength`    | yes | no    | no     | no    |
+| `arrayPosition`  | yes | no    | no     | no    |
+| `arrayPositions` | yes | no    | no     | no    |
+| `arrayRemove`    | yes | no    | no     | no    |
+| `arrayReplace`   | yes | no    | no     | no    |
+| `arrayToString`  | yes | no    | no     | no    |
+| `unnest`         | yes | no    | no     | no    |
+
+`val()` produces inline SQL literals (same convention as the regex / string-manipulation builders). Pass `unsafeRawExpr` or a column reference when you need a runtime-parameterised element. For MySQL, the closest fit is the `JSON_ARRAY_*` family; for SQLite, the json1 functions; for MSSQL, table-valued parameters or OPENJSON. None are interchangeable with PG's array shape, which is why the printer refuses rather than silently rewrite.
+
+---
+
 ## EXISTS / NOT EXISTS (correlated subquery)
 
 ```ts
