@@ -60,12 +60,15 @@ export const FEATURES = {
   INSERT_OVERRIDING: { label: "OVERRIDING SYSTEM/USER VALUE", dialects: ["pg"] },
   MERGE_STATEMENT: { label: "MERGE", dialects: ["pg", "mssql"] },
   /**
-   * `RETURNING` projection on MERGE — PG 17+ accepts it natively
-   * (including the `merge_action()` projection). MSSQL has the
-   * `OUTPUT` clause but its syntax is different; until that's
-   * wired up the MSSQL printer throws. MySQL/SQLite have no MERGE.
+   * `RETURNING` projection on MERGE — PG 17+ accepts the standard
+   * form (including the PG-only `merge_action()` projection). MSSQL
+   * has the equivalent `OUTPUT` clause; the MSSQL printer rewrites
+   * the `MergeNode.returning` slot as `OUTPUT $action, INSERTED.col,
+   * DELETED.col` at emit time (the `$action` token is exposed via the
+   * dedicated `mergeActionMssql()` helper — `mergeAction()` itself
+   * emits PG-specific `MERGE_ACTION()`). MySQL/SQLite have no MERGE.
    */
-  MERGE_RETURNING: { label: "RETURNING on MERGE", dialects: ["pg"] },
+  MERGE_RETURNING: { label: "RETURNING / OUTPUT on MERGE", dialects: ["pg", "mssql"] },
 
   // ── Row locking ───────────────────────────────────────────────────
   FOR_UPDATE: { label: "FOR UPDATE/SHARE", dialects: ["pg", "mysql"] },

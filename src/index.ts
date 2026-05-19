@@ -54,6 +54,7 @@ export {
   filter,
   isJson,
   mergeAction,
+  mergeActionMssql,
   not,
   notExists,
   nullif,

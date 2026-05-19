@@ -237,4 +237,50 @@ describe("MssqlPrinter", () => {
       expect(r.sql).toContain("OUTPUT DELETED.[id]")
     })
   })
+
+  describe("OUTPUT — explicit pseudo-table prefix", () => {
+    // SQL Server's UPDATE OUTPUT can project both the pre-image
+    // (DELETED) and post-image (INSERTED) of the row. The printer's
+    // auto-prefix picks INSERTED for UPDATE; explicit `col("id",
+    // "DELETED")` lets the user opt into the pre-image column without
+    // the auto-prefix double-wrapping it.
+    it("UPDATE OUTPUT can mix INSERTED and DELETED columns", () => {
+      const node: UpdateNode = {
+        ...createUpdateNode({ type: "table_ref", name: "users" }),
+        set: [{ column: "name", value: param(0, "Bob") }],
+        returning: [
+          col("id"), // bare → INSERTED.[id]
+          col("name", "DELETED"), // explicit DELETED.name
+        ],
+        where: eq(col("id"), param(1, 1)),
+      }
+      const r = printer().print(node)
+      expect(r.sql).toContain("OUTPUT INSERTED.[id], [DELETED].[name]")
+      // Crucially: no triple-qualified `INSERTED.[DELETED].[name]`.
+      expect(r.sql).not.toContain("INSERTED.[DELETED]")
+    })
+
+    it("INSERT OUTPUT respects explicit INSERTED qualifier (no double prefix)", () => {
+      const node: InsertNode = {
+        ...createInsertNode({ type: "table_ref", name: "users" }),
+        columns: ["name"],
+        values: [[param(0, "Alice")]],
+        returning: [col("id", "INSERTED")],
+      }
+      const r = printer().print(node)
+      expect(r.sql).toContain("OUTPUT [INSERTED].[id]")
+      expect(r.sql).not.toContain("INSERTED.[INSERTED]")
+    })
+
+    it("DELETE OUTPUT respects explicit DELETED qualifier (no double prefix)", () => {
+      const node: DeleteNode = {
+        ...createDeleteNode({ type: "table_ref", name: "users" }),
+        returning: [col("id", "DELETED")],
+        where: eq(col("id"), param(0, 1)),
+      }
+      const r = printer().print(node)
+      expect(r.sql).toContain("OUTPUT [DELETED].[id]")
+      expect(r.sql).not.toContain("DELETED.[DELETED]")
+    })
+  })
 })

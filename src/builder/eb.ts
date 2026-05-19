@@ -594,13 +594,56 @@ export function unsafeSqlFn(name: string, ...args: Expression<any>[]): Expressio
  * The printer emits the bare `MERGE_ACTION()` form; PG recognizes
  * this as the standard `merge_action()` function. MSSQL has an
  * equivalent token (`$action`) but it's wired into the `OUTPUT`
- * clause syntactically rather than callable as a function — using
- * `mergeAction()` on a non-PG dialect produces a `MERGE_ACTION()`
- * call that the engine will reject.
+ * clause syntactically (a pseudo-column, not a callable function) —
+ * use {@link mergeActionMssql} on MSSQL. Mixing the two across
+ * dialects produces SQL the engine will reject; the two helpers are
+ * intentionally separate so the dialect choice is explicit.
  */
 export function mergeAction(): Expression<string> {
   return wrap(rawFn("MERGE_ACTION", []))
 }
+
+/**
+ * `$action` — SQL Server's MERGE / OUTPUT pseudo-column. Returns the
+ * branch that fired for the row: `'INSERT'`, `'UPDATE'`, or `'DELETE'`.
+ * Only meaningful inside an `OUTPUT` clause on a MERGE statement.
+ *
+ * ```ts
+ * db.mergeInto("users", { ... })
+ *   .whenMatchedThenUpdate(...)
+ *   .whenNotMatchedThenInsert(...)
+ *   .returning({ id: col("id"), action: mergeActionMssql() })
+ * ```
+ *
+ * The MSSQL printer emits the bare `$action` token (no parentheses —
+ * SQL Server treats it as a pseudo-column, not a function call); on
+ * any other dialect a `mergeActionMssql()` projection would compile
+ * to invalid SQL the engine rejects. This is the MSSQL analogue of
+ * {@link mergeAction} (which emits PG's `MERGE_ACTION()`). The two
+ * helpers are kept separate rather than dialect-detected at print time
+ * so the choice is explicit on the call site — the maintainers chose
+ * that trade-off for the first cut.
+ *
+ * Internally we use a sentinel function-call node (name
+ * `__SUMAK_MSSQL_ACTION__`) which the MSSQL printer recognizes and
+ * rewrites to `$action`. The sentinel name is alphanumeric so it
+ * passes `validateFunctionName`, and it's not in the standard /
+ * niladic function tables, so other printers emit it verbatim — which
+ * is exactly the "wrong but visible" behavior we want on non-MSSQL
+ * dialects (the engine errors at parse, pointing at the offending
+ * call site).
+ */
+export function mergeActionMssql(): Expression<string> {
+  return wrap(rawFn(MSSQL_ACTION_FUNCTION_NAME, []))
+}
+
+/**
+ * Sentinel function name emitted by {@link mergeActionMssql} so the
+ * MSSQL printer can find-and-replace it with the `$action` pseudo-
+ * column inside MERGE OUTPUT. Exported for the printer; not intended
+ * for direct user use.
+ */
+export const MSSQL_ACTION_FUNCTION_NAME = "__SUMAK_MSSQL_ACTION__"
 
 // Aggregate helpers live in `./aggregate.ts` so this file can stay
 // focused on the typed-expression core. The re-export here preserves

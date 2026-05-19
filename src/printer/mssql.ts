@@ -16,6 +16,7 @@ import type {
   UpdateNode,
   WindowFunctionNode,
 } from "../ast/nodes.ts"
+import { MSSQL_ACTION_FUNCTION_NAME } from "../builder/eb.ts"
 import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import { quoteIdentifier } from "../utils/identifier.ts"
@@ -422,6 +423,12 @@ export class MssqlPrinter extends BasePrinter {
    * to `INSERTED.*` (the pseudo-table has every column of the target).
    * Emitting `INSERTED.[orders].*` produces an invalid three-part name
    * that SQL Server rejects at parse.
+   *
+   * Column refs that already carry an explicit `INSERTED` / `DELETED`
+   * table qualifier (case-insensitive) pass through unchanged so the
+   * user can override the default prefix on a per-column basis. This
+   * is rare for plain INSERT/UPDATE/DELETE (where exactly one of the
+   * pseudo-tables is meaningful) but essential for MERGE.
    */
   private _outputCols(
     returning: readonly import("../ast/nodes.ts").ExpressionNode[],
@@ -434,9 +441,69 @@ export class MssqlPrinter extends BasePrinter {
           // INSERTED/DELETED pseudo-table, never the base table directly.
           return `${prefix}.*`
         }
+        if (r.type === "column_ref" && this._isPseudoTablePrefix(r.table)) {
+          // User-specified `inserted.col` / `deleted.col` — preserve
+          // their choice rather than double-prefixing.
+          return this.printExpression(r)
+        }
         return `${prefix}.${this.printExpression(r)}`
       })
       .join(", ")
+  }
+
+  /**
+   * `OUTPUT` projection for MERGE — unlike INSERT/UPDATE/DELETE, both
+   * pseudo-tables (`INSERTED` for UPDATE/INSERT branches, `DELETED`
+   * for DELETE/UPDATE-old branches) are simultaneously in scope. Bare
+   * column refs default to `INSERTED.` (the post-action row, the most
+   * common case for "what did MERGE produce?"); users who want the
+   * pre-action row pass a column ref with an explicit `"DELETED"` table
+   * qualifier. The `$action` literal (via the dedicated
+   * `mergeActionMssql()` builder helper) projects which branch fired,
+   * analogous to PG's `merge_action()`.
+   */
+  private _mergeOutputCols(returning: readonly import("../ast/nodes.ts").ExpressionNode[]): string {
+    return returning
+      .map((r) => {
+        if (r.type === "star") {
+          // Star without an explicit pseudo-table on MERGE defaults
+          // to `INSERTED.*` — the post-action row. `DELETED.*` is
+          // reachable via `star("DELETED")` if the user wants it.
+          if (this._isPseudoTablePrefix(r.table)) {
+            return `${r.table!.toUpperCase()}.*`
+          }
+          return "INSERTED.*"
+        }
+        if (r.type === "column_ref" && this._isPseudoTablePrefix(r.table)) {
+          return this.printExpression(r)
+        }
+        if (r.type === "column_ref") {
+          // Bare `col("id")` on MERGE OUTPUT — prefix with INSERTED.
+          // Re-emit the column ref via printExpression (so identifier
+          // quoting + any alias still apply) but with INSERTED prepended.
+          return `INSERTED.${this.printExpression(r)}`
+        }
+        // Non-column expressions — raw nodes (`$action`), function calls,
+        // aliased exprs, etc. — print verbatim. The user is responsible
+        // for picking a valid OUTPUT projection (e.g. `INSERTED.col + 1`
+        // via `unsafeRawExpr` is fine; bare `col("id") + 1` from a
+        // typed builder would compile to `("id" + 1)` which SQL Server
+        // rejects in OUTPUT scope, but that's a builder-side concern).
+        return this.printExpression(r)
+      })
+      .join(", ")
+  }
+
+  /**
+   * True when a table qualifier names one of MSSQL's MERGE/OUTPUT
+   * pseudo-tables (`inserted` / `deleted`, case-insensitive). Used to
+   * suppress the automatic INSERTED-prefix injection when the user
+   * has already specified the pseudo-table on the column ref.
+   */
+  private _isPseudoTablePrefix(table: string | undefined): boolean {
+    if (!table) return false
+    const upper = table.toUpperCase()
+    return upper === "INSERTED" || upper === "DELETED"
   }
 
   protected override printFullTextSearch(node: FullTextSearchNode): string {
@@ -494,6 +561,23 @@ export class MssqlPrinter extends BasePrinter {
    * at an explicit rewrite.
    */
   protected override printFunctionCall(node: FunctionCallNode): string {
+    // `mergeActionMssql()` produces a function_call with a sentinel
+    // name; we rewrite it here to SQL Server's `$action` pseudo-column
+    // (no parens — it's not a callable function, it's a positional
+    // marker the MERGE OUTPUT clause expands at execution time). The
+    // sentinel name is chosen so it would NEVER collide with a real
+    // user-supplied function — collision would silently produce
+    // `$action` instead of the user's function call. We still let an
+    // optional alias propagate so `mergeActionMssql().as("kind")`
+    // (when wired into the typed builder's aliased-object form)
+    // would render correctly.
+    if (node.name === MSSQL_ACTION_FUNCTION_NAME) {
+      let result = "$action"
+      if (node.alias) {
+        result += ` AS ${quoteIdentifier(node.alias, this.dialect)}`
+      }
+      return result
+    }
     if (node.filter) {
       throw new UnsupportedDialectFeatureError(
         "mssql",
@@ -529,17 +613,38 @@ export class MssqlPrinter extends BasePrinter {
 
   /**
    * MSSQL's MERGE has an `OUTPUT` clause for the same purpose as PG's
-   * `RETURNING`, but it lives between WHEN and the closing semicolon
-   * with different positioning, syntax (`OUTPUT $action, inserted.id,
-   * deleted.id`), and pseudo-tables. Until we wire up that surface,
-   * reject the generic `RETURNING` slot rather than silently emitting
-   * invalid SQL. The supporting matrix is intentionally PG-only via
-   * the {@link MERGE_RETURNING} flag.
+   * `RETURNING` — the AST stores both via `MergeNode.returning`. At
+   * print time we rewrite the tail: PG emits `RETURNING <cols>`, MSSQL
+   * emits `OUTPUT <cols>` with the `INSERTED` / `DELETED` pseudo-tables
+   * the dialect requires.
+   *
+   * Pseudo-table conventions: bare column refs (`col("id")`) default
+   * to `INSERTED.id` (the post-action row). Users who want the
+   * pre-action row pass `col("id", "DELETED")`. The `$action` token
+   * (`'INSERT' | 'UPDATE' | 'DELETE'`) is produced by the dedicated
+   * `mergeActionMssql()` builder helper — distinct from PG's
+   * `mergeAction()` because the two compile to different syntax
+   * (`MERGE_ACTION()` is a function, `$action` is a pseudo-column).
+   *
+   * Positioning: SQL Server's grammar puts `OUTPUT` between the last
+   * `WHEN` clause and the (mandatory) closing semicolon — we emit
+   * everything up to and including the WHENs via the base printer,
+   * then append `OUTPUT <cols>`. Other MSSQL-specific MERGE
+   * requirements (the trailing `;`) are the driver's job, not the
+   * printer's; SQL Server tolerates the missing semicolon at parse
+   * but the standard practice is to add one externally.
    */
   protected override printMerge(node: MergeNode): string {
-    if (node.returning.length > 0) {
-      assertFeature("mssql", "MERGE_RETURNING")
+    if (node.returning.length === 0) {
+      return super.printMerge(node)
     }
-    return super.printMerge(node)
+    assertFeature("mssql", "MERGE_RETURNING")
+    // Print the rest of the statement via the base printer with an
+    // empty returning slot, then append the MSSQL-flavored OUTPUT
+    // tail. This keeps the base printer the single source of truth
+    // for the MERGE skeleton (target / source / ON / WHENs / CTEs)
+    // and avoids duplicating that logic.
+    const baseSql = super.printMerge({ ...node, returning: [] })
+    return `${baseSql} OUTPUT ${this._mergeOutputCols(node.returning)}`
   }
 }
