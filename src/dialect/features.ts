@@ -101,6 +101,34 @@ export const FEATURES = {
     label: "ordered-set aggregates (WITHIN GROUP)",
     dialects: ["pg", "mysql", "mssql"],
   },
+  /**
+   * Univariate statistical aggregates — `STDDEV`, `STDDEV_POP`,
+   * `STDDEV_SAMP` (and the same triad for `VAR*`). PG, MySQL, SQLite
+   * (3.41+ via `sqlite3_create_function`-style stat extension; modern
+   * builds ship it), and MSSQL all accept these spellings.
+   */
+  STDDEV_FN: {
+    label: "STDDEV / STDDEV_POP / STDDEV_SAMP",
+    dialects: ["pg", "mysql", "sqlite", "mssql"],
+  },
+  /** See {@link STDDEV_FN}. Broken out for parity with the SQL standard pairing. */
+  VARIANCE_FN: {
+    label: "VARIANCE / VAR_POP / VAR_SAMP",
+    dialects: ["pg", "mysql", "sqlite", "mssql"],
+  },
+  /**
+   * Bivariate linear-regression aggregates — `CORR`, `COVAR_POP`,
+   * `COVAR_SAMP`, `REGR_SLOPE`, `REGR_INTERCEPT`, `REGR_R2`. PG and
+   * MSSQL implement the full set under the standard names; MySQL and
+   * SQLite have no built-in equivalent (the pieces can be hand-rolled
+   * from `SUM` / `AVG` / `STDDEV` but with worse numerical stability),
+   * so the printers refuse the standard names rather than silently
+   * fall through.
+   */
+  LINEAR_REGRESSION_AGG: {
+    label: "linear-regression aggregates (CORR / COVAR_* / REGR_*)",
+    dialects: ["pg", "mssql"],
+  },
 
   // ── Arrays / JSON ─────────────────────────────────────────────────
   ARRAY_LITERALS: { label: "ARRAY[...]", dialects: ["pg"] },

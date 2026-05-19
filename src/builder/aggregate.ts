@@ -292,3 +292,155 @@ export function withinGroup<T>(
     })),
   })
 }
+
+// ─── Statistical / regression aggregates ──────────────────────────────
+//
+// Univariate dispersion (`STDDEV`, `VARIANCE`, plus the explicit `_POP`
+// and `_SAMP` forms) is supported on every relational dialect we care
+// about — PG, MySQL, SQLite, MSSQL. Bivariate / linear-regression
+// aggregates (`CORR`, `COVAR_*`, `REGR_*`) are SQL standard but only PG
+// and MSSQL implement the full set; MySQL and SQLite refuse via the
+// dialect printers using the `LINEAR_REGRESSION_AGG` feature flag.
+//
+// Every function returns `NULL` for an empty input set per SQL three-
+// valued logic. Sample-vs-population variants follow the standard:
+// `_SAMP` divides by `n − 1`, `_POP` divides by `n`. SQLite's STDEV/
+// VARIANCE use the same formulas but return NULL for < 2 rows in the
+// sample variants; the others return 0.
+//
+// All bivariate helpers take `(y, x)` — dependent variable first — per
+// the SQL standard, matching the order PG's docs and the ISO grammar
+// use. Swapping the order changes the regression slope/intercept.
+
+/**
+ * `STDDEV(expr)` — sample standard deviation (`STDDEV_SAMP`). Supported
+ * on PG, MySQL, SQLite, MSSQL. Returns `NULL` for an empty set; on
+ * SQLite the sample variants also return `NULL` for fewer than two
+ * rows (the n−1 denominator would be zero).
+ *
+ * ```ts
+ * db.selectFrom("requests").select({ jitter: stddev(typedCol("latency_ms")) })
+ * // SELECT STDDEV("latency_ms") AS "jitter" FROM "requests"
+ * ```
+ */
+export function stddev(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("STDDEV", [exprNode(expr)]))
+}
+
+/**
+ * `STDDEV_SAMP(expr)` — sample standard deviation, explicit name.
+ * Aliased to {@link stddev} on most dialects but emitted as the SQL
+ * standard spelling so the intent is unambiguous in generated SQL.
+ * PG, MySQL, SQLite, MSSQL accept the spelling.
+ */
+export function stddevSamp(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("STDDEV_SAMP", [exprNode(expr)]))
+}
+
+/**
+ * `STDDEV_POP(expr)` — population standard deviation. Divides by `n`
+ * rather than `n − 1`. Use this when the data is the entire population
+ * (not a sample). PG, MySQL, SQLite, MSSQL accept the spelling.
+ */
+export function stddevPop(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("STDDEV_POP", [exprNode(expr)]))
+}
+
+/**
+ * `VARIANCE(expr)` — sample variance (`VAR_SAMP`). Supported on PG,
+ * MySQL, SQLite, MSSQL. Returns `NULL` for an empty set; on SQLite the
+ * sample variants also return `NULL` for fewer than two rows.
+ *
+ * ```ts
+ * db.selectFrom("requests").select({ jitterSq: variance(typedCol("latency_ms")) })
+ * // SELECT VARIANCE("latency_ms") AS "jitterSq" FROM "requests"
+ * ```
+ */
+export function variance(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("VARIANCE", [exprNode(expr)]))
+}
+
+/**
+ * `VAR_SAMP(expr)` — sample variance, explicit name. Aliased to
+ * {@link variance} on most dialects but emitted as the SQL standard
+ * spelling. PG, MySQL, SQLite, MSSQL accept the spelling.
+ */
+export function varianceSamp(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("VAR_SAMP", [exprNode(expr)]))
+}
+
+/**
+ * `VAR_POP(expr)` — population variance. Divides by `n` rather than
+ * `n − 1`. Use when the data is the entire population. PG, MySQL,
+ * SQLite, MSSQL accept the spelling.
+ */
+export function variancePop(expr: Expression<number>): Expression<number> {
+  return wrap(rawFn("VAR_POP", [exprNode(expr)]))
+}
+
+/**
+ * `CORR(y, x)` — Pearson correlation coefficient between two
+ * expressions. Returns a value in `[-1, 1]`, or `NULL` for an empty
+ * set / single-row input. **PG and MSSQL only**; MySQL and SQLite have
+ * no equivalent and the printers throw at compile time.
+ *
+ * The argument order is `(dependent, independent)` per the SQL
+ * standard — the same order PG's docs use. Swapping has no effect on
+ * the magnitude of `CORR` but does flip the sign convention of paired
+ * regression helpers (`REGR_SLOPE`, etc.).
+ *
+ * ```ts
+ * db.selectFrom("ads").select({ ctr_vs_spend: corr(typedCol("ctr"), typedCol("spend")) })
+ * // SELECT CORR("ctr", "spend") AS "ctr_vs_spend" FROM "ads"
+ * ```
+ */
+export function corr(y: Expression<number>, x: Expression<number>): Expression<number> {
+  return wrap(rawFn("CORR", [exprNode(y), exprNode(x)]))
+}
+
+/**
+ * `COVAR_POP(y, x)` — population covariance. Divides by `n`. **PG and
+ * MSSQL only**; refuses on MySQL/SQLite. See {@link corr} for argument
+ * ordering.
+ */
+export function covarPop(y: Expression<number>, x: Expression<number>): Expression<number> {
+  return wrap(rawFn("COVAR_POP", [exprNode(y), exprNode(x)]))
+}
+
+/**
+ * `COVAR_SAMP(y, x)` — sample covariance. Divides by `n − 1`. **PG and
+ * MSSQL only**; refuses on MySQL/SQLite.
+ */
+export function covarSamp(y: Expression<number>, x: Expression<number>): Expression<number> {
+  return wrap(rawFn("COVAR_SAMP", [exprNode(y), exprNode(x)]))
+}
+
+/**
+ * `REGR_SLOPE(y, x)` — slope of the least-squares linear regression
+ * line fit to the `(x, y)` pairs. **PG and MSSQL only**; refuses on
+ * MySQL/SQLite.
+ *
+ * Argument order matches the SQL standard: `(dependent, independent)`,
+ * which is the opposite of the `y = mx + b` notation but matches the
+ * grammar `REGR_SLOPE(<y>, <x>)`.
+ */
+export function regrSlope(y: Expression<number>, x: Expression<number>): Expression<number> {
+  return wrap(rawFn("REGR_SLOPE", [exprNode(y), exprNode(x)]))
+}
+
+/**
+ * `REGR_INTERCEPT(y, x)` — y-intercept of the least-squares regression
+ * line. **PG and MSSQL only**; refuses on MySQL/SQLite.
+ */
+export function regrIntercept(y: Expression<number>, x: Expression<number>): Expression<number> {
+  return wrap(rawFn("REGR_INTERCEPT", [exprNode(y), exprNode(x)]))
+}
+
+/**
+ * `REGR_R2(y, x)` — coefficient of determination (R²) of the
+ * least-squares regression. Returns a value in `[0, 1]`. **PG and
+ * MSSQL only**; refuses on MySQL/SQLite.
+ */
+export function regrR2(y: Expression<number>, x: Expression<number>): Expression<number> {
+  return wrap(rawFn("REGR_R2", [exprNode(y), exprNode(x)]))
+}

@@ -210,6 +210,22 @@ export class SqlitePrinter extends BasePrinter {
     if (upper === "AGE") {
       assertFeature("sqlite", "AGE_FN")
     }
+    // SQLite has no `CORR`, `COVAR_*`, or `REGR_*` linear-regression
+    // aggregates. The univariate stats (`STDDEV`/`VARIANCE` and the
+    // explicit `_POP`/`_SAMP` forms) are available in modern builds via
+    // sqlite3's stat extension and pass through. Refuse the regression
+    // names so the failure points at the builder call, not a generic
+    // SQLite "no such function" at execution.
+    if (
+      upper === "CORR" ||
+      upper === "COVAR_POP" ||
+      upper === "COVAR_SAMP" ||
+      upper === "REGR_SLOPE" ||
+      upper === "REGR_INTERCEPT" ||
+      upper === "REGR_R2"
+    ) {
+      assertFeature("sqlite", "LINEAR_REGRESSION_AGG")
+    }
     // Only rewrite with 2+ args. Single-arg `MAX(expr)` / `MIN(expr)`
     // on SQLite is the AGGREGATE form, not the scalar — rewriting
     // `GREATEST(x)` (however degenerate) to `MAX(x)` would silently
