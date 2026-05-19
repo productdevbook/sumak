@@ -53,6 +53,7 @@ export {
   exists,
   filter,
   isJson,
+  mergeAction,
   not,
   notExists,
   nullif,

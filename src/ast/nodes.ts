@@ -619,6 +619,16 @@ export interface MergeNode {
   sourceAlias: string
   on: ExpressionNode
   whens: (MergeWhenMatched | MergeWhenNotMatched | MergeWhenNotMatchedBySource)[]
+  /**
+   * SQL:2023 `RETURNING` projection on MERGE. PG 17+ accepts it
+   * natively, including the PG-only `merge_action()` projection that
+   * returns the branch that fired (`'INSERT' | 'UPDATE' | 'DELETE'`).
+   * MSSQL has its own `OUTPUT` clause with different syntax — surface
+   * it as a follow-up; until then the MSSQL printer throws when this
+   * slot is non-empty. MySQL/SQLite have no `MERGE`, so the question
+   * doesn't arise.
+   */
+  returning: ExpressionNode[]
   ctes: CTENode[]
   /** @see QueryFlags — used by soft-delete plugin for idempotency. */
   flags?: QueryFlags
@@ -637,6 +647,7 @@ export function createMergeNode(
     sourceAlias,
     on,
     whens: [],
+    returning: [],
     ctes: [],
   }
 }

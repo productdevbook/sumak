@@ -1072,6 +1072,13 @@ export class BasePrinter implements Printer {
       }
     }
 
+    if (node.returning.length > 0) {
+      // PG 17+ accepts `RETURNING …` at the tail of a MERGE; the MSSQL
+      // override throws because its equivalent uses the `OUTPUT` clause
+      // with different positioning and semantics.
+      parts.push("RETURNING", node.returning.map((r) => this.printExpression(r)).join(", "))
+    }
+
     return parts.join(" ")
   }
 

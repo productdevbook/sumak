@@ -12,11 +12,12 @@ Sumak supports the SQL:2016 core MERGE shape:
 - **`WHEN NOT MATCHED BY SOURCE THEN UPDATE SET …` / `THEN DELETE`** — fires for target rows that have no matching source row (the inverse of `WHEN NOT MATCHED [BY TARGET]`). Useful for full-sync MERGE patterns where the source is the new desired state. Builder methods: `.whenNotMatchedBySourceThenUpdate(set, cond?)` and `.whenNotMatchedBySourceThenDelete(cond?)`. AST: third variant `MergeWhenNotMatchedBySource` alongside `MergeWhenMatched` / `MergeWhenNotMatched`. Emitted on PG (17+) and MSSQL; MySQL and SQLite have no `MERGE` at all and throw at print time. ✅
 - Per-branch `AND condition` ("WHEN MATCHED AND <cond>")
 - CTE-prefixed MERGE (`.with(...)`)
+- **`RETURNING` on MERGE** — `.returning(...cols)` / `.returning({ alias: expr })` / `.returningAll()` on the typed MERGE builder. PG 17+ accepts the standard form, including the PG-only `merge_action()` projection (top-level `mergeAction()` helper) which returns `'INSERT' | 'UPDATE' | 'DELETE'` per row. MSSQL has its own `OUTPUT` clause with different positioning and pseudo-tables; until that's wired up the printer throws `UnsupportedDialectFeatureError` (`MERGE_RETURNING` flag is PG-only). MySQL/SQLite have no `MERGE`. ✅
 
 **SQL:2023 additions we don't have:**
 
 - **`OVERRIDING { SYSTEM | USER } VALUE`** in `INSERT` actions — controls identity-column overrides on the insert branch. Currently you'd need raw SQL.
-- **`RETURNING` on MERGE** — PG 17+ supports it, the AST has no slot for it on MergeNode.
+- **MSSQL `OUTPUT` clause on MERGE** — the SQL Server analogue to `RETURNING`. Reuses the `MergeNode.returning` slot? Likely a separate surface because the syntax differs (`OUTPUT $action, inserted.id, deleted.id`) and the column-scope pseudo-tables (`inserted` / `deleted`) have no PG counterpart.
 
 ## Window functions
 
