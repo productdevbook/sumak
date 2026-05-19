@@ -605,6 +605,35 @@ export const scenarios: Scenario[] = [
     // sql templates because their typed APIs don't cover the non-
     // aggregate window functions like `row_number()`. The compile
     // cost is what we're measuring, not API ergonomics.
+    name: "select-from-derived",
+    // SELECT * FROM (SELECT id, name FROM users WHERE id > 0) AS u
+    // Derived table (subquery in FROM). Useful when you want to filter
+    // before window functions / GROUP BY but the schema doesn't have
+    // a precomputed view.
+    sumak: () => {
+      const sub = s
+        .selectFrom("users")
+        .select("id", "name")
+        .where(({ id }) => id.gt(0))
+      return s.selectFromSubquery(sub, "u").selectAll().toSQL()
+    },
+    drizzle: () => {
+      const sub = d
+        .select({ id: dUsers.id, name: dUsers.name })
+        .from(dUsers)
+        .where(gt(dUsers.id, 0))
+        .as("u")
+      return drizzleToResult(d.select().from(sub).toSQL())
+    },
+    kysely: () =>
+      kyselyToResult(
+        k
+          .selectFrom(k.selectFrom("users").select(["id", "name"]).where("id", ">", 0).as("u"))
+          .selectAll()
+          .compile(),
+      ),
+  },
+  {
     name: "insert-from-select",
     // INSERT INTO users (id, name, email, createdAt) SELECT ... FROM users
     // Common "copy-modify-insert" pattern (e.g. clone a row, populate
