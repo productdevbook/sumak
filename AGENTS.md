@@ -104,6 +104,7 @@ src/
     data-masking.ts         # DataMaskingPlugin — transformResult row redaction
     optimistic-lock.ts      # OptimisticLockPlugin — version column guard
     query-limit.ts          # QueryLimitPlugin — hard row cap
+    normalize-strings.ts    # normalizeStrings — per-column value rewrites (trim / lower / emptyToNull / custom)
   driver/
     types.ts                # Driver interface (query/execute/transaction/close), Row, ExecuteResult
     execute.ts              # runQuery/runOne/runFirst/runExecute — wires builders to driver

@@ -246,6 +246,7 @@ export {
   caslAuthz,
   dataMasking,
   multiTenant,
+  normalizeStrings,
   optimisticLock,
   queryLimit,
   softDelete,
@@ -253,6 +254,11 @@ export {
   withSchema,
 } from "./plugin/factories.ts"
 export type { CaslAuthzConfig, SubjectTypeConfig } from "./plugin/factories.ts"
+export type {
+  NormalizeStringsConfig,
+  NormalizeTransform,
+  NormalizeTransformSpec,
+} from "./plugin/normalize-strings.ts"
 export type { ResultContext, SumakPlugin } from "./plugin/types.ts"
 
 // ─── CASL integration — opt-in utility path (no plugin required) ───────────

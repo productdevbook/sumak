@@ -2,6 +2,7 @@ import { AuditTimestampPlugin } from "./audit-timestamp.ts"
 import { CamelCasePlugin } from "./camel-case.ts"
 import { DataMaskingPlugin } from "./data-masking.ts"
 import { MultiTenantPlugin } from "./multi-tenant.ts"
+import { normalizeStrings as normalizeStringsImpl } from "./normalize-strings.ts"
 import { OptimisticLockPlugin } from "./optimistic-lock.ts"
 import { QueryLimitPlugin } from "./query-limit.ts"
 import { SoftDeletePlugin } from "./soft-delete.ts"
@@ -68,6 +69,8 @@ export function dataMasking(
 ): SumakPlugin {
   return new DataMaskingPlugin(config)
 }
+
+export const normalizeStrings = normalizeStringsImpl
 
 export { subjectType } from "./subject-type.ts"
 export type { SubjectTypeConfig } from "./subject-type.ts"
