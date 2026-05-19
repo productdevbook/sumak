@@ -1,6 +1,7 @@
 import { AuditTimestampPlugin } from "./audit-timestamp.ts"
 import { CamelCasePlugin } from "./camel-case.ts"
 import { DataMaskingPlugin } from "./data-masking.ts"
+import { debugLogger as debugLoggerImpl } from "./debug-logger.ts"
 import { defaults as defaultsImpl } from "./defaults.ts"
 import { MultiTenantPlugin } from "./multi-tenant.ts"
 import { normalizeStrings as normalizeStringsImpl } from "./normalize-strings.ts"
@@ -74,6 +75,8 @@ export function dataMasking(
 export const normalizeStrings = normalizeStringsImpl
 
 export const defaults = defaultsImpl
+
+export const debugLogger = debugLoggerImpl
 
 export { subjectType } from "./subject-type.ts"
 export type { SubjectTypeConfig } from "./subject-type.ts"

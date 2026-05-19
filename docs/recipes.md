@@ -1508,6 +1508,62 @@ The plugin only rewrites _literal_ string values supplied by the user (i.e. `Par
 
 ---
 
+## Debug logging
+
+`debugLogger` prints every compiled SQL statement to a sink (defaulting to `console.log`). Use it during local development when an APM tool is overkill — drop the plugin in and you see every query sumak produces, both at compile time and around the driver call.
+
+```ts
+import { sumak, debugLogger, pgDialect } from "sumak"
+
+const db = sumak({
+  dialect: pgDialect(),
+  tables,
+  plugins: [
+    debugLogger({
+      // Skip noisy health checks before they reach the sink.
+      filter: (entry) => !entry.sql.startsWith("SELECT 1"),
+      // Only print `exec-end` events that took ≥ 100ms.
+      slowQueryMs: 100,
+      // Force ANSI colours (default: process.stdout.isTTY).
+      color: true,
+    }),
+  ],
+})
+
+db.selectFrom("users")
+  .where(({ id }) => id.eq(1))
+  .selectAll()
+  .many()
+// [COMPILE]    SELECT * FROM "users" WHERE "id" = $1 -- params: [1]
+// [EXEC-START] SELECT * FROM "users" WHERE "id" = $1 -- params: [1]
+// [EXEC-END]   SELECT * FROM "users" WHERE "id" = $1 -- params: [1] (0.42ms) rows=1
+```
+
+Each entry passed to your sink carries the SQL, the parameter list, and the lifecycle phase:
+
+```ts
+interface DebugLogEntry {
+  phase: "compile" | "exec-start" | "exec-end" | "exec-error"
+  sql: string
+  params: readonly unknown[]
+  durationMs?: number // exec-end / exec-error
+  rowCount?: number // exec-end
+  error?: unknown // exec-error
+  slow?: boolean // exec-end, when `slowQueryMs` is set
+}
+```
+
+A few notes:
+
+- **Observer-only.** The plugin never rewrites the AST or the compiled query — adding or removing it cannot change the SQL your driver receives.
+- **Compile phase via `query:after`.** Compile entries fire whether you execute the query or not, which makes the plugin handy in unit tests that only call `.toSQL()`.
+- **Execute phase via `onQuery`.** The plugin appends its own listener alongside the one you pass to `sumak({ onQuery })`, so existing observability (OTel, custom metrics) keeps working — you do not have to choose between them.
+- **Sink throws are swallowed.** A buggy log formatter never takes down a query; sumak silently drops the offending entry, identical to the policy already in place for `onQuery` listeners.
+- **Slow-query mode.** With `slowQueryMs: N`, `exec-end` is suppressed for fast queries (you still see `compile` + `exec-start`); slow ones are emitted with `slow: true` so a custom sink can route them to a different stream. `exec-error` always fires.
+- **Custom routing.** Pass a `sink` to forward entries to your own logger (pino, winston, structured JSON, a UI overlay…). When `sink` is set the `color` flag is ignored — the formatter is yours.
+
+---
+
 ## CASL row-level authorization
 
 Define abilities, register the plugin, query as usual:

@@ -1,4 +1,6 @@
 import type { ASTNode } from "../ast/nodes.ts"
+import type { OnQueryListener } from "../driver/types.ts"
+import type { HookName, SumakHooks } from "./hooks.ts"
 
 /**
  * Context accompanying a `transformResult` call. Lets plugins that
@@ -28,11 +30,32 @@ export interface ResultContext {
 }
 
 /**
+ * One-time setup API handed to {@link SumakPlugin.setup}. Lets a plugin
+ * register lifecycle hooks (`query:after`, `select:before`, …) and
+ * additional `onQuery` observers without pinning a reference to the
+ * full `Sumak` instance (which would create an import cycle for plugins
+ * that live below the core in the build graph).
+ *
+ * Listeners passed to `addOnQuery` are chained alongside the listener
+ * configured via `sumak({ onQuery })`; sumak invokes each listener
+ * exactly once per query event and swallows their thrown errors (so an
+ * observability bug can't take down a query).
+ */
+export interface SumakPluginSetupContext {
+  /** Register a lifecycle hook. Returns an unregister function. */
+  hook<K extends HookName>(name: K, handler: SumakHooks[K]): () => void
+  /** Append an extra `onQuery` listener. Fires after the user-provided one. */
+  addOnQuery(listener: OnQueryListener): void
+}
+
+/**
  * Plugin interface for sumak.
  *
- * Plugins can intercept at two points:
+ * Plugins can intercept at three points:
  * 1. transformNode — modify the AST before compilation (safe: structural guarantees preserved)
  * 2. transformResult — modify result rows after execution
+ * 3. setup — register lifecycle hooks or extra `onQuery` observers once
+ *    at construction (for plugins that observe rather than rewrite)
  *
  * **Security note:** `transformQuery` was removed because it allowed plugins to modify
  * compiled SQL strings directly, bypassing parameterization and enabling injection.
@@ -51,4 +74,15 @@ export interface SumakPlugin {
    * still work.
    */
   transformResult?(rows: Record<string, unknown>[], ctx?: ResultContext): Record<string, unknown>[]
+
+  /**
+   * Called once per `Sumak` instance, right after the plugin pipeline
+   * is wired up. Used by observer-style plugins (debug logger, custom
+   * metrics) that need to attach hooks or extra `onQuery` listeners
+   * without exposing a separate registration API.
+   *
+   * Plugins that only need `transformNode` / `transformResult` can
+   * leave this unimplemented.
+   */
+  setup?(api: SumakPluginSetupContext): void
 }
