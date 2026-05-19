@@ -252,12 +252,35 @@ export class Col<T> {
     return wrap({ type: "in", expr: this._node, values, negated })
   }
 
-  /** IS NULL / IS NOT NULL via `{ negate: true }`. */
+  /**
+   * `IS NULL` / `IS NOT NULL` (via `{ negate: true }`).
+   *
+   * ```ts
+   * .where(({ deleted_at }) => deleted_at.isNull())             // IS NULL
+   * .where(({ email }) => email.isNull({ negate: true }))       // IS NOT NULL
+   * ```
+   *
+   * `.eq(null)` and `.neq(null)` auto-lower to these forms, so this
+   * method is mainly useful when `null` is dynamic.
+   */
   isNull(opts?: { negate?: boolean }): Expression<boolean> {
     return wrap({ type: "is_null", expr: this._node, negated: opts?.negate === true })
   }
 
-  /** BETWEEN / NOT BETWEEN / BETWEEN SYMMETRIC — one method, opts for variants. */
+  /**
+   * `BETWEEN low AND high`. The bounds are inclusive on both ends.
+   * Pass `{ negate: true }` for `NOT BETWEEN`; `{ symmetric: true }`
+   * for PG's `BETWEEN SYMMETRIC` (swaps low/high if `low > high`).
+   *
+   * ```ts
+   * .where(({ age }) => age.between(18, 65))                    // age BETWEEN $1 AND $2
+   * .where(({ age }) => age.between(0, 17, { negate: true }))   // age NOT BETWEEN
+   * .where(({ age }) => age.between(65, 18, { symmetric: true })) // PG: swaps bounds
+   * ```
+   *
+   * NULL handling: any NULL operand makes the whole expression
+   * UNKNOWN. Use `.isNull()` if you specifically want to match nulls.
+   */
   between(
     low: CmpArg<T>,
     high: CmpArg<T>,
@@ -274,25 +297,61 @@ export class Col<T> {
   }
 
   /**
-   * IS DISTINCT FROM — null-safe comparison.
-   * Pass `{ negate: true }` for IS NOT DISTINCT FROM.
+   * `IS DISTINCT FROM` — null-safe inequality. Two NULLs are NOT
+   * distinct from each other (unlike `<>`, which returns UNKNOWN).
+   * Pass `{ negate: true }` for `IS NOT DISTINCT FROM` (null-safe
+   * equality).
+   *
+   * ```ts
+   * .where(({ status }) => status.distinctFrom("archived"))
+   * // status IS DISTINCT FROM $1
+   * // — matches rows where status ≠ 'archived' OR status IS NULL.
+   * ```
+   *
+   * Supported by PG, SQLite, MariaDB. MySQL 8 supports the `<=>`
+   * operator with similar semantics. MSSQL has no direct equivalent;
+   * sumak's MSSQL printer emits a `(NOT (col = val) OR col IS NULL)`
+   * decomposition.
    */
   distinctFrom(value: T | null, opts?: { negate?: boolean }): Expression<boolean> {
     const op = opts?.negate === true ? "IS NOT DISTINCT FROM" : "IS DISTINCT FROM"
     return wrap(binOp(op, this._node, autoParam(value)))
   }
 
-  /** As raw Expression<T> for advanced use */
+  /**
+   * Promote this `Col<T>` to a raw `Expression<T>`. Useful when an API
+   * accepts only `Expression` (e.g. `tuple(...)`, `over(...)`) and not
+   * the column-proxy form.
+   *
+   * ```ts
+   * // tuple() needs Expression[], not Col[]:
+   * tuple(id.toExpr(), name.toExpr())
+   * ```
+   */
   toExpr(): Expression<T> {
     return wrap<T>(this._node)
   }
 
-  /** CAST(col AS dataType) inline */
+  /**
+   * `CAST(col AS <dataType>)` — inline type cast. The dataType
+   * string is emitted verbatim, so dialect-specific types
+   * (`JSONB`, `TIMESTAMPTZ`, `NUMERIC(10,2)`) work but cross-dialect
+   * portability is the caller's responsibility.
+   *
+   * ```ts
+   * .select({ priceText: col.price.cast<string>("TEXT") })
+   * // SELECT CAST("price" AS TEXT) AS "priceText"
+   * ```
+   */
   cast<R>(dataType: string): Expression<R> {
     return wrap<R>(rawCast(this._node, dataType))
   }
 
-  /** ASC ordering — for use with orderBy(col.asc()) */
+  /**
+   * ASC ordering with this column. Equivalent to `.orderBy("col",
+   * "ASC")` but useful when you want to express ordering inline as
+   * an expression (e.g. inside `over()` window orderBy).
+   */
   asc(): { expr: Expression<T>; direction: "ASC" } {
     return { expr: wrap<T>(this._node), direction: "ASC" }
   }
