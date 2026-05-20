@@ -11,25 +11,30 @@ import type {
   CopyNode,
   CreateDomainNode,
   CreateExtensionNode,
+  CreateFunctionNode,
   CreateIndexNode,
   CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
   CreateTableNode,
+  CreateTriggerNode,
   CreateTypeEnumNode,
   CreateViewNode,
   DDLNode,
   DropDomainNode,
   DropExtensionNode,
+  DropFunctionNode,
   DropIndexNode,
   DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
   DropTableNode,
+  DropTriggerNode,
   DropTypeNode,
   DropViewNode,
   ExcludeConstraintNode,
   ForeignKeyConstraintNode,
+  FunctionArg,
   ListenNode,
   LockTableNode,
   NotifyNode,
@@ -150,6 +155,14 @@ export class DDLPrinter {
         return this.printUnlisten(node)
       case "notify":
         return this.printNotify(node)
+      case "create_function":
+        return this.printCreateFunction(node)
+      case "drop_function":
+        return this.printDropFunction(node)
+      case "create_trigger":
+        return this.printCreateTrigger(node)
+      case "drop_trigger":
+        return this.printDropTrigger(node)
     }
   }
 
@@ -1963,6 +1976,238 @@ export class DDLPrinter {
     return quoteIdentifier(role, this.dialect)
   }
 
+  /**
+   * Emit `CREATE [OR REPLACE] FUNCTION "name"(args) RETURNS type
+   * LANGUAGE sql|plpgsql [IMMUTABLE|STABLE] [STRICT] [PARALLEL …]
+   * [SECURITY …] AS $$ ... $$`. PostgreSQL only (Phase 1, ADR 005).
+   *
+   * Body emission:
+   *  - `language === "sql"` → `AS $$ SELECT <expr> $$`
+   *  - `language === "plpgsql"` → `AS $$ BEGIN RETURN <expr>; END $$`
+   *
+   * The body's expression flows through this printer's `printExpr` —
+   * column refs get identifier-quoted, literal `val(...)` lowers
+   * inline, nested typed-function calls round-trip as quoted bare
+   * function calls.
+   */
+  private printCreateFunction(node: CreateFunctionNode): string {
+    assertFeature(this.dialect, "CREATE_FUNCTION")
+    validateFunctionName(node.name)
+    validateDataType(node.returns)
+    if (node.immutable && node.stable) {
+      throw new Error(
+        `CREATE FUNCTION "${node.name}": IMMUTABLE and STABLE are mutually exclusive — set only one volatility.`,
+      )
+    }
+
+    const head: string[] = ["CREATE"]
+    if (node.orReplace) head.push("OR REPLACE")
+    head.push("FUNCTION")
+    head.push(this.qualifiedName(node.name, node.schema))
+
+    const argList = node.args.map((a) => this.renderFunctionArg(node.name, a)).join(", ")
+    const parts: string[] = [`${head.join(" ")}(${argList})`]
+
+    parts.push("RETURNS", node.returns)
+
+    if (node.language !== "sql" && node.language !== "plpgsql") {
+      throw new Error(
+        `CREATE FUNCTION "${node.name}": language must be "sql" or "plpgsql", got ${JSON.stringify(node.language)}.`,
+      )
+    }
+    parts.push("LANGUAGE", node.language)
+
+    if (node.immutable) parts.push("IMMUTABLE")
+    else if (node.stable) parts.push("STABLE")
+
+    if (node.strict) parts.push("STRICT")
+
+    if (node.parallel !== undefined) {
+      if (
+        node.parallel !== "safe" &&
+        node.parallel !== "restricted" &&
+        node.parallel !== "unsafe"
+      ) {
+        throw new Error(
+          `CREATE FUNCTION "${node.name}": parallel must be "safe" / "restricted" / "unsafe".`,
+        )
+      }
+      parts.push("PARALLEL", node.parallel)
+    }
+
+    if (node.security !== undefined) {
+      if (node.security !== "definer" && node.security !== "invoker") {
+        throw new Error(`CREATE FUNCTION "${node.name}": security must be "definer" or "invoker".`)
+      }
+      parts.push("SECURITY", node.security === "definer" ? "DEFINER" : "INVOKER")
+    }
+
+    const bodyExpr = this.printExpr(node.body)
+    const bodyText =
+      node.language === "sql"
+        ? `AS $$ SELECT ${bodyExpr} $$`
+        : `AS $$ BEGIN RETURN ${bodyExpr}; END $$`
+    parts.push(bodyText)
+
+    return parts.join(" ")
+  }
+
+  /** Render one entry in the `CREATE FUNCTION` parameter list. */
+  private renderFunctionArg(fnName: string, arg: FunctionArg): string {
+    if (!arg.name) {
+      throw new Error(
+        `CREATE FUNCTION "${fnName}": every argument needs a name (got an empty string).`,
+      )
+    }
+    validateFunctionName(arg.name)
+    validateDataType(arg.type)
+    const parts: string[] = []
+    if (arg.mode !== undefined && arg.mode !== "IN") {
+      if (arg.mode !== "OUT" && arg.mode !== "INOUT" && arg.mode !== "VARIADIC") {
+        throw new Error(
+          `CREATE FUNCTION "${fnName}": argument mode must be IN / OUT / INOUT / VARIADIC, got ${JSON.stringify(arg.mode)}.`,
+        )
+      }
+      parts.push(arg.mode)
+    }
+    parts.push(quoteIdentifier(arg.name, this.dialect))
+    parts.push(arg.type)
+    if (arg.defaultValue !== undefined) {
+      parts.push("DEFAULT", this.printExpr(arg.defaultValue))
+    }
+    return parts.join(" ")
+  }
+
+  private printDropFunction(node: DropFunctionNode): string {
+    assertFeature(this.dialect, "CREATE_FUNCTION")
+    validateFunctionName(node.name)
+    const parts: string[] = ["DROP FUNCTION"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    let nameSql = this.qualifiedName(node.name, node.schema)
+    if (node.argTypes !== undefined) {
+      for (const t of node.argTypes) validateDataType(t)
+      nameSql += `(${node.argTypes.join(", ")})`
+    }
+    parts.push(nameSql)
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
+  /**
+   * Emit `CREATE [OR REPLACE] [CONSTRAINT] TRIGGER "name" <timing>
+   * <event>[ OR <event> ...][ OF "col"[, ...]] ON "table"
+   * [DEFERRABLE [INITIALLY DEFERRED]] FOR EACH ROW|STATEMENT
+   * [WHEN (expr)] EXECUTE FUNCTION "fn"(args)`.
+   */
+  private printCreateTrigger(node: CreateTriggerNode): string {
+    assertFeature(this.dialect, "CREATE_TRIGGER")
+    validateFunctionName(node.name)
+    if (!node.table) {
+      throw new Error(`CREATE TRIGGER "${node.name}": .on(table) is required before compiling.`)
+    }
+    if (!node.functionName) {
+      throw new Error(
+        `CREATE TRIGGER "${node.name}": .executeFunction(name) is required before compiling.`,
+      )
+    }
+    validateFunctionName(node.functionName)
+    if (node.functionSchema !== undefined) {
+      validateFunctionName(node.functionSchema)
+    }
+    if (!node.events || node.events.length === 0) {
+      throw new Error(
+        `CREATE TRIGGER "${node.name}": at least one event (INSERT / UPDATE / DELETE / TRUNCATE) is required.`,
+      )
+    }
+    if (node.timing !== "BEFORE" && node.timing !== "AFTER" && node.timing !== "INSTEAD OF") {
+      throw new Error(
+        `CREATE TRIGGER "${node.name}": timing must be BEFORE / AFTER / INSTEAD OF, got ${JSON.stringify(node.timing)}.`,
+      )
+    }
+    if (node.forEach !== "ROW" && node.forEach !== "STATEMENT") {
+      throw new Error(
+        `CREATE TRIGGER "${node.name}": forEach must be ROW or STATEMENT, got ${JSON.stringify(node.forEach)}.`,
+      )
+    }
+    if (node.updateOf && node.updateOf.length > 0 && !node.events.includes("UPDATE")) {
+      throw new Error(
+        `CREATE TRIGGER "${node.name}": UPDATE OF column list is only valid with the UPDATE event.`,
+      )
+    }
+    for (const e of node.events) {
+      if (e !== "INSERT" && e !== "UPDATE" && e !== "DELETE" && e !== "TRUNCATE") {
+        throw new Error(
+          `CREATE TRIGGER "${node.name}": event must be INSERT / UPDATE / DELETE / TRUNCATE, got ${JSON.stringify(e)}.`,
+        )
+      }
+    }
+    if (node.constraint?.deferrable) {
+      // PG: `CONSTRAINT TRIGGER` must be AFTER + FOR EACH ROW.
+      if (node.timing !== "AFTER") {
+        throw new Error(
+          `CREATE CONSTRAINT TRIGGER "${node.name}": timing must be AFTER (constraint triggers fire at commit / row time).`,
+        )
+      }
+      if (node.forEach !== "ROW") {
+        throw new Error(
+          `CREATE CONSTRAINT TRIGGER "${node.name}": granularity must be FOR EACH ROW.`,
+        )
+      }
+    }
+
+    const parts: string[] = ["CREATE"]
+    if (node.orReplace) parts.push("OR REPLACE")
+    if (node.constraint?.deferrable) parts.push("CONSTRAINT")
+    parts.push("TRIGGER", quoteIdentifier(node.name, this.dialect))
+
+    parts.push(node.timing)
+    // events joined by `OR`. For UPDATE-with-columns we attach the
+    // `OF col1, col2` suffix to the UPDATE token only.
+    const eventTokens = node.events.map((e) => {
+      if (e === "UPDATE" && node.updateOf && node.updateOf.length > 0) {
+        const cols = node.updateOf.map((c) => quoteIdentifier(c, this.dialect)).join(", ")
+        return `UPDATE OF ${cols}`
+      }
+      return e
+    })
+    parts.push(eventTokens.join(" OR "))
+
+    parts.push("ON", this.qualifiedName(node.table, node.schema))
+
+    if (node.constraint?.deferrable) {
+      parts.push("DEFERRABLE")
+      if (node.constraint.initiallyDeferred) parts.push("INITIALLY DEFERRED")
+    }
+
+    parts.push("FOR EACH", node.forEach)
+
+    if (node.when !== undefined) {
+      parts.push("WHEN", `(${this.printExpr(node.when)})`)
+    }
+
+    const fnRef = this.qualifiedName(node.functionName, node.functionSchema)
+    const callArgs = node.functionArgs
+      ? node.functionArgs.map((a) => this.printExpr(a)).join(", ")
+      : ""
+    parts.push("EXECUTE FUNCTION", `${fnRef}(${callArgs})`)
+
+    return parts.join(" ")
+  }
+
+  private printDropTrigger(node: DropTriggerNode): string {
+    assertFeature(this.dialect, "CREATE_TRIGGER")
+    validateFunctionName(node.name)
+    if (!node.table) {
+      throw new Error(`DROP TRIGGER "${node.name}": .on(table) is required before compiling.`)
+    }
+    const parts: string[] = ["DROP TRIGGER"]
+    if (node.ifExists) parts.push("IF EXISTS")
+    parts.push(quoteIdentifier(node.name, this.dialect))
+    parts.push("ON", this.qualifiedName(node.table, node.schema))
+    if (node.cascade) parts.push("CASCADE")
+    return parts.join(" ")
+  }
+
   private printExpr(node: import("../ast/nodes.ts").ExpressionNode): string {
     // DDL expression contexts: CHECK, DEFAULT, GENERATED ALWAYS AS,
     // partial-index WHERE. None of these go through param binding —
@@ -1989,8 +2234,29 @@ export class DDLPrinter {
         // to skip that, letting arbitrary strings through a DEFAULT /
         // CHECK clause. Mirror the validation so a hand-crafted AST
         // with `fn("foo(); DROP …", [])` cannot corrupt DDL output.
+        // Schema-qualified names arrive as `"schema"."fn"` — that
+        // already-quoted form fails `validateFunctionName` (which only
+        // accepts bare identifiers), so we route those through verbatim
+        // when the prefix is a well-formed quoted-pair.
+        const QUALIFIED_RE = /^"([^"]+)"\."([^"]+)"$/
+        if (QUALIFIED_RE.test(node.name)) {
+          return `${node.name}(${node.args.map((a) => this.printExpr(a)).join(", ")})`
+        }
         validateFunctionName(node.name)
         return `${node.name}(${node.args.map((a) => this.printExpr(a)).join(", ")})`
+      }
+      case "param": {
+        // A bound parameter inside a DDL expression context — the body
+        // of a CREATE FUNCTION, a trigger's WHEN clause, a DEFAULT
+        // expression that wraps `val(...)` then somehow gets a `param`
+        // injected. DDL is a one-shot compile (no per-row binding), but
+        // the dialect's placeholder syntax (`$1` / `?` / `@p0`) is what
+        // the driver expects, so push the param and emit the matching
+        // placeholder. Keeps the param-binding contract consistent
+        // between DML and DDL.
+        this.params.push(node.value)
+        const idx = this.params.length
+        return this.dialect === "pg" ? `$${idx}` : "?"
       }
       case "binary_op":
         return `(${this.printExpr(node.left)} ${node.op} ${this.printExpr(node.right)})`

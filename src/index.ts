@@ -324,19 +324,24 @@ export type {
   CopyOptions,
   CreateDomainNode,
   CreateExtensionNode,
+  CreateFunctionNode,
   CreatePolicyNode,
   CreateSchemaNode,
   CreateSequenceNode,
+  CreateTriggerNode,
   CreateTypeEnumNode,
   CreateViewNode,
   DDLNode,
   DropDomainNode,
   DropExtensionNode,
+  DropFunctionNode,
   DropPolicyNode,
   DropSchemaNode,
   DropSequenceNode,
+  DropTriggerNode,
   DropTypeNode,
   DropViewNode,
+  FunctionArg,
   ListenNode,
   LockTableNode,
   NotifyNode,
@@ -401,6 +406,20 @@ export {
   UnlistenBuilder,
   unlisten,
 } from "./builder/ddl/pubsub.ts"
+export {
+  arg,
+  CreateFunctionBuilder,
+  createFunction,
+  DropFunctionBuilder,
+  dropFunction,
+} from "./builder/ddl/function.ts"
+export type { FunctionArgSpec, SqlToTs, TypedFunction } from "./builder/ddl/function.ts"
+export {
+  CreateTriggerBuilder,
+  createTrigger,
+  DropTriggerBuilder,
+  dropTrigger,
+} from "./builder/ddl/trigger.ts"
 
 // QueryFlags — builder-intent bitmap surfaced on SELECT/UPDATE/DELETE nodes.
 export { QueryFlags } from "./ast/nodes.ts"

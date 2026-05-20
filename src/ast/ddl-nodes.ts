@@ -1503,6 +1503,83 @@ export interface NotifyNode {
   payload?: string
 }
 
+// ── Functions and triggers (PG, ADR 005, Phase 1) ──
+
+/**
+ * One argument in a `CREATE FUNCTION` parameter list. `mode` defaults
+ * to `IN` when omitted; the printer skips emitting the keyword in that
+ * case so the common shape `(price numeric)` stays free of noise.
+ *
+ * `defaultValue` is an `ExpressionNode` that flows through the DDL
+ * expression printer — same identifier quoting and parameter binding
+ * as a column DEFAULT.
+ */
+export interface FunctionArg {
+  name: string
+  type: string
+  defaultValue?: ExpressionNode
+  mode?: "IN" | "OUT" | "INOUT" | "VARIADIC"
+}
+
+/**
+ * `CREATE FUNCTION` (PostgreSQL, Phase 1 — expression body only).
+ *
+ * The `body` is a single `ExpressionNode`. Phase 2 widens this to
+ * `ExpressionNode | StatementBlockNode` (procedural plpgsql); the
+ * Phase 1 shape is forward-compatible — existing call sites stay
+ * valid.
+ */
+export interface CreateFunctionNode {
+  type: "create_function"
+  name: string
+  schema?: string
+  orReplace?: boolean
+  args: FunctionArg[]
+  returns: string
+  language: "sql" | "plpgsql"
+  body: ExpressionNode
+  immutable?: boolean
+  stable?: boolean
+  strict?: boolean
+  parallel?: "safe" | "restricted" | "unsafe"
+  security?: "definer" | "invoker"
+}
+
+export interface DropFunctionNode {
+  type: "drop_function"
+  name: string
+  schema?: string
+  argTypes?: string[]
+  ifExists?: boolean
+  cascade?: boolean
+}
+
+export interface CreateTriggerNode {
+  type: "create_trigger"
+  name: string
+  table: string
+  schema?: string
+  timing: "BEFORE" | "AFTER" | "INSTEAD OF"
+  events: ("INSERT" | "UPDATE" | "DELETE" | "TRUNCATE")[]
+  updateOf?: string[]
+  forEach: "ROW" | "STATEMENT"
+  when?: ExpressionNode
+  functionName: string
+  functionSchema?: string
+  functionArgs?: ExpressionNode[]
+  orReplace?: boolean
+  constraint?: { deferrable?: boolean; initiallyDeferred?: boolean }
+}
+
+export interface DropTriggerNode {
+  type: "drop_trigger"
+  name: string
+  table: string
+  schema?: string
+  ifExists?: boolean
+  cascade?: boolean
+}
+
 // ── Union of all DDL nodes ──
 
 export type DDLNode =
@@ -1541,3 +1618,7 @@ export type DDLNode =
   | ListenNode
   | UnlistenNode
   | NotifyNode
+  | CreateFunctionNode
+  | DropFunctionNode
+  | CreateTriggerNode
+  | DropTriggerNode

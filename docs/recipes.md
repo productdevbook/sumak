@@ -2224,6 +2224,123 @@ Dialect support, at a glance:
 
 ---
 
+## PostgreSQL functions and triggers (typed bodies)
+
+PostgreSQL-only. ADR 005's [Phase 1](./adr/005-functions-and-triggers.md) ships `CREATE FUNCTION` with a typed expression body, plus `CREATE TRIGGER` referencing a function by name. Procedural control flow (`IF` / `LOOP` / `RAISE` / variable declarations / plpgsql magic variables) is deferred to Phase 2 — see the ADR for the sketch.
+
+### `compute_taxes` — typed expression body + call-site inference
+
+```ts
+import { add, arg, createFunction, mul, val } from "sumak"
+
+const computeTaxes = db.schema
+  .createFunction("compute_taxes")
+  .args({
+    price: arg("numeric"),
+    tax: arg("numeric", { default: val(0.2) }),
+  })
+  .returns("numeric")
+  .languageSql()
+  .body(({ price, tax }) => mul(price, add(val(1), tax)))
+  .build()
+
+// 1) Emit the CREATE FUNCTION DDL:
+db.compileDDL(computeTaxes.node)
+// CREATE FUNCTION "compute_taxes"("price" numeric, "tax" numeric DEFAULT 0.2)
+//   RETURNS numeric LANGUAGE sql AS $$ SELECT ("price" * (1 + "tax")) $$
+
+// 2) Use the typed value at a call site — `.call(...)` produces
+//    `Expression<number>` that any other typed builder accepts:
+db.selectFrom("products").select({
+  withTax: computeTaxes.call({ price: typedCol("price"), tax: val(0.18) }),
+})
+// SELECT compute_taxes("price", 0.18) AS "withTax" FROM "products"
+```
+
+Switch to `.languagePlpgsql()` to wrap the same body in `BEGIN RETURN <expr>; END`. Add `.immutable()` / `.stable()`, `.strict()`, `.parallel("safe")`, `.security("definer")` for the optional clauses.
+
+### Cross-function call — function A's body calls function B
+
+```ts
+const inc = db.schema
+  .createFunction("inc")
+  .args({ x: arg("integer") })
+  .returns("integer")
+  .languageSql()
+  .body(({ x }) => add(x, val(1)))
+  .build()
+
+const inc2 = db.schema
+  .createFunction("inc2")
+  .args({ x: arg("integer") })
+  .returns("integer")
+  .languageSql()
+  // call() returns Expression<number> — fits the body's return slot
+  .body(({ x }) => inc.call({ x: inc.call({ x }) }))
+  .build()
+// CREATE FUNCTION "inc2"("x" integer) RETURNS integer LANGUAGE sql
+//   AS $$ SELECT inc(inc("x")) $$
+```
+
+Both functions share one source of typed truth: the declaration shapes the body callback's typed proxy _and_ every `.call(...)` site downstream.
+
+### Audit log on UPDATE — typed trigger pointing at a function
+
+```ts
+import { createTrigger, dropTrigger, sql } from "sumak"
+
+// (1) The trigger function — Phase 1 uses raw SQL for plpgsql bodies
+// that need NEW / OLD / TG_OP magic variables. Phase 2 will surface
+// these as typed proxies inside `.body(...)`.
+await driver.execute(
+  `CREATE FUNCTION log_users_email() RETURNS trigger LANGUAGE plpgsql AS $$
+   BEGIN
+     INSERT INTO users_audit (user_id, old_email, new_email)
+     VALUES (OLD.id, OLD.email, NEW.email);
+     RETURN NEW;
+   END;
+   $$`,
+  [],
+)
+
+// (2) The trigger itself — full typed builder, points at the function
+// by name.
+db.compileDDL(
+  db.schema
+    .createTrigger("audit_users_email")
+    .on("users")
+    .after("UPDATE", "email")
+    .forEachRow()
+    .when(sql<boolean>`NEW."email" IS DISTINCT FROM OLD."email"`)
+    .executeFunction("log_users_email")
+    .build(),
+)
+// CREATE TRIGGER "audit_users_email" AFTER UPDATE OF "email" ON "users"
+//   FOR EACH ROW
+//   WHEN (NEW."email" IS DISTINCT FROM OLD."email")
+//   EXECUTE FUNCTION "log_users_email"()
+```
+
+Trigger surface in full: `.before(event, ...updateOfCols)` / `.after(...)` / `.insteadOf(...)`, `.withEvents([...], { updateOf })` for multi-event (`AFTER INSERT OR UPDATE`), `.forEachRow()` / `.forEachStatement()`, optional `.when(expr)` predicate (use `sql\`\``for`NEW.`/`OLD.`references until Phase 2 lands),`.executeFunction(name, ...args?)`, `.orReplace()`, `.deferrable({ initiallyDeferred })` for constraint triggers.
+
+### Tearing down
+
+```ts
+db.compileDDL(db.schema.dropTrigger("audit_users_email").on("users").build())
+db.compileDDL(db.schema.dropFunction("log_users_email").build())
+db.compileDDL(db.schema.dropFunction("compute_taxes").argTypes("numeric", "numeric").build())
+```
+
+`.argTypes(...)` disambiguates when the function name is overloaded — PG refuses an ambiguous bare-name drop.
+
+### Phase 2 — what's deferred
+
+Procedural plpgsql is a separate ADR commitment. Phase 1 covers ~80% of in-the-wild stored functions (`compute_*` / `format_*` / `validate_*` helpers — the ones that fit a single `RETURN expr`). For anything that needs `IF` / `LOOP` / `RAISE` / variable declarations today, drop to a `sql\`\`` template body. Phase 2 will surface those constructs as typed builders without breaking the Phase 1 call-site contracts. See [ADR 005](./adr/005-functions-and-triggers.md) for the sketch.
+
+MySQL / SQLite / MSSQL refuse every function and trigger surface in Phase 1 — their grammars diverge enough (return-type syntax, variable scoping, security clauses, no `LANGUAGE SQL` form) that they need dialect-specific printers, scheduled for follow-ups.
+
+---
+
 ## EXISTS / NOT EXISTS (correlated subquery)
 
 ```ts
