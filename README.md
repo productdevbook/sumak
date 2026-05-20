@@ -18,7 +18,6 @@
 
 ## Table of Contents
 
-- [What's New](#whats-new)
 - [Install](#install)
 - [Quick Start](#quick-start)
 - [Migrating from kysely or drizzle?](#migrating-from-kysely-or-drizzle)
@@ -66,79 +65,6 @@
 ```sh
 npm install sumak
 ```
-
-## What's New
-
-A wave of 40+ SQL, DDL, and plugin features has just landed on `main` (PRs
-[#142](https://github.com/productdevbook/sumak/pull/142)–[#185](https://github.com/productdevbook/sumak/pull/185))
-ahead of the next release. Highlights below; the full list with per-feature
-PR links and dialect-support tags lives in
-[CHANGELOG.md](./CHANGELOG.md#unreleased).
-
-- **Aggregates & stats** — `anyValue`, `percentileCont` / `percentileDisc`
-  with a generic `withinGroup(...)` helper, full `stddev` / `variance` /
-  regression family, plus bit / boolean aggregates and `firstValue` /
-  `lastValue` / `nthValue` window helpers. See
-  [SQL Functions — Aggregates](./CHANGELOG.md#sql-functions--aggregates).
-- **Date / time & regex builders** — typed `extract`, `dateTrunc`, `age`,
-  `dateAdd` / `dateSub` with a closed unit enum, and a `regexpReplace` /
-  `regexpLike` / `regexpMatches` / `regexpSubstr` family. See
-  [Date / Time](./CHANGELOG.md#sql-functions--date--time) and
-  [Regex](./CHANGELOG.md#sql-functions--regex).
-- **PostgreSQL JSON & arrays** — SQL:2016 `jsonValue` / `jsonQuery` /
-  `jsonExists`, `IS [NOT] JSON [VALUE | SCALAR | ARRAY | OBJECT]`, and ten
-  PG-only array helpers under the `arr.*` namespace. See
-  [JSON](./CHANGELOG.md#sql-functions--json) and
-  [PostgreSQL Arrays](./CHANGELOG.md#sql-functions--postgresql-arrays).
-- **MERGE upgrades** — `WHEN NOT MATCHED BY SOURCE` branches, `RETURNING`
-  on MERGE, plus `mergeAction()` / `mergeActionMssql()` for PG 17 and
-  SQL Server. See
-  [SQL Predicates & Clauses](./CHANGELOG.md#sql-predicates--clauses).
-- **Named WINDOW & frame `EXCLUDE`** — SQL:2003 named `.window(...)`
-  clauses with inheritance, plus the SQL:2011 frame `EXCLUDE` options.
-  See
-  [SQL Predicates & Clauses](./CHANGELOG.md#sql-predicates--clauses).
-- **Schema objects — views, sequences, types, domains** — `CREATE VIEW`
-  / `MATERIALIZED VIEW` / `REFRESH`, `CREATE SEQUENCE` / `ALTER SEQUENCE`,
-  `CREATE TYPE … AS ENUM`, `CREATE DOMAIN`, `ALTER TYPE … ADD VALUE`, and
-  `ALTER TYPE … RENAME [VALUE]`. See
-  [Views & Materialized Views](./CHANGELOG.md#ddl--views--materialized-views),
-  [Sequences](./CHANGELOG.md#ddl--sequences), and
-  [Types & Domains](./CHANGELOG.md#ddl--types--domains).
-- **Row-level security** — `CREATE POLICY` / `ALTER POLICY` / `DROP POLICY`
-  typed builders, plus four `ROW LEVEL SECURITY` toggles on
-  `AlterTableBuilder` (`ENABLE`, `DISABLE`, `FORCE`, `NO FORCE`). See
-  [Row Level Security](./CHANGELOG.md#ddl--row-level-security).
-- **Partial indexes & EXCLUDE constraints** — `CREATE INDEX ... WHERE`
-  end-to-end through schema diff, plus PG `EXCLUDE` table-level
-  constraints with optional partial predicate (race-free booking-system
-  overlap exclusion). See
-  [Constraints & Indexes](./CHANGELOG.md#ddl--constraints--indexes).
-- **PG bulk transfer & pubsub** — `COPY FROM STDIN` / `COPY TO STDOUT`
-  scoped to driver streams, plus `LISTEN` / `UNLISTEN` / `NOTIFY` typed
-  builders. See
-  [Other Schema Objects](./CHANGELOG.md#ddl--other-schema-objects).
-- **DDL maintenance** — `VACUUM` / `ANALYZE` / `REINDEX` with full
-  grammar, `LOCK TABLE` with shortcut methods for all eight PG lock
-  modes, `TRUNCATE TABLE` with PG-flavoured grammar, `COMMENT ON TABLE`
-  / `COMMENT ON COLUMN`, and `CREATE EXTENSION` / `DROP EXTENSION`. See
-  [Maintenance](./CHANGELOG.md#ddl--maintenance) and
-  [Other Schema Objects](./CHANGELOG.md#ddl--other-schema-objects).
-- **Plugins** — `normalizeStrings` (per-column value rewrites on INSERT
-  / UPDATE / MERGE), `defaults` (generic INSERT-time default injection),
-  `validators` (pre-write predicate assertions), and `debugLogger` (logs
-  every compiled / executed query with filter / slow-query / sink
-  hooks). See
-  [Plugins](./CHANGELOG.md#plugins).
-- **MSSQL `OUTPUT`** — routed through the same `.returning(...)` slot
-  the PG `RETURNING` path uses, so MERGE / INSERT / UPDATE / DELETE all
-  gain `OUTPUT <projections>` on SQL Server with auto `INSERTED.*`
-  prefixing. See
-  [SQL Predicates & Clauses](./CHANGELOG.md#sql-predicates--clauses).
-
-Dialect refusals are enforced at compile time via the central feature-flag
-matrix — calling a PG-only builder against MySQL throws
-`UnsupportedDialectFeatureError`, no runtime surprise.
 
 ## Quick Start
 
