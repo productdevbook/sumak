@@ -25,11 +25,13 @@ import {
   TruncateTableBuilder,
 } from "./builder/ddl/drop.ts"
 import { CreateExtensionBuilder, DropExtensionBuilder } from "./builder/ddl/extension.ts"
+import { CreateFunctionBuilder, DropFunctionBuilder } from "./builder/ddl/function.ts"
 import { LockTableBuilder } from "./builder/ddl/lock-table.ts"
 import { AnalyzeBuilder, ReindexBuilder, VacuumBuilder } from "./builder/ddl/maintenance.ts"
 import { AlterPolicyBuilder, CreatePolicyBuilder, DropPolicyBuilder } from "./builder/ddl/policy.ts"
 import { ListenBuilder, NotifyBuilder, UnlistenBuilder } from "./builder/ddl/pubsub.ts"
 import { CreateSchemaBuilder, DropSchemaBuilder } from "./builder/ddl/schema.ts"
+import { CreateTriggerBuilder, DropTriggerBuilder } from "./builder/ddl/trigger.ts"
 import { TruncateBuilder, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 import { Col } from "./builder/eb.ts"
 import { GraphTableBuilder, graphTable } from "./builder/graph-table.ts"
@@ -948,6 +950,10 @@ const DDL_NODE_TYPES = new Set<string>([
   "listen",
   "unlisten",
   "notify",
+  "create_function",
+  "drop_function",
+  "create_trigger",
+  "drop_trigger",
 ])
 
 function isDDLNode(node: { type: string }): boolean {
@@ -1482,6 +1488,73 @@ export class SchemaBuilder {
    */
   notify(channel: string): NotifyBuilder {
     return new NotifyBuilder(channel)
+  }
+
+  /**
+   * `CREATE FUNCTION` with a typed expression body (PostgreSQL, ADR
+   * 005 Phase 1). The returned builder threads the args and return
+   * types through to the `.body(callback)` and `.build().call(...)`
+   * surfaces — schema, function body, and every call site share a
+   * single typed source of truth.
+   *
+   * ```ts
+   * const taxes = db.schema.createFunction("compute_taxes")
+   *   .args({ price: arg("numeric"), tax: arg("numeric", { default: val(0.2) }) })
+   *   .returns("numeric")
+   *   .languageSql()
+   *   .body(({ price, tax }) => mul(price, add(val(1), tax)))
+   *   .build()
+   *
+   * db.compileDDL(taxes.node) // CREATE FUNCTION "compute_taxes"(...)
+   * db.selectFrom("products").select({
+   *   withTax: taxes.call({ price: typedCol("price"), tax: val(0.18) }),
+   * })
+   * ```
+   *
+   * PG only — refused on MySQL / SQLite / MSSQL via the
+   * `CREATE_FUNCTION` feature gate. The dialects' grammars diverge
+   * enough that they're Phase 2 work (separate printers).
+   */
+  createFunction(name: string, schema?: string): CreateFunctionBuilder {
+    return new CreateFunctionBuilder(name, schema)
+  }
+
+  /**
+   * `DROP FUNCTION [IF EXISTS] <name>[(argTypes)] [CASCADE]`. PG only.
+   * Use `.argTypes(...)` to disambiguate when the function name is
+   * overloaded — PG refuses an ambiguous bare-name drop.
+   */
+  dropFunction(name: string, schema?: string): DropFunctionBuilder {
+    return new DropFunctionBuilder(name, schema)
+  }
+
+  /**
+   * `CREATE TRIGGER` — PostgreSQL only (ADR 005 Phase 1). Full grammar
+   * surface: BEFORE / AFTER / INSTEAD OF, multi-event (`AFTER INSERT
+   * OR UPDATE OR DELETE`), `UPDATE OF (cols)`, FOR EACH ROW /
+   * STATEMENT, optional `WHEN` predicate, `EXECUTE FUNCTION fn(args)`,
+   * and constraint-trigger DEFERRABLE / INITIALLY DEFERRED.
+   *
+   * ```ts
+   * db.schema.createTrigger("audit_users_updated")
+   *   .on("users")
+   *   .after("UPDATE", "email", "phone")
+   *   .forEachRow()
+   *   .when(sql`NEW."email" IS DISTINCT FROM OLD."email"`)
+   *   .executeFunction("log_user_change")
+   *   .build()
+   * ```
+   *
+   * PG only — refused on MySQL / SQLite / MSSQL via the
+   * `CREATE_TRIGGER` feature gate.
+   */
+  createTrigger(name: string): CreateTriggerBuilder {
+    return new CreateTriggerBuilder(name)
+  }
+
+  /** `DROP TRIGGER [IF EXISTS] <name> ON <table> [CASCADE]`. PG only. */
+  dropTrigger(name: string): DropTriggerBuilder {
+    return new DropTriggerBuilder(name)
   }
 }
 

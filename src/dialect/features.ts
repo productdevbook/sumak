@@ -558,6 +558,25 @@ export const FEATURES = {
    */
   COPY_STMT: { label: "COPY", dialects: ["pg"] },
   /**
+   * `CREATE FUNCTION` with a typed expression body (ADR 005, Phase 1).
+   * PostgreSQL only — MySQL has `CREATE FUNCTION` but its grammar
+   * diverges (procedural body only, no `LANGUAGE SQL` form, different
+   * return-type position); MSSQL similar; SQLite has no `CREATE
+   * FUNCTION` statement at all (functions register via the C API).
+   * Each non-PG dialect throws `UnsupportedDialectFeatureError`; the
+   * dialect-specific grammars are Phase 2 work.
+   */
+  CREATE_FUNCTION: { label: "CREATE FUNCTION (PG typed body)", dialects: ["pg"] },
+  /**
+   * `CREATE TRIGGER` as standalone DDL referencing a function by name
+   * (ADR 005, Phase 1). PostgreSQL only for the first cut — MySQL's
+   * trigger grammar embeds the body inline (no `EXECUTE FUNCTION` form
+   * and no `FOR EACH STATEMENT`); MSSQL uses a different surface
+   * altogether; SQLite has triggers but with a body-inline grammar
+   * unique to SQLite. Non-PG dialects throw via this gate.
+   */
+  CREATE_TRIGGER: { label: "CREATE TRIGGER (PG)", dialects: ["pg"] },
+  /**
    * `LISTEN <channel>` / `UNLISTEN <channel | *>` / `NOTIFY <channel> [,
    * payload]` — PostgreSQL's per-channel async pubsub. Used for cache
    * invalidation, real-time UI updates, and "wake up the worker" signals
