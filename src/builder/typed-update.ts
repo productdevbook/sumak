@@ -297,7 +297,7 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
       analyze: options?.analyze,
       format: options?.format,
     }
-    return new ExplainBuilder(explainNode, this._printer, this._compile)
+    return new ExplainBuilder(explainNode, this._printer, this._compile, this._executor)
   }
 
   /** Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`. */
