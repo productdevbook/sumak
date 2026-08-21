@@ -41,11 +41,14 @@ import type {
   RefreshMaterializedViewNode,
   ReindexNode,
   TableConstraintNode,
+  PlpgsqlStatement,
+  StatementBlockNode,
   TruncateTableNode,
   UnlistenNode,
   VacuumNode,
 } from "../ast/ddl-nodes.ts"
-import type { SelectNode } from "../ast/nodes.ts"
+import { isStatementBlock } from "../ast/ddl-nodes.ts"
+import type { ASTNode, ExpressionNode, SelectNode } from "../ast/nodes.ts"
 import { assertFeature } from "../dialect/features.ts"
 import { UnsupportedDialectFeatureError } from "../errors.ts"
 import type { CompiledQuery, SQLDialect } from "../types.ts"
@@ -2042,6 +2045,17 @@ export class DDLPrinter {
       parts.push("SECURITY", node.security === "definer" ? "DEFINER" : "INVOKER")
     }
 
+    if (isStatementBlock(node.body)) {
+      if (node.language !== "plpgsql") {
+        throw new Error(
+          `CREATE FUNCTION "${node.name}": a statement body needs LANGUAGE plpgsql — ` +
+            "call .languagePlpgsql(), or give an expression body for LANGUAGE sql.",
+        )
+      }
+      parts.push(`AS $$ ${this.printBlock(node.body)} $$`)
+      return parts.join(" ")
+    }
+
     const bodyExpr = this.printExpr(node.body)
     const bodyText =
       node.language === "sql"
@@ -2050,6 +2064,150 @@ export class DDLPrinter {
     parts.push(bodyText)
 
     return parts.join(" ")
+  }
+
+  /** `[<<label>>] [DECLARE …] BEGIN … END` — the plpgsql body. */
+  private printBlock(block: StatementBlockNode): string {
+    const parts: string[] = []
+    if (block.label !== undefined) {
+      validateFunctionName(block.label)
+      parts.push(`<<${block.label}>>`)
+    }
+    if (block.declarations !== undefined && block.declarations.length > 0) {
+      parts.push("DECLARE")
+      for (const d of block.declarations) {
+        validateFunctionName(d.name)
+        validateDataType(d.dataType)
+        const decl: string[] = [quoteIdentifier(d.name, this.dialect)]
+        if (d.constant) decl.push("CONSTANT")
+        decl.push(d.dataType)
+        if (d.notNull) decl.push("NOT NULL")
+        if (d.initial !== undefined) decl.push(":=", this.printExpr(d.initial))
+        parts.push(`${decl.join(" ")};`)
+      }
+    }
+    parts.push("BEGIN")
+    parts.push(this.printStatements(block.statements))
+    parts.push("END")
+    return parts.join(" ")
+  }
+
+  private printStatements(statements: PlpgsqlStatement[]): string {
+    return statements.map((s) => this.printStatement(s)).join(" ")
+  }
+
+  /**
+   * Every statement ends in its own semicolon. plpgsql needs one after `END IF`
+   * and `END LOOP` too, which is the detail that makes a hand-built string body
+   * fail to compile.
+   */
+  private printStatement(statement: PlpgsqlStatement): string {
+    switch (statement.type) {
+      case "plpgsql_return":
+        return statement.value === undefined
+          ? "RETURN;"
+          : `RETURN ${this.printExpr(statement.value)};`
+      case "plpgsql_return_next":
+        return `RETURN NEXT ${this.printExpr(statement.value)};`
+      case "plpgsql_return_query":
+        return `RETURN QUERY ${this.printEmbedded(statement.query)};`
+      case "plpgsql_assign":
+        validateFunctionName(statement.target)
+        return `${quoteIdentifier(statement.target, this.dialect)} := ${this.printExpr(statement.value)};`
+      case "plpgsql_if": {
+        const parts: string[] = []
+        statement.branches.forEach((branch, i) => {
+          parts.push(i === 0 ? "IF" : "ELSIF")
+          parts.push(this.printExpr(branch.condition), "THEN")
+          parts.push(this.printStatements(branch.body))
+        })
+        if (statement.otherwise !== undefined) {
+          parts.push("ELSE", this.printStatements(statement.otherwise))
+        }
+        parts.push("END IF;")
+        return parts.join(" ")
+      }
+      case "plpgsql_while":
+        return `${this.label(statement.label)}WHILE ${this.printExpr(statement.condition)} LOOP ${this.printStatements(statement.body)} END LOOP;`
+      case "plpgsql_for_range": {
+        const bounds = [this.printExpr(statement.from), "..", this.printExpr(statement.to)].join(
+          " ",
+        )
+        const by = statement.by === undefined ? "" : ` BY ${this.printExpr(statement.by)}`
+        validateFunctionName(statement.variable)
+        return `${this.label(statement.label)}FOR ${quoteIdentifier(statement.variable, this.dialect)} IN ${statement.reverse ? "REVERSE " : ""}${bounds}${by} LOOP ${this.printStatements(statement.body)} END LOOP;`
+      }
+      case "plpgsql_for_query":
+        validateFunctionName(statement.variable)
+        return `${this.label(statement.label)}FOR ${quoteIdentifier(statement.variable, this.dialect)} IN ${this.printEmbedded(statement.query)} LOOP ${this.printStatements(statement.body)} END LOOP;`
+      case "plpgsql_loop":
+        return `${this.label(statement.label)}LOOP ${this.printStatements(statement.body)} END LOOP;`
+      case "plpgsql_exit":
+        return `EXIT${this.labelRef(statement.label)}${this.when(statement.when)};`
+      case "plpgsql_continue":
+        return `CONTINUE${this.labelRef(statement.label)}${this.when(statement.when)};`
+      case "plpgsql_raise": {
+        const level = statement.level.toUpperCase()
+        const parts = [`RAISE ${level} ${`'${escapeStringLiteral(statement.message)}'`}`]
+        if (statement.using !== undefined && statement.using.length > 0) {
+          const using = statement.using
+            .map((u) => `${u.option} = ${this.printExpr(u.value)}`)
+            .join(", ")
+          parts.push(`USING ${using}`)
+        }
+        return `${parts.join(" ")};`
+      }
+      case "plpgsql_perform":
+        return `PERFORM ${this.printEmbedded(statement.query)};`
+      case "plpgsql_statement":
+        return `${this.printEmbedded(statement.query)};`
+      case "plpgsql_block":
+        return `${this.printBlock(statement.block)};`
+      case "plpgsql_null":
+        return "NULL;"
+    }
+  }
+
+  /**
+   * Render a statement embedded in a plpgsql body.
+   *
+   * A parameter is refused rather than emitted: inside `$$ … $$` a `$1` names
+   * the function's own argument, so a placeholder from the query builder would
+   * silently bind to the wrong thing. Reference the argument or a declared
+   * variable by name instead.
+   */
+  private printEmbedded(node: ASTNode): string {
+    if (!this.selectPrinter) {
+      throw new Error(
+        "DDLPrinter: a statement inside a function body requires a SELECT printer. " +
+          "Use db.compileDDL()/db.generateDDL() so the dialect's printer is wired up.",
+      )
+    }
+    const rendered = this.selectPrinter(node as SelectNode)
+    if (rendered.params.length > 0) {
+      throw new Error(
+        "A statement inside a plpgsql body cannot carry parameters — inside $$ … $$ a " +
+          "placeholder names the function's own argument. Reference the argument or a " +
+          "declared variable by name.",
+      )
+    }
+    return rendered.sql
+  }
+
+  private label(name: string | undefined): string {
+    if (name === undefined) return ""
+    validateFunctionName(name)
+    return `<<${name}>> `
+  }
+
+  private labelRef(name: string | undefined): string {
+    if (name === undefined) return ""
+    validateFunctionName(name)
+    return ` ${quoteIdentifier(name, this.dialect)}`
+  }
+
+  private when(condition: ExpressionNode | undefined): string {
+    return condition === undefined ? "" : ` WHEN ${this.printExpr(condition)}`
   }
 
   /** Render one entry in the `CREATE FUNCTION` parameter list. */

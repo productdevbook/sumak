@@ -1,12 +1,12 @@
 senaryo                    drizzle    kysely     sumak      mvp  mvp+dizimvp-bindsiz
 ------------------------------------------------------------------------------------
-select-all                 20259ns    1399ns    1349ns    4.7ns     5.1ns      4.6ns
-select-where-eq            20050ns    3377ns    3216ns    7.2ns    18.9ns      7.7ns
-join-2-tables              32837ns    6168ns    4652ns    7.6ns    11.3ns      6.4ns
-select-where-deep-and      62663ns    8420ns   10207ns    8.2ns    13.8ns      6.9ns
-update-where               18169ns    2775ns    3170ns    7.0ns    13.9ns      6.3ns
+select-all                 20057ns    1455ns    1330ns    5.1ns     5.0ns      4.8ns
+select-where-eq            20804ns    3439ns    3229ns    7.4ns    19.4ns      7.5ns
+join-2-tables              31235ns    6111ns    4644ns    7.0ns     8.1ns      6.3ns
+select-where-deep-and      60497ns    8353ns   10502ns    8.5ns    12.8ns      9.4ns
+update-where               18389ns    2858ns    3137ns    7.0ns    12.7ns      6.4ns
 ------------------------------------------------------------------------------------
-taban (kutuphane yok)            -         -         -        -         -      4.8ns
+taban (kutuphane yok)            -         -         -        -         -      4.7ns
 
 mvp bind kimlik fonksiyonu mu (dizi kopyalanmiyor mu):
   select-all               direct=true  bind(args)===args: true
@@ -15,7 +15,7 @@ mvp bind kimlik fonksiyonu mu (dizi kopyalanmiyor mu):
   select-where-deep-and    direct=true  bind(args)===args: true
   update-where             direct=true  bind(args)===args: true
 
-kurulum, bir kez: 4450ns/sorgu
+kurulum, bir kez: 4388ns/sorgu
 
 uretilen SQL — ayni isi mi yapiyorlar:
   [select-all]
