@@ -414,6 +414,8 @@ export {
   dropFunction,
 } from "./builder/ddl/function.ts"
 export type { FunctionArgSpec, SqlToTs, TypedFunction } from "./builder/ddl/function.ts"
+export { Block, IfChain, triggerScope } from "./builder/ddl/plpgsql.ts"
+export type { Buildable, TriggerScope, Value } from "./builder/ddl/plpgsql.ts"
 export {
   CreateTriggerBuilder,
   createTrigger,

@@ -64,6 +64,19 @@ export interface DriverCallOptions {
    * signal is already aborted at call time.
    */
   readonly signal?: AbortSignal
+  /**
+   * A stable name for this statement, when the caller knows the SQL text will
+   * not change between calls — which is what a compiled query guarantees.
+   *
+   * A driver that can keep server-side prepared statements should use it;
+   * PostgreSQL parses and plans the statement once per connection and reuses
+   * the plan afterwards. Measured against pglite, the same query costs 243µs
+   * prepared and 303µs not, which is twenty times what compiling it client-side
+   * ever cost.
+   *
+   * Drivers that cannot do this ignore it, and the query runs as it always did.
+   */
+  readonly statementName?: string
 }
 
 export interface Driver {

@@ -21,6 +21,7 @@ import { compileQuery } from "./compiled.ts"
 import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
+import { runnersFor } from "./runners.ts"
 import { UpdateBuilder } from "./update.ts"
 import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
 import { isWhere3ArgCall, resolveWhere3Arg } from "./where-3-arg.ts"
@@ -304,7 +305,12 @@ export class TypedUpdateBuilder<DB, TB extends keyof DB> {
     if (!this._printer) {
       throw new Error("toCompiled() requires a printer. Use db.update() to construct the builder.")
     }
-    return compileQuery<P>(this.build(), this._printer, this._compile)
+    const ast = this.build()
+    const executor = this._executor
+    if (executor === undefined) {
+      return compileQuery<P>(ast, this._printer, this._compile)
+    }
+    return compileQuery<P>(ast, this._printer, this._compile, runnersFor<P, unknown>(executor, ast))
   }
 }
 
@@ -340,20 +346,29 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, R> {
 
   /** Run through the full compile pipeline (plugins, hooks, normalize, optimize, print). */
   toSQL(): CompiledQuery {
-    if (this._compile) return this._compile(this.build())
+    return this._compileNode(this.build())
+  }
+
+  /**
+   * Compile an AST this builder already produced, so an execution helper
+   * that needed the node for its result context does not build it twice.
+   */
+  private _compileNode(ast: ASTNode): CompiledQuery {
+    if (this._compile) return this._compile(ast)
     if (!this._printer) {
       throw new Error("toSQL() requires a printer. Use db.update() to construct the builder.")
     }
-    return this._printer.print(this.build())
+    return this._printer.print(ast)
   }
 
   /** Run the UPDATE and return every row produced by `RETURNING`. */
   async many(options?: { signal?: AbortSignal }): Promise<R[]> {
     const exec = this._requireExecutor()
-    const ctx = deriveResultContext(this.build())
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
     const rows = await runQuery(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -363,10 +378,11 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, R> {
 
   async one(options?: { signal?: AbortSignal }): Promise<R> {
     const exec = this._requireExecutor()
-    const ctx = deriveResultContext(this.build())
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
     const row = await runOne(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -376,10 +392,11 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, R> {
 
   async first(options?: { signal?: AbortSignal }): Promise<R | null> {
     const exec = this._requireExecutor()
-    const ctx = deriveResultContext(this.build())
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
     const row = await runFirst(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),

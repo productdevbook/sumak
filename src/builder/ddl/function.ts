@@ -1,7 +1,13 @@
-import type { CreateFunctionNode, DropFunctionNode, FunctionArg } from "../../ast/ddl-nodes.ts"
+import type {
+  CreateFunctionNode,
+  DropFunctionNode,
+  FunctionArg,
+  StatementBlockNode,
+} from "../../ast/ddl-nodes.ts"
 import type { ExpressionNode } from "../../ast/nodes.ts"
 import type { Expression } from "../../ast/typed-expression.ts"
 import { brandExpression } from "../../ast/typed-expression.ts"
+import { Block } from "./plpgsql.ts"
 
 /**
  * Map a SQL type name (lower-cased, base type only) to its closest
@@ -221,7 +227,7 @@ export class CreateFunctionBuilder<
   private readonly _args: Args
   private readonly _returns?: string
   private readonly _language?: "sql" | "plpgsql"
-  private readonly _body?: ExpressionNode
+  private readonly _body?: ExpressionNode | StatementBlockNode
   private readonly _immutable?: boolean
   private readonly _stable?: boolean
   private readonly _strict?: boolean
@@ -236,7 +242,7 @@ export class CreateFunctionBuilder<
     args: Args
     returns?: string
     language?: "sql" | "plpgsql"
-    body?: ExpressionNode
+    body?: ExpressionNode | StatementBlockNode
     immutable?: boolean
     stable?: boolean
     strict?: boolean
@@ -253,7 +259,7 @@ export class CreateFunctionBuilder<
           args: Args
           returns?: string
           language?: "sql" | "plpgsql"
-          body?: ExpressionNode
+          body?: ExpressionNode | StatementBlockNode | StatementBlockNode
           immutable?: boolean
           stable?: boolean
           strict?: boolean
@@ -288,7 +294,7 @@ export class CreateFunctionBuilder<
       args: A2
       returns: string
       language: "sql" | "plpgsql"
-      body: ExpressionNode
+      body: ExpressionNode | StatementBlockNode
       orReplace: boolean
       immutable: boolean
       stable: boolean
@@ -357,6 +363,46 @@ export class CreateFunctionBuilder<
     return this.cloneWith({ language: "plpgsql" })
   }
 
+  /**
+   * A procedural body: declarations, control flow, `RAISE`, loops.
+   *
+   * Implies `LANGUAGE plpgsql`. The callback receives the block to write into
+   * and the arguments as typed expressions, so a function reads as code rather
+   * than as a string that happens to be SQL:
+   *
+   * ```ts
+   * createFunction("compute_taxes")
+   *   .args({ price: "numeric", tax: { type: "numeric", defaultValue: val(0.2) } })
+   *   .returns("numeric")
+   *   .plpgsql((b, { price, tax }) => {
+   *     b.if(lte(price, val(0)), (t) => t.raise("exception", "price must be positive"))
+   *     b.return(mul(price, add(val(1), tax)))
+   *   })
+   * ```
+   *
+   * A statement embedded in the body may not carry parameters: inside `$$ … $$`
+   * a placeholder names one of the function's own arguments. Reference the
+   * argument or a declared variable instead.
+   */
+  plpgsql(
+    build: (block: Block, args: { [K in keyof Args]: Expression<ArgTs<Args[K]>> }) => void,
+  ): CreateFunctionBuilder<Args, Ret> {
+    const block = new Block()
+    build(block, this.argExpressions())
+    return this.cloneWith({ body: block.buildNode(), language: "plpgsql" })
+  }
+
+  private argExpressions(): { [K in keyof Args]: Expression<ArgTs<Args[K]>> } {
+    const argExprs = {} as { [K in keyof Args]: Expression<ArgTs<Args[K]>> }
+    for (const key of Object.keys(this._args)) {
+      argExprs[key as keyof Args] = brandExpression({
+        type: "column_ref",
+        column: key,
+      }) as Expression<ArgTs<Args[typeof key]>>
+    }
+    return argExprs
+  }
+
   /** Mark as `IMMUTABLE`. Mutually exclusive with {@link stable}. */
   immutable(): CreateFunctionBuilder<Args, Ret> {
     return this.cloneWith({ immutable: true, stable: false })
@@ -396,14 +442,7 @@ export class CreateFunctionBuilder<
       | Expression<Ret>
       | ExpressionNode,
   ): CreateFunctionBuilder<Args, Ret> {
-    const argExprs = {} as { [K in keyof Args]: Expression<ArgTs<Args[K]>> }
-    for (const key of Object.keys(this._args)) {
-      argExprs[key as keyof Args] = brandExpression({
-        type: "column_ref",
-        column: key,
-      }) as Expression<ArgTs<Args[typeof key]>>
-    }
-    const result = callback(argExprs)
+    const result = callback(this.argExpressions())
     const bodyNode = unwrapMaybeExpression(result)
     return this.cloneWith({ body: bodyNode })
   }

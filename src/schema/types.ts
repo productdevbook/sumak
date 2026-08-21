@@ -41,6 +41,20 @@ export type SelectRow<DB, TB extends keyof DB> = {
 }
 
 /**
+ * Every `table.column` name that is legal while `TB` is in scope.
+ *
+ * The builder accepts these wherever a bare column name goes, so a join can
+ * name the side it means. `parseColumnRef` splits the string at compile time;
+ * this is the half that keeps a typo out.
+ */
+export type QualifiedColumn<DB, TB extends keyof DB> = {
+  [T in TB & string]: `${T}.${keyof DB[T] & string}`
+}[TB & string]
+
+/** The key a qualified name contributes to the output row. */
+export type UnqualifiedName<K extends string> = K extends `${string}.${infer C}` ? C : K
+
+/**
  * Infer a SELECT row type from a column map.
  */
 export type Selectable<T> = {
@@ -53,16 +67,26 @@ export type Selectable<T> = {
  * Optional columns: nullable, has default, or generated.
  */
 export type Insertable<T> = {
-  [K in keyof T as IsRequired<T[K]> extends true ? K : never]: InsertType<T[K]>
+  [K in keyof T as IsRequired<T[K]> extends true ? K : never]: Writable<InsertType<T[K]>>
 } & {
-  [K in keyof T as IsRequired<T[K]> extends true ? never : K]?: InsertType<T[K]>
+  [K in keyof T as IsRequired<T[K]> extends true ? never : K]?: Writable<InsertType<T[K]>>
 }
+
+/**
+ * A value a write accepts: the column's own type, or an expression standing in
+ * for it.
+ *
+ * The expression form is how a value with nothing to bind reaches a write —
+ * `NEW.name` inside a trigger function, a declared plpgsql variable — where a
+ * parameter placeholder would name the wrong thing.
+ */
+export type Writable<T> = T | import("../ast/typed-expression.ts").Expression<T>
 
 /**
  * Infer an UPDATE row type. All columns optional.
  */
 export type Updateable<T> = {
-  [K in keyof T]?: UpdateType<T[K]>
+  [K in keyof T]?: Writable<UpdateType<T[K]>>
 }
 
 // ── Drizzle-style aliases ────────────────────────────────────────────

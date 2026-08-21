@@ -1,4 +1,4 @@
-import { describe, expectTypeOf, it } from "vitest"
+import { describe, expect, expectTypeOf, it } from "vitest"
 
 import { boolean, integer, serial, text } from "../../src/schema/column.ts"
 import type {
@@ -59,15 +59,24 @@ describe("InferInsertModel<T>", () => {
 
   it("makes generated / default / nullable columns optional", () => {
     type Row = InferInsertModel<typeof userColumns>
-    // `id` (serial) is generated, `active` has a default, `ageHint`
-    // is nullable — all three should be optional on insert.
-    expectTypeOf<Row>().toMatchTypeOf<{
-      id?: number
-      name: string
-      email: string
-      active?: boolean | undefined
-      ageHint?: number | null
-    }>()
+    // `id` (serial) is generated, `active` has a default, `ageHint` is
+    // nullable — all three are optional on insert. Asserted by assignment
+    // rather than by shape, because the value type also admits an expression
+    // standing in for the column.
+    const minimal: Row = { name: "ada", email: "ada@example.com" }
+    const full: Row = {
+      id: 1,
+      name: "ada",
+      email: "ada@example.com",
+      active: true,
+      ageHint: null,
+    }
+    expect(minimal.name).toBe("ada")
+    expect(full.id).toBe(1)
+
+    // @ts-expect-error name has no default, so it stays required
+    const missing: Row = { email: "ada@example.com" }
+    expect(missing).toBeTruthy()
   })
 })
 
@@ -80,14 +89,15 @@ describe("InferUpdateModel<T>", () => {
 
   it("makes every column optional", () => {
     type Row = InferUpdateModel<typeof userColumns>
-    // UPDATE is always a partial — only the columns the caller
-    // listed change. Drizzle picked this shape; sumak matches.
-    expectTypeOf<Row>().toMatchTypeOf<{
-      id?: number
-      name?: string
-      email?: string
-      active?: boolean
-      ageHint?: number | null
-    }>()
+    // UPDATE is always a partial — only the columns the caller listed change.
+    // Drizzle picked this shape; sumak matches.
+    const empty: Row = {}
+    const some: Row = { name: "ada", active: false, ageHint: null }
+    expect(empty).toEqual({})
+    expect(some.name).toBe("ada")
+
+    // @ts-expect-error a column keeps its type
+    const wrong: Row = { active: "yes" }
+    expect(wrong).toBeTruthy()
   })
 })

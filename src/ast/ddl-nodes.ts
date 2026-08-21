@@ -1,4 +1,4 @@
-import type { ExpressionNode, SelectNode, TableRefNode } from "./nodes.ts"
+import type { ASTNode, ExpressionNode, SelectNode, TableRefNode } from "./nodes.ts"
 
 // ── Column Definition ──
 
@@ -1522,12 +1522,95 @@ export interface FunctionArg {
 }
 
 /**
- * `CREATE FUNCTION` (PostgreSQL, Phase 1 — expression body only).
+ * One variable in a `DECLARE` section.
+ */
+export interface PlpgsqlDeclaration {
+  name: string
+  dataType: string
+  constant?: boolean
+  notNull?: boolean
+  initial?: ExpressionNode
+}
+
+/**
+ * A statement inside a plpgsql body.
  *
- * The `body` is a single `ExpressionNode`. Phase 2 widens this to
- * `ExpressionNode | StatementBlockNode` (procedural plpgsql); the
- * Phase 1 shape is forward-compatible — existing call sites stay
- * valid.
+ * Assignment, control flow and `RAISE` are the reason a function needs a
+ * language at all — an expression body is a `SELECT` with extra steps. Each
+ * variant maps to exactly one plpgsql construct so the printer never has to
+ * infer what was meant.
+ */
+export type PlpgsqlStatement =
+  | { type: "plpgsql_return"; value?: ExpressionNode }
+  | { type: "plpgsql_return_next"; value: ExpressionNode }
+  | { type: "plpgsql_return_query"; query: ASTNode }
+  | { type: "plpgsql_assign"; target: string; value: ExpressionNode }
+  | { type: "plpgsql_if"; branches: PlpgsqlBranch[]; otherwise?: PlpgsqlStatement[] }
+  | { type: "plpgsql_while"; condition: ExpressionNode; body: PlpgsqlStatement[]; label?: string }
+  | {
+      type: "plpgsql_for_range"
+      variable: string
+      from: ExpressionNode
+      to: ExpressionNode
+      by?: ExpressionNode
+      reverse?: boolean
+      body: PlpgsqlStatement[]
+      label?: string
+    }
+  | {
+      type: "plpgsql_for_query"
+      variable: string
+      query: ASTNode
+      body: PlpgsqlStatement[]
+      label?: string
+    }
+  | { type: "plpgsql_loop"; body: PlpgsqlStatement[]; label?: string }
+  | { type: "plpgsql_exit"; label?: string; when?: ExpressionNode }
+  | { type: "plpgsql_continue"; label?: string; when?: ExpressionNode }
+  | {
+      type: "plpgsql_raise"
+      level: PlpgsqlRaiseLevel
+      message: string
+      using?: PlpgsqlRaiseOption[]
+    }
+  | { type: "plpgsql_perform"; query: ASTNode }
+  | { type: "plpgsql_statement"; query: ASTNode }
+  | { type: "plpgsql_block"; block: StatementBlockNode }
+  | { type: "plpgsql_null" }
+
+export interface PlpgsqlBranch {
+  condition: ExpressionNode
+  body: PlpgsqlStatement[]
+}
+
+export type PlpgsqlRaiseLevel = "debug" | "log" | "info" | "notice" | "warning" | "exception"
+
+export interface PlpgsqlRaiseOption {
+  option: "MESSAGE" | "DETAIL" | "HINT" | "ERRCODE" | "COLUMN" | "CONSTRAINT" | "TABLE" | "SCHEMA"
+  value: ExpressionNode
+}
+
+/**
+ * A `DECLARE … BEGIN … END` body.
+ */
+export interface StatementBlockNode {
+  type: "statement_block"
+  declarations?: PlpgsqlDeclaration[]
+  statements: PlpgsqlStatement[]
+  label?: string
+}
+
+export function isStatementBlock(
+  node: ExpressionNode | StatementBlockNode,
+): node is StatementBlockNode {
+  return (node as StatementBlockNode).type === "statement_block"
+}
+
+/**
+ * `CREATE FUNCTION` (PostgreSQL).
+ *
+ * The `body` is either a single expression — `LANGUAGE sql` or a plpgsql
+ * `RETURN` — or a full statement block.
  */
 export interface CreateFunctionNode {
   type: "create_function"
@@ -1537,7 +1620,7 @@ export interface CreateFunctionNode {
   args: FunctionArg[]
   returns: string
   language: "sql" | "plpgsql"
-  body: ExpressionNode
+  body: ExpressionNode | StatementBlockNode
   immutable?: boolean
   stable?: boolean
   strict?: boolean

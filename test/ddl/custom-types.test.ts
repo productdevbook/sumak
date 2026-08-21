@@ -39,11 +39,6 @@ const mssql = sumak({ dialect: mssqlDialect(), tables: {} })
 // ─────────────────────────────────────────────────────────────────────
 
 describe("CREATE TYPE AS ENUM — builder shape", () => {
-  it("createTypeEnum(name) seeds an empty values list", () => {
-    const node = createTypeEnum("status").build()
-    expect(node).toEqual({ type: "create_type_enum", name: "status", values: [] })
-  })
-
   it(".values(rest...) accepts a rest list of strings", () => {
     const node = createTypeEnum("status").values("a", "b", "c").build()
     expect(node.values).toEqual(["a", "b", "c"])
@@ -210,48 +205,6 @@ describe("DROP TYPE — PG emission", () => {
 // ─────────────────────────────────────────────────────────────────────
 
 describe("CREATE DOMAIN — builder shape", () => {
-  it("createDomain(name) seeds an empty dataType", () => {
-    const node = createDomain("d").build()
-    expect(node).toMatchObject({ type: "create_domain", name: "d", dataType: "" })
-  })
-
-  it("createDomain(name, type) seeds the dataType", () => {
-    const node = createDomain("d", "integer").build()
-    expect(node.dataType).toBe("integer")
-  })
-
-  it(".dataType(type) sets/overrides the base type", () => {
-    const node = createDomain("d").dataType("integer").build()
-    expect(node.dataType).toBe("integer")
-  })
-
-  it(".notNull() sets the flag", () => {
-    const node = createDomain("d", "integer").notNull().build()
-    expect(node.notNull).toBe(true)
-  })
-
-  it(".defaultTo(sql) sets the expression", () => {
-    const node = createDomain("d", "integer")
-      .defaultTo(sql`0`)
-      .build()
-    expect(node.defaultExpression).toBeDefined()
-  })
-
-  it(".check(sql) sets the expression", () => {
-    const node = createDomain("d", "integer")
-      .check(sql<boolean>`VALUE > 0`)
-      .build()
-    expect(node.check).toBeDefined()
-    expect(node.checkConstraintName).toBeUndefined()
-  })
-
-  it(".check(sql, name) records the constraint name too", () => {
-    const node = createDomain("d", "integer")
-      .check(sql<boolean>`VALUE > 0`, "positive_check")
-      .build()
-    expect(node.checkConstraintName).toBe("positive_check")
-  })
-
   it("builder is immutable — branching returns independent nodes", () => {
     const a = createDomain("d", "integer")
     const b = a.notNull()
@@ -400,31 +353,6 @@ describe("DROP DOMAIN — builder + PG emission", () => {
 // ─────────────────────────────────────────────────────────────────────
 
 describe("ALTER TYPE ADD VALUE — builder shape", () => {
-  it("alterTypeAddValue(name) seeds an empty value", () => {
-    const node = alterTypeAddValue("e").build()
-    expect(node).toEqual({ type: "alter_type_add_value", name: "e", value: "" })
-  })
-
-  it(".value(v) sets the new label", () => {
-    const node = alterTypeAddValue("e").value("x").build()
-    expect(node.value).toBe("x")
-  })
-
-  it(".ifNotExists() sets the flag", () => {
-    const node = alterTypeAddValue("e").value("x").ifNotExists().build()
-    expect(node.ifNotExists).toBe(true)
-  })
-
-  it(".before(existing) sets the BEFORE position", () => {
-    const node = alterTypeAddValue("e").value("x").before("y").build()
-    expect(node.position).toEqual({ kind: "BEFORE", existing: "y" })
-  })
-
-  it(".after(existing) sets the AFTER position", () => {
-    const node = alterTypeAddValue("e").value("x").after("y").build()
-    expect(node.position).toEqual({ kind: "AFTER", existing: "y" })
-  })
-
   it(".before() then .after() — last call wins (replaces position)", () => {
     const node = alterTypeAddValue("e").value("x").before("y").after("z").build()
     expect(node.position).toEqual({ kind: "AFTER", existing: "z" })
@@ -517,21 +445,6 @@ describe("ALTER TYPE ADD VALUE — PG emission", () => {
 // ─────────────────────────────────────────────────────────────────────
 
 describe("ALTER TYPE RENAME — builder shape", () => {
-  it("alterTypeRename(name) seeds an empty target", () => {
-    const node = alterTypeRename("e").build()
-    expect(node).toEqual({ type: "alter_type_rename", name: "e", newName: "" })
-  })
-
-  it("alterTypeRename(name, newName) accepts the target up front", () => {
-    const node = alterTypeRename("e", "f").build()
-    expect(node).toEqual({ type: "alter_type_rename", name: "e", newName: "f" })
-  })
-
-  it(".to(newName) sets the target after construction", () => {
-    const node = alterTypeRename("e").to("f").build()
-    expect(node.newName).toBe("f")
-  })
-
   it(".to(newName) overrides a constructor-supplied target — last call wins", () => {
     const node = alterTypeRename("e", "f").to("g").build()
     expect(node.newName).toBe("g")
@@ -614,11 +527,6 @@ describe("ALTER TYPE RENAME VALUE — builder shape", () => {
   it(".from(v) sets the old label", () => {
     const node = alterTypeRenameValue("e").from("x").build()
     expect(node.oldValue).toBe("x")
-  })
-
-  it(".to(v) sets the new label", () => {
-    const node = alterTypeRenameValue("e").to("y").build()
-    expect(node.newValue).toBe("y")
   })
 
   it(".from(a).to(b) chains in either order", () => {

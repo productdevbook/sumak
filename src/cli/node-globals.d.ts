@@ -8,6 +8,7 @@ declare const process: {
   readonly cwd: () => string
   readonly stdout: { write(chunk: string): boolean }
   readonly stderr: { write(chunk: string): boolean }
+  readonly hrtime: { bigint(): bigint }
   exit(code?: number): never
 }
 
@@ -34,6 +35,15 @@ declare module "node:path" {
 
 declare module "node:os" {
   export function tmpdir(): string
+}
+
+declare module "node:fs" {
+  export function readFileSync(path: string, encoding: string): string
+  export function writeFileSync(path: string, data: string): void
+}
+
+declare module "node:perf_hooks" {
+  export const performance: { now(): number }
 }
 
 declare const Buffer: {

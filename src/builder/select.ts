@@ -1,4 +1,4 @@
-import { col, star } from "../ast/expression.ts"
+import { star } from "../ast/expression.ts"
 import type {
   CTENode,
   ExpressionNode,
@@ -15,6 +15,7 @@ import type {
 } from "../ast/nodes.ts"
 import { createSelectNode } from "../ast/nodes.ts"
 import type { JoinType, OrderDirection, SetOperator } from "../types.ts"
+import { parseColumnRef } from "../utils/column-ref.ts"
 import { parseTableRef } from "../utils/table-ref.ts"
 
 export class SelectBuilder {
@@ -35,7 +36,7 @@ export class SelectBuilder {
   }
 
   columns(...cols: (string | ExpressionNode)[]): SelectBuilder {
-    const exprs = cols.map((c) => (typeof c === "string" ? col(c) : c))
+    const exprs = cols.map((c) => (typeof c === "string" ? parseColumnRef(c) : c))
     return new SelectBuilder({ ...this.node, columns: [...this.node.columns, ...exprs] })
   }
 
@@ -48,7 +49,7 @@ export class SelectBuilder {
   }
 
   distinctOn(...exprs: (string | ExpressionNode)[]): SelectBuilder {
-    const nodes = exprs.map((e) => (typeof e === "string" ? col(e) : e))
+    const nodes = exprs.map((e) => (typeof e === "string" ? parseColumnRef(e) : e))
     return new SelectBuilder({ ...this.node, distinct: true, distinctOn: nodes })
   }
 
@@ -126,7 +127,7 @@ export class SelectBuilder {
   }
 
   groupBy(...exprs: (string | ExpressionNode)[]): SelectBuilder {
-    const nodes = exprs.map((e) => (typeof e === "string" ? col(e) : e))
+    const nodes = exprs.map((e) => (typeof e === "string" ? parseColumnRef(e) : e))
     return new SelectBuilder({ ...this.node, groupBy: [...this.node.groupBy, ...nodes] })
   }
 
@@ -151,7 +152,7 @@ export class SelectBuilder {
       )
     }
     const node: OrderByNode = {
-      expr: typeof expr === "string" ? col(expr) : expr,
+      expr: typeof expr === "string" ? parseColumnRef(expr) : expr,
       direction,
       nulls,
     }

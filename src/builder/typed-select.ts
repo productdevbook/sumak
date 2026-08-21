@@ -23,13 +23,14 @@ import {
 import type { SumakExecutor } from "../driver/execute.ts"
 import { deriveResultContext } from "../plugin/result-context.ts"
 import type { Printer } from "../printer/types.ts"
-import type { Nullable, SelectRow } from "../schema/types.ts"
+import type { Nullable, QualifiedColumn, SelectRow, UnqualifiedName } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
 import type { CompiledQueryFn } from "./compiled.ts"
 import { compileQuery } from "./compiled.ts"
 import type { ColumnProxies, WhereCallback } from "./eb.ts"
 import { createColumnProxies, WindowBuilder } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
+import { runnersFor } from "./runners.ts"
 import { SelectBuilder } from "./select.ts"
 import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
 import { isWhere3ArgCall, resolveWhere3Arg } from "./where-3-arg.ts"
@@ -100,7 +101,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    *
    * The two forms can be chained: `.select("id", "name").select({ total: count() })`.
    */
-  select<K extends keyof O & string>(...cols: K[]): TypedSelectBuilder<DB, TB, Pick<O, K>>
+  select<K extends (keyof O & string) | QualifiedColumn<DB, TB>>(
+    ...cols: K[]
+  ): TypedSelectBuilder<DB, TB, Pick<O, UnqualifiedName<K> & keyof O>>
   select<A extends Record<string, Expression<any>>>(
     aliased: A,
   ): TypedSelectBuilder<
@@ -726,15 +729,25 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
   /** Compile to SQL using the dialect's printer. */
   toSQL(): CompiledQuery {
+    return this._compileNode(this.build())
+  }
+
+  /**
+   * Compile an AST this builder already produced.
+   *
+   * The execution helpers build the node once and hand it here, rather than
+   * calling `toSQL()` and paying for a second `build()` of the same query.
+   */
+  private _compileNode(ast: ASTNode): CompiledQuery {
     if (this._compile) {
-      return this._compile(this.build())
+      return this._compile(ast)
     }
     if (!this._printer) {
       throw new Error(
         "toSQL() requires a printer. Use db.selectFrom() or pass a printer to compile().",
       )
     }
-    return this._printer.print(this.build())
+    return this._printer.print(ast)
   }
 
   /**
@@ -751,7 +764,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     const rows = await runQuery(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -770,7 +783,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     const row = await runOne(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -789,7 +802,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     const row = await runFirst(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -822,7 +835,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     for await (const row of runStream(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -874,13 +887,18 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * findUser({ userId: 99 })  // same SQL, different params
    * ```
    */
-  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P, O> {
     if (!this._printer) {
       throw new Error(
         "toCompiled() requires a printer. Use db.selectFrom() to construct the builder.",
       )
     }
-    return compileQuery<P>(this.build(), this._printer, this._compile)
+    const ast = this.build()
+    const executor = this._executor
+    if (executor === undefined) {
+      return compileQuery<P, O>(ast, this._printer, this._compile)
+    }
+    return compileQuery<P, O>(ast, this._printer, this._compile, runnersFor<P, O>(executor, ast))
   }
 }
 

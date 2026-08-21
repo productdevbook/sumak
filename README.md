@@ -147,15 +147,6 @@ makes generated / default / nullable columns optional.
 `InferUpdateModel` is the partial form — every column optional, matching
 sumak's `.update(...).set(...)` semantics.
 
-### Migrating from kysely or drizzle?
-
-Most ports are cosmetic — rename a few imports, swap a couple of method
-names, keep the rest. For a side-by-side patterns table plus task-oriented
-snippets, see
-[`docs/migration-from-kysely-and-drizzle.md`](./docs/migration-from-kysely-and-drizzle.md).
-
----
-
 ## SELECT
 
 ```ts
@@ -1250,7 +1241,38 @@ jsonCol<UserProfile>("profile")
 
 ## Compiled Queries
 
-Pre-bake SQL at setup time. At runtime, only fill parameters — zero AST traversal.
+**Writing a query and running one are two different phases, and this is where
+you say so.** A query's shape is fixed where you type it; only the values change
+per request. Compile it once, at module load, and a request does nothing but
+fill in the parameters.
+
+Measured on a Linux x86-64 laptop, Node 24, for the same query:
+
+| path                                 | per call |
+| ------------------------------------ | -------: |
+| `.toSQL()` — rebuilds and recompiles | ~3,200ns |
+| `.toCompiled()` — no parameters      |   ~6.7ns |
+| `.toCompiled()` — one parameter      |   ~5.8ns |
+| `.toCompiled()` — two parameters     |  ~12.1ns |
+
+Everything the pipeline does — plugin transforms, hooks, normalization,
+optimization, printing — happens once, when the query is compiled. Nothing is
+left for the request but building the parameter array.
+
+It also buys something the numbers above do not show, and this is the larger
+half. A compiled query's SQL text is fixed, so it is sent to PostgreSQL as a
+**named prepared statement** — parsed and planned once per connection, then
+reused. Against pglite the same query costs 243µs prepared and 303µs not, and
+that 60µs is twenty times what compiling ever cost. Nothing is required to opt
+in: `.toCompiled()` carries a `statementName` and `sumak/drivers/pg` uses it.
+Drivers that cannot keep prepared statements ignore it.
+
+Measured end to end, a single query against a local engine shows no difference
+— ~330µs either way — because the compile it removes is ~1% of that. The split
+pays on a cold start, under CPU pressure, and through the plan reuse above.
+
+Reach for `.toSQL()` when the query's shape genuinely varies per request, and
+for `.toCompiled()` everywhere else.
 
 ### `.toCompiled()` — chainable form (preferred)
 
@@ -1273,6 +1295,12 @@ findUser({ userId: 99 })
 // → { sql: 'SELECT "id", "name" FROM "users" WHERE "id" = $1', params: [99] }
 
 findUser.sql // pre-baked SQL string
+
+// It runs, too — the fast path is not the inconvenient one:
+await findUser.many({ userId: 42 }) // rows
+await findUser.one({ userId: 42 }) // one row, or throws
+await findUser.first({ userId: 42 }) // one row, or null
+await renameUser.run({ id: 1, newName: "ada" }) // rows affected
 
 // Also works on UPDATE / INSERT / DELETE:
 const renameUser = db
@@ -1301,6 +1329,90 @@ const findUser = compileQuery<{ userId: number }>(
 
 ---
 
+## Functions and Triggers
+
+Database infrastructure written as typed code, so it lives in the repository
+with everything else instead of in `.sql` files a deploy script has to remember
+to run ([#91](https://github.com/productdevbook/sumak/issues/91)).
+
+An expression body is one `RETURN`:
+
+```ts
+import { arg, createFunction, val } from "sumak"
+import { add, mul } from "sumak"
+
+const computeTaxes = createFunction("compute_taxes")
+  .args({ price: arg("numeric"), tax: arg("numeric", { default: val(0.2) }) })
+  .returns("numeric")
+  .body(({ price, tax }) => mul(price, add(val(1), tax)))
+  .build()
+
+// CREATE FUNCTION "compute_taxes"("price" numeric, "tax" numeric DEFAULT 0.2)
+//   RETURNS numeric LANGUAGE sql AS $$ SELECT ("price" * (1 + "tax")) $$
+
+db.selectFrom("orders").select({ total: computeTaxes.call({ price: col.amount }) })
+```
+
+`.plpgsql()` gives the body branches, loops and variables:
+
+```ts
+import { typedAdd, typedGte, typedLte, typedMul } from "sumak"
+
+const computeTotal = createFunction("compute_total")
+  .args({ price: arg("integer"), quantity: arg("integer") })
+  .returns("integer")
+  .orReplace()
+  .plpgsql((b, { price, quantity }) => {
+    b.if(typedLte(quantity, val(0)), (t) => t.raise("exception", "quantity must be positive"))
+    b.return(typedMul(price, quantity))
+  })
+```
+
+The block covers `DECLARE`, assignment, `IF` / `ELSIF` / `ELSE`, `WHILE`, `FOR`
+over a range or a query, bare `LOOP`, `EXIT` and `CONTINUE` with `WHEN`, `RAISE`
+with `USING`, `PERFORM`, embedded statements, nested blocks, and `RETURN` /
+`RETURN NEXT` / `RETURN QUERY`.
+
+A trigger function gets the row plpgsql puts in scope:
+
+```ts
+import { createTrigger, triggerScope } from "sumak"
+
+const t = triggerScope<{ id: number; name: string; price: number }>(["id", "name", "price"])
+
+const guardPrice = createFunction("guard_price")
+  .returns("trigger")
+  .orReplace()
+  .plpgsql((b) => {
+    b.if(typedLte(t.new.price, val(0)), (x) => x.raise("exception", "price must be positive"))
+    b.return(typedCol("new"))
+  })
+
+const trigger = createTrigger("products_guard")
+  .on("products")
+  .before("INSERT")
+  .forEachRow()
+  .executeFunction("guard_price")
+```
+
+`t.new` / `t.old` are the row before and after, `t.op` is `TG_OP`, and `t.table`
+/ `t.schema` are `TG_TABLE_NAME` / `TG_TABLE_SCHEMA`. They are emitted in lower
+case because plpgsql folds unquoted identifiers down — a quoted `"NEW"` is a
+different name and resolves to nothing.
+
+Two things worth knowing:
+
+- A statement embedded in a body may not carry parameters. Inside `$$ … $$` a
+  placeholder names one of the function's own arguments, so a bound value would
+  point at the wrong thing; reference the argument or a declared variable by
+  name instead. sumak refuses at compile time rather than emitting it.
+- A plpgsql body is a string literal to the outer parser, so a malformed body
+  creates the function and fails when it is called. sumak's own tests run every
+  function against a real engine for that reason, and yours should too.
+
+PostgreSQL only. MySQL and MSSQL have functions with divergent grammar; SQLite
+has none.
+
 ## Query Optimization
 
 sumak automatically normalizes and optimizes queries through two new pipeline layers.
@@ -1310,7 +1422,11 @@ sumak automatically normalizes and optimizes queries through two new pipeline la
 Enabled by default. Reduces expressions to canonical form:
 
 - **Flatten AND/OR:** `(a AND (b AND c))` → `(a AND b AND c)`
-- **Deduplicate:** `a = 1 AND b = 2 AND a = 1` → `a = 1 AND b = 2`
+- **Deduplicate literals:** `a = 1 AND b = 2 AND a = 1` → `a = 1 AND b = 2`.
+  Parameters are never deduplicated, even when two of them hold the same value:
+  collapsing them would make the emitted SQL a function of what the caller
+  passed, and one call site emitting several SQL texts costs the database its
+  prepared-statement plan.
 - **Simplify tautologies:** `x AND true` → `x`, `x OR false` → `x`
 - **Constant folding:** `1 + 2` → `3`
 - **Double negation:** `NOT NOT x` → `x`
@@ -1601,9 +1717,7 @@ const ability = build()
 const db = sumak({
   dialect: pgDialect(),
   tables: {
-    posts: {
-      /* ... */
-    },
+    posts: {/* ... */},
   },
   plugins: [
     caslAuthz({
@@ -2116,9 +2230,11 @@ TypeScript — no `commander` / `yargs` / `tsx` runtime deps.
 ## Benchmarks
 
 `bench/compile.bench.ts` pits sumak's query compiler against
-**kysely** and **drizzle-orm** on seven canonical shapes. sumak
-wins six of the seven, typically by 1.1×–2.5× vs kysely and
-9×–39× vs drizzle. Full numbers + per-compile wall time in
+**kysely 0.29.5** and **drizzle-orm 1.0.0-rc.4** on 48 shapes.
+sumak wins 32 of them; it is faster than drizzle on all 48, by
+2.2×–14.7×, and trades with kysely — up to 2.5× ahead, up to
+1.9× behind on WHERE chains and scalar functions. Full numbers,
+the list of what it loses and why, and per-compile wall time in
 [`bench/README.md`](./bench/README.md).
 
 Run locally:

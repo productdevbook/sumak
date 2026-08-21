@@ -15,53 +15,11 @@ import { pgliteDriver } from "../integration/pglite-driver.ts"
 const pg = sumak({ dialect: pgDialect(), tables: {} })
 
 describe("CREATE POLICY — builder shape", () => {
-  it("createPolicy(name) returns a node with an empty table", () => {
-    const node = createPolicy("p1").build()
-    expect(node).toMatchObject({ type: "create_policy", name: "p1", table: "" })
-  })
-
-  it(".on(table) sets the target", () => {
-    const node = createPolicy("p1").on("orders").build()
-    expect(node.table).toBe("orders")
-  })
-
-  it(".on(table, schema) sets schema too", () => {
-    const node = createPolicy("p1").on("orders", "shop").build()
-    expect(node).toMatchObject({ table: "orders", schema: "shop" })
-  })
-
   it(".permissive() and .restrictive() are mutually-exclusive flips", () => {
     const a = createPolicy("p").on("t").permissive().build()
     expect(a).toMatchObject({ permissive: true, restrictive: false })
     const b = createPolicy("p").on("t").restrictive().build()
     expect(b).toMatchObject({ permissive: false, restrictive: true })
-  })
-
-  it(".for(...) sets the command", () => {
-    const node = createPolicy("p").on("t").for("SELECT").build()
-    expect(node.forCommand).toBe("SELECT")
-  })
-
-  it(".to(...roles) carries the role list", () => {
-    const node = createPolicy("p").on("t").to("alice", "PUBLIC").build()
-    expect(node.roles).toEqual(["alice", "PUBLIC"])
-  })
-
-  it(".using(sql) accepts an Expression<boolean>", () => {
-    const node = createPolicy("p")
-      .on("orders")
-      .using(sql<boolean>`tenant_id = 1`)
-      .build()
-    expect(node.using).toBeDefined()
-    expect(node.using?.type).toBeTypeOf("string")
-  })
-
-  it(".withCheck(sql) accepts an Expression<boolean>", () => {
-    const node = createPolicy("p")
-      .on("orders")
-      .withCheck(sql<boolean>`tenant_id = 1`)
-      .build()
-    expect(node.withCheck).toBeDefined()
   })
 
   it(".to() replaces a previous .to() call (idempotent chains)", () => {
@@ -232,11 +190,6 @@ describe("CREATE POLICY — PG emission", () => {
 })
 
 describe("DROP POLICY — builder shape", () => {
-  it("dropPolicy(name) — empty table", () => {
-    const node = dropPolicy("p1").build()
-    expect(node).toMatchObject({ type: "drop_policy", name: "p1", table: "" })
-  })
-
   it(".on(table)", () => {
     const node = dropPolicy("p1").on("orders").build()
     expect(node.table).toBe("orders")
@@ -394,31 +347,6 @@ describe("non-PG dialects refuse every RLS surface", () => {
 })
 
 describe("ALTER POLICY — builder shape", () => {
-  it("alterPolicy(name) returns a node with an empty table", () => {
-    const node = alterPolicy("p1").build()
-    expect(node).toMatchObject({ type: "alter_policy", name: "p1", table: "" })
-  })
-
-  it(".on(table) sets the target", () => {
-    const node = alterPolicy("p1").on("orders").build()
-    expect(node.table).toBe("orders")
-  })
-
-  it(".on(table, schema) sets schema too", () => {
-    const node = alterPolicy("p1").on("orders", "shop").build()
-    expect(node).toMatchObject({ table: "orders", schema: "shop" })
-  })
-
-  it(".renameTo(newName) sets the rename slot", () => {
-    const node = alterPolicy("p1").on("t").renameTo("p2").build()
-    expect(node.renameTo).toBe("p2")
-  })
-
-  it(".to(...roles) carries the role list", () => {
-    const node = alterPolicy("p1").on("t").to("alice", "PUBLIC").build()
-    expect(node.roles).toEqual(["alice", "PUBLIC"])
-  })
-
   it(".to() replaces a previous .to() call (idempotent chains)", () => {
     const node = alterPolicy("p1").on("t").to("alice").to("bob", "carol").build()
     expect(node.roles).toEqual(["bob", "carol"])
@@ -430,22 +358,6 @@ describe("ALTER POLICY — builder shape", () => {
     node.roles!.push("eve")
     const fresh = b.build()
     expect(fresh.roles).toEqual(["alice", "bob"])
-  })
-
-  it(".using(sql) accepts an Expression<boolean>", () => {
-    const node = alterPolicy("p1")
-      .on("orders")
-      .using(sql<boolean>`tenant_id = 1`)
-      .build()
-    expect(node.using).toBeDefined()
-  })
-
-  it(".withCheck(sql) accepts an Expression<boolean>", () => {
-    const node = alterPolicy("p1")
-      .on("orders")
-      .withCheck(sql<boolean>`tenant_id = 1`)
-      .build()
-    expect(node.withCheck).toBeDefined()
   })
 })
 

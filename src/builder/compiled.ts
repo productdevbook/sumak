@@ -1,5 +1,7 @@
 import type { ASTNode } from "../ast/nodes.ts"
 import type { Printer } from "../printer/types.ts"
+
+let statementCounter = 0
 import type { CompiledQuery } from "../types.ts"
 
 /**
@@ -64,12 +66,30 @@ export function isPlaceholder(value: unknown): value is PlaceholderMarker {
  * This is partial evaluation: the SQL string is computed once at setup time,
  * and only parameter values are substituted at call time.
  */
-export interface CompiledQueryFn<P extends Record<string, unknown>> {
+export interface CompiledQueryFn<P extends Record<string, unknown>, Row = unknown> {
   (params: P): CompiledQuery
   /** The pre-baked SQL string (for inspection/debugging). */
   readonly sql: string
   /** The original AST node (for further optimization). */
   readonly node: ASTNode
+  /**
+   * The name this query is prepared under on the server, when the driver keeps
+   * prepared statements. Stable for the life of the process.
+   */
+  readonly statementName: string
+  /**
+   * Run the query and return every row.
+   *
+   * Present only when the builder was constructed from a `sumak()` instance
+   * with a driver — `compileQuery()` on a bare AST has nothing to run against.
+   */
+  many(params: P, options?: { signal?: AbortSignal }): Promise<Row[]>
+  /** Run the query and return the one row, or throw if that is not what came back. */
+  one(params: P, options?: { signal?: AbortSignal }): Promise<Row>
+  /** Run the query and return the first row, or null. */
+  first(params: P, options?: { signal?: AbortSignal }): Promise<Row | null>
+  /** Run the query for its effect and return the number of rows it touched. */
+  run(params: P, options?: { signal?: AbortSignal }): Promise<number>
 }
 
 /**
@@ -78,11 +98,12 @@ export interface CompiledQueryFn<P extends Record<string, unknown>> {
  * Walks the AST once, generates SQL, and records the positions of
  * placeholder params. Subsequent calls only substitute values.
  */
-export function compileQuery<P extends Record<string, unknown>>(
+export function compileQuery<P extends Record<string, unknown>, Row = unknown>(
   node: ASTNode,
   printer: Printer,
   compileFn?: (node: ASTNode) => CompiledQuery,
-): CompiledQueryFn<P> {
+  runners?: (bind: (params: P) => CompiledQuery, statementName: string) => CompiledRunners<P, Row>,
+): CompiledQueryFn<P, Row> {
   // Use full pipeline if available, otherwise just printer
   const compiled = compileFn ? compileFn(node) : printer.print(node)
 
@@ -101,21 +122,127 @@ export function compileQuery<P extends Record<string, unknown>>(
   }
 
   const sql = compiled.sql
-
-  const fn = function execute(params: P): CompiledQuery {
-    if (slots.length === 0) return { sql, params: baseParams }
-
-    const filled = [...baseParams]
-    for (const slot of slots) {
-      filled[slot.index] = params[slot.name]
-    }
-    return { sql, params: filled }
-  } as CompiledQueryFn<P>
+  // A compiled query's SQL text never changes, which is exactly the condition
+  // a server-side prepared statement needs. The name is per process and per
+  // compiled query; drivers that cannot keep prepared statements ignore it.
+  const statementName = `sumak_${(statementCounter++).toString(36)}`
+  // Values reaching a placeholder never passed the printer, so the conversion
+  // it does on the way past has to happen here — a `bigint` handed to `pg` raw
+  // is rejected by the driver.
+  const coerce = printer.coerceParam
+  const fn = bind<P>(sql, slots, baseParams, coerce) as unknown as CompiledQueryFn<P, Row>
 
   Object.defineProperty(fn, "sql", { value: sql, writable: false })
   Object.defineProperty(fn, "node", { value: node, writable: false })
+  Object.defineProperty(fn, "statementName", { value: statementName, writable: false })
+
+  // Execution is attached rather than built in, because `compileQuery` is also
+  // callable on a bare AST with no instance behind it. Without a driver the
+  // methods are present and say so, which reads better than being absent.
+  // Rejects rather than throwing: these are declared to return a promise, and
+  // a caller who only awaits should not have to also wrap the call.
+  const missing = (name: string) => () =>
+    Promise.reject(
+      new Error(
+        `${name}() on a compiled query needs an instance with a driver — ` +
+          "build it from db.selectFrom(...) rather than from a bare AST.",
+      ),
+    )
+  const run = runners?.(
+    (params) => (fn as unknown as (p: P) => CompiledQuery)(params),
+    statementName,
+  )
+  Object.defineProperty(fn, "many", { value: run?.many ?? missing("many") })
+  Object.defineProperty(fn, "one", { value: run?.one ?? missing("one") })
+  Object.defineProperty(fn, "first", { value: run?.first ?? missing("first") })
+  Object.defineProperty(fn, "run", { value: run?.run ?? missing("run") })
 
   return fn
+}
+
+/**
+ * How a compiled query reaches the driver.
+ *
+ * Supplied by the builder that owns the instance; `compileQuery` itself has no
+ * way to know one.
+ */
+export interface CompiledRunners<P extends Record<string, unknown>, Row> {
+  many(params: P, options?: { signal?: AbortSignal }): Promise<Row[]>
+  one(params: P, options?: { signal?: AbortSignal }): Promise<Row>
+  first(params: P, options?: { signal?: AbortSignal }): Promise<Row | null>
+  run(params: P, options?: { signal?: AbortSignal }): Promise<number>
+}
+
+/**
+ * Build the function that fills the placeholders.
+ *
+ * Fixed shapes for the arities that cover almost every query: an array literal
+ * is the cheapest thing that produces a fresh array, and a query executed in a
+ * request loop runs this and nothing else.
+ */
+function bind<P extends Record<string, unknown>>(
+  sql: string,
+  slots: { index: number; name: string }[],
+  baseParams: unknown[],
+  coerce: (value: unknown) => unknown,
+): CompiledQueryFn<P> {
+  if (slots.length === 0) {
+    return function execute(): CompiledQuery {
+      return { sql, params: baseParams }
+    } as unknown as CompiledQueryFn<P>
+  }
+
+  if (slots.length === baseParams.length) {
+    const names = slots.map((slot) => slot.name)
+    const [a, b, c, d] = names
+    switch (names.length) {
+      case 1:
+        return function execute(params: P): CompiledQuery {
+          return { sql, params: [coerce(params[a as string])] }
+        } as unknown as CompiledQueryFn<P>
+      case 2:
+        return function execute(params: P): CompiledQuery {
+          return { sql, params: [coerce(params[a as string]), coerce(params[b as string])] }
+        } as unknown as CompiledQueryFn<P>
+      case 3:
+        return function execute(params: P): CompiledQuery {
+          return {
+            sql,
+            params: [
+              coerce(params[a as string]),
+              coerce(params[b as string]),
+              coerce(params[c as string]),
+            ],
+          }
+        } as unknown as CompiledQueryFn<P>
+      case 4:
+        return function execute(params: P): CompiledQuery {
+          return {
+            sql,
+            params: [
+              coerce(params[a as string]),
+              coerce(params[b as string]),
+              coerce(params[c as string]),
+              coerce(params[d as string]),
+            ],
+          }
+        } as unknown as CompiledQueryFn<P>
+      default:
+        return function execute(params: P): CompiledQuery {
+          const filled: unknown[] = []
+          for (const name of names) filled.push(coerce(params[name]))
+          return { sql, params: filled }
+        } as unknown as CompiledQueryFn<P>
+    }
+  }
+
+  return function execute(params: P): CompiledQuery {
+    const filled = baseParams.slice()
+    for (const slot of slots) {
+      filled[slot.index] = coerce(params[slot.name])
+    }
+    return { sql, params: filled }
+  } as unknown as CompiledQueryFn<P>
 }
 
 /**
