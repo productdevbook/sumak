@@ -20,6 +20,7 @@ import type { CompiledQueryFn } from "./compiled.ts"
 import { compileQuery } from "./compiled.ts"
 import { ExplainBuilder } from "./explain.ts"
 import { InsertBuilder } from "./insert.ts"
+import { runnersFor } from "./runners.ts"
 
 /**
  * Type-safe INSERT query builder.
@@ -392,7 +393,12 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
         "toCompiled() requires a printer. Use db.insertInto() to construct the builder.",
       )
     }
-    return compileQuery<P>(this.build(), this._printer, this._compile)
+    const ast = this.build()
+    const executor = this._executor
+    if (executor === undefined) {
+      return compileQuery<P>(ast, this._printer, this._compile)
+    }
+    return compileQuery<P>(ast, this._printer, this._compile, runnersFor<P, unknown>(executor, ast))
   }
 }
 
@@ -428,20 +434,29 @@ export class TypedInsertReturningBuilder<DB, _TB extends keyof DB, R> {
 
   /** Run through the full compile pipeline (plugins, hooks, normalize, optimize, print). */
   toSQL(): CompiledQuery {
-    if (this._compile) return this._compile(this.build())
+    return this._compileNode(this.build())
+  }
+
+  /**
+   * Compile an AST this builder already produced, so an execution helper
+   * that needed the node for its result context does not build it twice.
+   */
+  private _compileNode(ast: ASTNode): CompiledQuery {
+    if (this._compile) return this._compile(ast)
     if (!this._printer) {
       throw new Error("toSQL() requires a printer. Use db.insertInto() to construct the builder.")
     }
-    return this._printer.print(this.build())
+    return this._printer.print(ast)
   }
 
   /** Run the INSERT and return every row produced by `RETURNING`. */
   async many(options?: { signal?: AbortSignal }): Promise<R[]> {
     const exec = this._requireExecutor()
-    const ctx = deriveResultContext(this.build())
+    const ast = this.build()
+    const ctx = deriveResultContext(ast)
     const rows = await runQuery(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),

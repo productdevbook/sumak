@@ -15,7 +15,6 @@ import { unwrap, unwrapPredicate } from "../ast/typed-expression.ts"
 import {
   listenerFor,
   resultTransformer,
-  runExecute,
   runFirst,
   runOne,
   runQuery,
@@ -31,6 +30,7 @@ import { compileQuery } from "./compiled.ts"
 import type { ColumnProxies, WhereCallback } from "./eb.ts"
 import { createColumnProxies, WindowBuilder } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
+import { runnersFor } from "./runners.ts"
 import { SelectBuilder } from "./select.ts"
 import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
 import { isWhere3ArgCall, resolveWhere3Arg } from "./where-3-arg.ts"
@@ -729,15 +729,25 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
 
   /** Compile to SQL using the dialect's printer. */
   toSQL(): CompiledQuery {
+    return this._compileNode(this.build())
+  }
+
+  /**
+   * Compile an AST this builder already produced.
+   *
+   * The execution helpers build the node once and hand it here, rather than
+   * calling `toSQL()` and paying for a second `build()` of the same query.
+   */
+  private _compileNode(ast: ASTNode): CompiledQuery {
     if (this._compile) {
-      return this._compile(this.build())
+      return this._compile(ast)
     }
     if (!this._printer) {
       throw new Error(
         "toSQL() requires a printer. Use db.selectFrom() or pass a printer to compile().",
       )
     }
-    return this._printer.print(this.build())
+    return this._printer.print(ast)
   }
 
   /**
@@ -754,7 +764,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     const rows = await runQuery(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -773,7 +783,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     const row = await runOne(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -792,7 +802,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     const row = await runFirst(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -825,7 +835,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     const ctx = deriveResultContext(ast)
     for await (const row of runStream(
       exec.driver(),
-      this.toSQL(),
+      this._compileNode(ast),
       resultTransformer(exec, ctx),
       options,
       listenerFor(exec),
@@ -888,41 +898,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
     if (executor === undefined) {
       return compileQuery<P, O>(ast, this._printer, this._compile)
     }
-
-    // Derived once, here, with the AST that was already built. The uncompiled
-    // helpers below rebuild it on every call.
-    const ctx = deriveResultContext(ast)
-    const transform = () => resultTransformer(executor, ctx)
-
-    return compileQuery<P, O>(ast, this._printer, this._compile, (compiled) => ({
-      many: async (params, options) =>
-        (await runQuery(
-          executor.driver(),
-          compiled(params),
-          transform(),
-          options,
-          listenerFor(executor),
-        )) as unknown as O[],
-      one: async (params, options) =>
-        (await runOne(
-          executor.driver(),
-          compiled(params),
-          transform(),
-          options,
-          listenerFor(executor),
-        )) as unknown as O,
-      first: async (params, options) =>
-        (await runFirst(
-          executor.driver(),
-          compiled(params),
-          transform(),
-          options,
-          listenerFor(executor),
-        )) as unknown as O | null,
-      run: async (params, options) =>
-        (await runExecute(executor.driver(), compiled(params), options, listenerFor(executor)))
-          .affected,
-    }))
+    return compileQuery<P, O>(ast, this._printer, this._compile, runnersFor<P, O>(executor, ast))
   }
 }
 

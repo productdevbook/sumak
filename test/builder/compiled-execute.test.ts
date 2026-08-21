@@ -103,4 +103,43 @@ describe("a compiled query runs", () => {
     expect(compiled.sql).toContain("SELECT")
     await expect(compiled.many({})).rejects.toThrow(/needs an instance with a driver/)
   })
+
+  it("runs a compiled INSERT, UPDATE and DELETE", async () => {
+    const add = db
+      .insertInto("users")
+      .values({ name: placeholder("name") as never, age: placeholder("age") as never })
+      .toCompiled<{ name: string; age: number }>()
+
+    expect(await add.run({ name: "linus", age: 30 })).toBe(1)
+
+    const birthday = db
+      .update("users")
+      .set({ age: placeholder("age") as never })
+      .where(({ name }) => name.eq(placeholder("name") as never))
+      .toCompiled<{ name: string; age: number }>()
+
+    expect(await birthday.run({ name: "linus", age: 31 })).toBe(1)
+
+    const remove = db
+      .deleteFrom("users")
+      .where(({ name }) => name.eq(placeholder("name") as never))
+      .toCompiled<{ name: string }>()
+
+    expect(await remove.run({ name: "linus" })).toBe(1)
+    expect(await remove.run({ name: "linus" })).toBe(0)
+  })
+
+  it("compiles the write once, whatever the values", async () => {
+    const add = db
+      .insertInto("users")
+      .values({ name: placeholder("name") as never, age: placeholder("age") as never })
+      .toCompiled<{ name: string; age: number }>()
+
+    const first = add({ name: "a", age: 1 })
+    const second = add({ name: "b", age: 2 })
+
+    expect(first.sql).toBe(second.sql)
+    expect(first.params).toEqual(["a", 1])
+    expect(second.params).toEqual(["b", 2])
+  })
 })
