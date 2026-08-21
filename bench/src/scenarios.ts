@@ -69,9 +69,9 @@ const s = sumak({ dialect: pgDialect(), tables })
  * `pg-proxy` driver with a noop callback — it never fires on
  * `.toSQL()`, which is the only thing the benchmark exercises.
  */
-const d = drizzle(async () => ({ rows: [] }), {
-  schema: { users: dUsers, posts: dPosts, comments: dComments },
-})
+// drizzle 1.0 dropped the `schema` option from DrizzlePgConfig. The bench
+// passes table objects to every query directly, so it never needed it.
+const d = drizzle(async () => ({ rows: [] }))
 
 /**
  * Kysely with the DummyDriver — compile-only, rejects actual execute.
@@ -575,14 +575,19 @@ export const scenarios: Scenario[] = [
         .select("id", "authorId")
         .where(({ published }) => published.gt(0))
         .build()
-      return s
-        .selectFrom("users")
-        .with("recent_posts", recent)
-        .innerJoin("recent_posts" as never, ({ users, recent_posts }: never) =>
-          users.id.eq(recent_posts.authorId),
-        )
-        .select("users.id", "users.name")
-        .toSQL()
+      return (
+        s
+          .selectFrom("users")
+          .with("recent_posts", recent)
+          // Joining a CTE is not yet in the type — `.with()` does not add the
+          // name to the tables in scope — so the scenario reaches for the
+          // escape hatch to measure the compile path anyway.
+          .innerJoin("recent_posts" as never, ({ users, recent_posts }: any) =>
+            users.id.eq(recent_posts.authorId),
+          )
+          .select("users.id", "users.name")
+          .toSQL()
+      )
     },
     drizzle: () => {
       const recent = d
@@ -609,7 +614,7 @@ export const scenarios: Scenario[] = [
             qb.selectFrom("posts").select(["id", "authorId"]).where("published", ">", 0),
           )
           .selectFrom("users")
-          .innerJoin("recent_posts" as never, "users.id" as never, "recent_posts.authorId" as never)
+          .innerJoin("recent_posts", "users.id", "recent_posts.authorId")
           .select(["users.id", "users.name"])
           .compile(),
       ),

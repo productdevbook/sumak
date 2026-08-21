@@ -820,7 +820,7 @@ export class BasePrinter implements Printer {
         }
       }
       if (allParams) {
-        const placeholders: string[] = new Array(len)
+        const placeholders: string[] = Array.from({ length: len })
         for (let i = 0; i < len; i++) {
           const p = values[i] as ParamNode
           this.params.push(this.coerceParamValue(p.value))

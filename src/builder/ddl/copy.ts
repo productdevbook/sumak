@@ -34,7 +34,7 @@ function cloneOptions(opts: CopyOptions | undefined): CopyOptions | undefined {
  * driver-level COPY data streaming is the caller's job. The pglite
  * driver exposes the channel via `pg.query(sql).then(() => ...stream...)`
  * patterns; the standard `pg` driver exposes it via the `pg-copy-streams`
- * companion package. See `docs/recipes.md` for end-to-end snippets.
+ * companion package.
  *
  * Common shapes:
  *

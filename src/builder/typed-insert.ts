@@ -90,7 +90,7 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
       )
     }
     const cols = entries.map(([k]) => k)
-    const vals = entries.map(([_, v]) => param(0, v))
+    const vals = entries.map((entry) => param(0, entry[1]))
 
     let builder = this._builder
     const current = builder.build()
