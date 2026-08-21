@@ -1301,7 +1301,11 @@ sumak automatically normalizes and optimizes queries through two new pipeline la
 Enabled by default. Reduces expressions to canonical form:
 
 - **Flatten AND/OR:** `(a AND (b AND c))` → `(a AND b AND c)`
-- **Deduplicate:** `a = 1 AND b = 2 AND a = 1` → `a = 1 AND b = 2`
+- **Deduplicate literals:** `a = 1 AND b = 2 AND a = 1` → `a = 1 AND b = 2`.
+  Parameters are never deduplicated, even when two of them hold the same value:
+  collapsing them would make the emitted SQL a function of what the caller
+  passed, and one call site emitting several SQL texts costs the database its
+  prepared-statement plan.
 - **Simplify tautologies:** `x AND true` → `x`, `x OR false` → `x`
 - **Constant folding:** `1 + 2` → `3`
 - **Double negation:** `NOT NOT x` → `x`
@@ -2105,9 +2109,11 @@ TypeScript — no `commander` / `yargs` / `tsx` runtime deps.
 ## Benchmarks
 
 `bench/compile.bench.ts` pits sumak's query compiler against
-**kysely** and **drizzle-orm** on seven canonical shapes. sumak
-wins six of the seven, typically by 1.1×–2.5× vs kysely and
-9×–39× vs drizzle. Full numbers + per-compile wall time in
+**kysely 0.29.5** and **drizzle-orm 1.0.0-rc.4** on 48 shapes.
+sumak wins 32 of them; it is faster than drizzle on all 48, by
+2.2×–14.7×, and trades with kysely — up to 2.5× ahead, up to
+1.9× behind on WHERE chains and scalar functions. Full numbers,
+the list of what it loses and why, and per-compile wall time in
 [`bench/README.md`](./bench/README.md).
 
 Run locally:
