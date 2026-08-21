@@ -124,7 +124,7 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
   ): TypedMergeBuilder<DB, Target, Source> {
     const entries = Object.entries(row as Record<string, unknown>)
     const columns = entries.map(([k]) => k)
-    const values = entries.map(([_, v]) => param(0, v))
+    const values = entries.map((entry) => param(0, entry[1]))
     let condExpr: ExpressionNode | undefined
     if (condition) {
       const proxies = createMergeProxies<DB, Target, Source>(this._targetTable, this._sourceAlias)

@@ -12,6 +12,6 @@
     "noImplicitOverride": true,
     "noEmit": true
   },
-  "include": ["src", "test"],
+  "include": ["src", "test", "mvp", "bench"],
   "exclude": ["dist", "node_modules"]
 }

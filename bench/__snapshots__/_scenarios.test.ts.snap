@@ -41,7 +41,7 @@ exports[`bench scenarios produce equivalent SQL > cte-with-join > snapshot of ge
     "params": [
       0,
     ],
-    "sql": "WITH "recent_posts" AS (SELECT "id", "authorId" FROM "posts" WHERE ("published" > $1)) SELECT "users.id", "users.name" FROM "users" INNER JOIN "recent_posts" ON ("users"."id" = "recent_posts"."authorId")",
+    "sql": "WITH "recent_posts" AS (SELECT "id", "authorId" FROM "posts" WHERE ("published" > $1)) SELECT "users"."id", "users"."name" FROM "users" INNER JOIN "recent_posts" ON ("users"."id" = "recent_posts"."authorId")",
   },
 }
 `;
@@ -1382,7 +1382,7 @@ exports[`bench scenarios produce equivalent SQL > join-2-tables > snapshot of ge
   },
   "sumak": {
     "params": [],
-    "sql": "SELECT "posts.id", "posts.title", "users.name" FROM "posts" INNER JOIN "users" ON ("posts"."authorId" = "users"."id")",
+    "sql": "SELECT "posts"."id", "posts"."title", "users"."name" FROM "posts" INNER JOIN "users" ON ("posts"."authorId" = "users"."id")",
   },
 }
 `;
@@ -1399,7 +1399,7 @@ exports[`bench scenarios produce equivalent SQL > left-join-3-tables > snapshot 
   },
   "sumak": {
     "params": [],
-    "sql": "SELECT "comments.id", "posts.title", "users.name" FROM "comments" LEFT JOIN "posts" ON ("comments"."postId" = "posts"."id") LEFT JOIN "users" ON ("comments"."authorId" = "users"."id")",
+    "sql": "SELECT "comments"."id", "posts"."title", "users"."name" FROM "comments" LEFT JOIN "posts" ON ("comments"."postId" = "posts"."id") LEFT JOIN "users" ON ("comments"."authorId" = "users"."id")",
   },
 }
 `;
@@ -1931,7 +1931,7 @@ exports[`bench scenarios produce equivalent SQL > select-union > snapshot of gen
 {
   "drizzle": {
     "params": [],
-    "sql": "(select "id", "name" from "users") union (select "id", "name" from "users")",
+    "sql": "select "id", "name" from ((select "id", "name" from "users") union (select "id", "name" from "users")) "drizzle_union"",
   },
   "kysely": {
     "params": [],
@@ -1948,7 +1948,7 @@ exports[`bench scenarios produce equivalent SQL > select-union-all > snapshot of
 {
   "drizzle": {
     "params": [],
-    "sql": "(select "id", "name" from "users") union all (select "id", "name" from "users")",
+    "sql": "select "id", "name" from ((select "id", "name" from "users") union all (select "id", "name" from "users")) "drizzle_union"",
   },
   "kysely": {
     "params": [],
@@ -1968,7 +1968,7 @@ exports[`bench scenarios produce equivalent SQL > select-where-and > snapshot of
       7,
       0,
     ],
-    "sql": "select "id", "authorId", "title", "body", "published" from "posts" where ("posts"."authorId" = $1 and "posts"."published" > $2)",
+    "sql": "select "id", "authorId", "title", "body", "published" from "posts" where (("posts"."authorId" = $1) and ("posts"."published" > $2))",
   },
   "kysely": {
     "params": [
@@ -1997,7 +1997,7 @@ exports[`bench scenarios produce equivalent SQL > select-where-deep-and > snapsh
       "",
       0,
     ],
-    "sql": "select "id", "authorId", "title", "body", "published" from "posts" where ("posts"."authorId" = $1 and "posts"."published" > $2 and "posts"."title" <> $3 and "posts"."body" <> $4 and "posts"."id" > $5)",
+    "sql": "select "id", "authorId", "title", "body", "published" from "posts" where (("posts"."authorId" = $1) and ("posts"."published" > $2) and ("posts"."title" <> $3) and ("posts"."body" <> $4) and ("posts"."id" > $5))",
   },
   "kysely": {
     "params": [
@@ -2407,7 +2407,7 @@ exports[`bench scenarios produce equivalent SQL > select-where-or > snapshot of 
       1,
       "ada",
     ],
-    "sql": "select "id", "name" from "users" where ("users"."id" = $1 or "users"."name" = $2)",
+    "sql": "select "id", "name" from "users" where (("users"."id" = $1) or ("users"."name" = $2))",
   },
   "kysely": {
     "params": [

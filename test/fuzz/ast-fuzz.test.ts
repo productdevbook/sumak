@@ -84,27 +84,23 @@ const exprArb: fc.Arbitrary<ExpressionNode> = fc.letrec((tie) => ({
         left: tie("expr"),
         right: tie("expr"),
       })
-      .map(
-        ({ op, left, right }): BinaryOpNode => ({
-          type: "binary_op",
-          op,
-          left: left as ExpressionNode,
-          right: right as ExpressionNode,
-        }),
-      ),
+      .map(({ op, left, right }): BinaryOpNode => ({
+        type: "binary_op",
+        op,
+        left: left as ExpressionNode,
+        right: right as ExpressionNode,
+      })),
     fc
       .record({
         op: fc.constantFrom("NOT", "-"),
         operand: tie("expr"),
       })
-      .map(
-        ({ op, operand }): UnaryOpNode => ({
-          type: "unary_op",
-          op,
-          operand: operand as ExpressionNode,
-          position: "prefix",
-        }),
-      ),
+      .map(({ op, operand }): UnaryOpNode => ({
+        type: "unary_op",
+        op,
+        operand: operand as ExpressionNode,
+        position: "prefix",
+      })),
     fc
       .record({
         expr: tie("expr"),

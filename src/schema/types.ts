@@ -41,6 +41,20 @@ export type SelectRow<DB, TB extends keyof DB> = {
 }
 
 /**
+ * Every `table.column` name that is legal while `TB` is in scope.
+ *
+ * The builder accepts these wherever a bare column name goes, so a join can
+ * name the side it means. `parseColumnRef` splits the string at compile time;
+ * this is the half that keeps a typo out.
+ */
+export type QualifiedColumn<DB, TB extends keyof DB> = {
+  [T in TB & string]: `${T}.${keyof DB[T] & string}`
+}[TB & string]
+
+/** The key a qualified name contributes to the output row. */
+export type UnqualifiedName<K extends string> = K extends `${string}.${infer C}` ? C : K
+
+/**
  * Infer a SELECT row type from a column map.
  */
 export type Selectable<T> = {

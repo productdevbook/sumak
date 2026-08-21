@@ -80,7 +80,7 @@ interface CaslRuleLike {
  * shape without the caller casting at the call site.
  */
 export interface AbilityLike {
-  rulesFor(action: any, subject: any): CaslRuleLike[]
+  rulesFor(action: any, subject: any): readonly CaslRuleLike[]
 }
 
 /**

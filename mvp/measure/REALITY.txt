@@ -1,0 +1,12 @@
+gercek bir istek, pglite (ayni surecte calisan postgres — ag yok):
+  1 satir donen sorgu       : 351.0us
+  100 satir donen sorgu     : 962.7us
+  1000 satir donen sorgu    : 5867.8us
+
+  100 satiri yeniden sekillendirmek (plugin/camelCase isi): 5.4us
+
+karsilastirma icin, sorguyu derlemek:
+  mvp     : ~0ns
+  sumak   : ~3138ns  (0.9% — 1 satirlik sorgunun)
+  kysely  : ~3625ns  (1.0%)
+  drizzle : ~19751ns (5.6%)

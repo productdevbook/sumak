@@ -1,0 +1,9 @@
+ayni sorgu, uc farkli sekilde — pglite:
+  her cagrida farkli metin (literal gomulu) : 324.6us
+  sabit metin + parametre, isimsiz          : 366.8us
+  PREPARE edilmis, EXECUTE ile              : 267.6us
+
+  PREPARE'in kazandirdigi: 57.0us  (1.21x)
+
+PREPARE ancak sorgu metni sabitse mumkun. sumak'ta ayni cagri yeri param
+degerlerine gore farkli metin uretebiliyor, yani bu yol kapali kaliyor.

@@ -751,6 +751,8 @@ export class BasePrinter implements Printer {
     return value
   }
 
+  coerceParam = (value: unknown): unknown => this.coerceParamValue(value)
+
   protected printRaw(node: RawNode): string {
     // `sql` tagged templates embed interpolated values using a null-byte
     // sentinel `\x00SUMAK_PARAM_N\x00` that users can't type in a string
@@ -820,7 +822,7 @@ export class BasePrinter implements Printer {
         }
       }
       if (allParams) {
-        const placeholders: string[] = new Array(len)
+        const placeholders: string[] = Array.from({ length: len })
         for (let i = 0; i < len; i++) {
           const p = values[i] as ParamNode
           this.params.push(this.coerceParamValue(p.value))

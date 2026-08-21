@@ -365,6 +365,8 @@ function isFalse(expr: ExpressionNode): boolean {
   return expr.type === "literal" && (expr as LiteralNode).value === false
 }
 
+let paramOccurrence = 0
+
 /**
  * Structural fingerprint for deduplication.
  * Produces a canonical string for an expression node.
@@ -376,7 +378,11 @@ function exprFingerprint(expr: ExpressionNode): string {
     case "literal":
       return `lit:${String(expr.value)}`
     case "param":
-      return `param:${String(expr.value)}`
+      // Unique per occurrence, never the value. Two parameters must never
+      // dedupe: the emitted SQL would depend on what the caller passed, which
+      // costs the database its prepared-statement plan and makes one call site
+      // emit several different texts.
+      return `param:#${paramOccurrence++}`
     case "binary_op":
       return `bin:${expr.op}:${exprFingerprint(expr.left)}:${exprFingerprint(expr.right)}`
     case "unary_op":
@@ -390,10 +396,9 @@ function exprFingerprint(expr: ExpressionNode): string {
     case "in":
       if (Array.isArray(expr.values)) {
         const values = expr.values
-        // Fast-path fingerprint for the leaf-param case — every value is
-        // a parameterized placeholder, so the fingerprint of each value
-        // is structurally identical and we only need to capture arity.
-        // Saves ~100 fingerprint calls per IN(...) at 100-value arity.
+        // Arity plus one occurrence stamp stands in for N identical
+        // `param:#n` fingerprints, so a 100-value IN(...) costs one counter
+        // bump instead of 100 fingerprint calls.
         let allParams = true
         for (let i = 0; i < values.length; i++) {
           if (values[i]!.type !== "param") {
@@ -402,7 +407,7 @@ function exprFingerprint(expr: ExpressionNode): string {
           }
         }
         if (allParams) {
-          return `in:${expr.negated}:${exprFingerprint(expr.expr)}:p${values.length}`
+          return `in:${expr.negated}:${exprFingerprint(expr.expr)}:p${values.length}#${paramOccurrence++}`
         }
         return `in:${expr.negated}:${exprFingerprint(expr.expr)}:[${values.map(exprFingerprint).join(",")}]`
       }
