@@ -2,7 +2,7 @@ import { param } from "../ast/expression.ts"
 import { star } from "../ast/expression.ts"
 import type { ASTNode, ExplainNode, ExpressionNode, InsertNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
-import { unwrap } from "../ast/typed-expression.ts"
+import { isExpression, unwrap } from "../ast/typed-expression.ts"
 import {
   listenerFor,
   resultTransformer,
@@ -90,7 +90,10 @@ export class TypedInsertBuilder<DB, TB extends keyof DB> {
       )
     }
     const cols = entries.map(([k]) => k)
-    const vals = entries.map((entry) => param(0, entry[1]))
+    // A branded expression goes in as itself — see InsertBuilder.values.
+    const vals = entries.map((entry) =>
+      isExpression(entry[1]) ? unwrap(entry[1]) : param(0, entry[1]),
+    )
 
     let builder = this._builder
     const current = builder.build()

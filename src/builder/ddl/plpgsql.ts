@@ -119,13 +119,20 @@ export class Block {
     return this
   }
 
-  /** `FOR row IN <query> LOOP … END LOOP`. */
+  /**
+   * `FOR row IN <query> LOOP … END LOOP`.
+   *
+   * The loop variable is declared as a `record` here rather than left to the
+   * caller: plpgsql refuses `FOR r IN <query>` unless `r` is already a record
+   * or row variable, and the error arrives when the function runs.
+   */
   forEach(
     variable: string,
     query: Buildable | ASTNode,
     body: (block: Block, row: Expression<unknown>) => void,
     label?: string,
   ): this {
+    this.declarations.push({ name: variable, dataType: "record" })
     const row = brandExpression<unknown>({ type: "column_ref", column: variable })
     this.statements.push({
       type: "plpgsql_for_query",

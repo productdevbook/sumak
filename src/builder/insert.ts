@@ -9,6 +9,7 @@ import type {
   TableRefNode,
 } from "../ast/nodes.ts"
 import { createInsertNode } from "../ast/nodes.ts"
+import { isExpression, unwrap } from "../ast/typed-expression.ts"
 import { parseTableRef } from "../utils/table-ref.ts"
 
 export class InsertBuilder {
@@ -35,6 +36,11 @@ export class InsertBuilder {
   values(...vals: unknown[]): InsertBuilder {
     let idx = this.paramIndex
     const row: ExpressionNode[] = vals.map((v) => {
+      // A branded expression goes in as itself. That is how a value that has
+      // no parameter to be bound to — `NEW.name` inside a trigger, a declared
+      // plpgsql variable — reaches an INSERT. A plain value still becomes a
+      // parameter; the brand is a symbol, so nothing arrives here by accident.
+      if (isExpression(v)) return unwrap(v)
       const p = param(idx, v)
       idx++
       return p
