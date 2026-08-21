@@ -412,4 +412,21 @@ export class TypedUpdateReturningBuilder<DB, _TB extends keyof DB, R> {
     }
     return this._executor
   }
+  /**
+   * Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`.
+   *
+   * The rows are typed the same as `.many()` on this builder, so a compiled
+   * `RETURNING` behaves like the uncompiled one minus the per-call compile.
+   */
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P, R> {
+    if (!this._printer) {
+      throw new Error("toCompiled() requires a printer. Use db.update() to construct the builder.")
+    }
+    const ast = this.build()
+    const executor = this._executor
+    if (executor === undefined) {
+      return compileQuery<P, R>(ast, this._printer, this._compile)
+    }
+    return compileQuery<P, R>(ast, this._printer, this._compile, runnersFor<P, R>(executor, ast))
+  }
 }

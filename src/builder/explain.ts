@@ -1,6 +1,8 @@
 import type { ASTNode, ExplainNode } from "../ast/nodes.ts"
 import type { Printer } from "../printer/types.ts"
 import type { CompiledQuery } from "../types.ts"
+import type { CompiledQueryFn } from "./compiled.ts"
+import { compileQuery } from "./compiled.ts"
 
 /**
  * Wraps a pre-built `ExplainNode` with the same builder surface
@@ -38,5 +40,17 @@ export class ExplainBuilder {
       )
     }
     return this._printer.print(this._node)
+  }
+  /**
+   * Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`.
+   *
+   * There is no executor behind this builder, so the compiled query carries the
+   * SQL and fills parameters but cannot run itself.
+   */
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
+    if (!this._printer) {
+      throw new Error("toCompiled() requires a printer. Use .explain() to construct the builder.")
+    }
+    return compileQuery<P>(this.build(), this._printer, this._compile)
   }
 }

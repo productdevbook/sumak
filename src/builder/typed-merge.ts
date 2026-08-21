@@ -5,6 +5,8 @@ import { unwrap } from "../ast/typed-expression.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Insertable, SelectRow, Updateable } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
+import type { CompiledQueryFn } from "./compiled.ts"
+import { compileQuery } from "./compiled.ts"
 import { Col } from "./eb.ts"
 import { MergeBuilder } from "./merge.ts"
 
@@ -295,6 +297,20 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
     }
     return this._printer.print(this.build())
   }
+  /**
+   * Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`.
+   *
+   * There is no executor behind this builder, so the compiled query carries the
+   * SQL and fills parameters but cannot run itself.
+   */
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
+    if (!this._printer) {
+      throw new Error(
+        "toCompiled() requires a printer. Use db.mergeInto() to construct the builder.",
+      )
+    }
+    return compileQuery<P>(this.build(), this._printer, this._compile)
+  }
 }
 
 /**
@@ -347,5 +363,19 @@ export class TypedMergeReturningBuilder<DB, _Target extends keyof DB, _R> {
       throw new Error("toSQL() requires a printer. Use db.mergeInto() to construct the builder.")
     }
     return this._printer.print(this.build())
+  }
+  /**
+   * Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`.
+   *
+   * There is no executor behind this builder, so the compiled query carries the
+   * SQL and fills parameters but cannot run itself.
+   */
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
+    if (!this._printer) {
+      throw new Error(
+        "toCompiled() requires a printer. Use db.mergeInto() to construct the builder.",
+      )
+    }
+    return compileQuery<P>(this.build(), this._printer, this._compile)
   }
 }
