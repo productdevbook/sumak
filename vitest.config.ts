@@ -1,14 +1,7 @@
-import { configDefaults, defineConfig } from "vitest/config"
+import { defineConfig } from "vitest/config"
 
 export default defineConfig({
   test: {
-    // `mvp/measure` times libraries against each other in tight loops, which
-    // takes longer than the rest of the suite put together and answers a
-    // question nobody is asking on every commit. Run it on purpose:
-    // `MEASURE=1 pnpm vitest run mvp/measure`.
-    exclude: process.env.MEASURE
-      ? [...configDefaults.exclude]
-      : [...configDefaults.exclude, "mvp/measure/**"],
     // pglite's WASM engine has a cold-start cost that's noticeable
     // under full-suite parallel load — a handful of integration tests
     // time out at the 5s default when every pglite-backed file is

@@ -1,5 +1,0 @@
-bir sorguyu hazir hale getirmek (uygulama acilisinda, bir kez):
-  builder  : 1988ns
-  sablon   : 385ns
-
-istek basina ikisi de: bir alan okumasi (olcum tabani ~5ns)

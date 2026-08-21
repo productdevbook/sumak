@@ -1241,7 +1241,31 @@ jsonCol<UserProfile>("profile")
 
 ## Compiled Queries
 
-Pre-bake SQL at setup time. At runtime, only fill parameters — zero AST traversal.
+**Writing a query and running one are two different phases, and this is where
+you say so.** A query's shape is fixed where you type it; only the values change
+per request. Compile it once, at module load, and a request does nothing but
+fill in the parameters.
+
+Measured on a Linux x86-64 laptop, Node 24, for the same query:
+
+| path                                 | per call |
+| ------------------------------------ | -------: |
+| `.toSQL()` — rebuilds and recompiles | ~3,200ns |
+| `.toCompiled()` — no parameters      |   ~6.7ns |
+| `.toCompiled()` — one parameter      |   ~5.8ns |
+| `.toCompiled()` — two parameters     |  ~12.1ns |
+
+Everything the pipeline does — plugin transforms, hooks, normalization,
+optimization, printing — happens once, when the query is compiled. Nothing is
+left for the request but building the parameter array.
+
+It also buys something the numbers do not show. One call site emits one SQL
+text, which is the precondition for the database reusing a prepared statement's
+plan; against pglite the same query costs 243µs `PREPARE`d and 303µs not, and
+that 60µs is twenty times what compiling ever cost.
+
+Reach for `.toSQL()` when the query's shape genuinely varies per request, and
+for `.toCompiled()` everywhere else.
 
 ### `.toCompiled()` — chainable form (preferred)
 

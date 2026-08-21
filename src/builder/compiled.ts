@@ -101,25 +101,88 @@ export function compileQuery<P extends Record<string, unknown>>(
   }
 
   const sql = compiled.sql
+  // Values reaching a placeholder never passed the printer, so the conversion
+  // it does on the way past has to happen here — a `bigint` handed to `pg` raw
+  // is rejected by the driver.
   const coerce = printer.coerceParam
-
-  const fn = function execute(params: P): CompiledQuery {
-    if (slots.length === 0) return { sql, params: baseParams }
-
-    const filled = [...baseParams]
-    for (const slot of slots) {
-      // Coerced here as well as in the printer. The printer never saw these
-      // values — a placeholder stood where they will go — so without this a
-      // `bigint` reaches the driver raw and `pg` rejects it.
-      filled[slot.index] = coerce(params[slot.name])
-    }
-    return { sql, params: filled }
-  } as CompiledQueryFn<P>
+  const fn = bind<P>(sql, slots, baseParams, coerce)
 
   Object.defineProperty(fn, "sql", { value: sql, writable: false })
   Object.defineProperty(fn, "node", { value: node, writable: false })
 
   return fn
+}
+
+/**
+ * Build the function that fills the placeholders.
+ *
+ * Fixed shapes for the arities that cover almost every query: an array literal
+ * is the cheapest thing that produces a fresh array, and a query executed in a
+ * request loop runs this and nothing else.
+ */
+function bind<P extends Record<string, unknown>>(
+  sql: string,
+  slots: { index: number; name: string }[],
+  baseParams: unknown[],
+  coerce: (value: unknown) => unknown,
+): CompiledQueryFn<P> {
+  if (slots.length === 0) {
+    return function execute(): CompiledQuery {
+      return { sql, params: baseParams }
+    } as unknown as CompiledQueryFn<P>
+  }
+
+  if (slots.length === baseParams.length) {
+    const names = slots.map((slot) => slot.name)
+    const [a, b, c, d] = names
+    switch (names.length) {
+      case 1:
+        return function execute(params: P): CompiledQuery {
+          return { sql, params: [coerce(params[a as string])] }
+        } as unknown as CompiledQueryFn<P>
+      case 2:
+        return function execute(params: P): CompiledQuery {
+          return { sql, params: [coerce(params[a as string]), coerce(params[b as string])] }
+        } as unknown as CompiledQueryFn<P>
+      case 3:
+        return function execute(params: P): CompiledQuery {
+          return {
+            sql,
+            params: [
+              coerce(params[a as string]),
+              coerce(params[b as string]),
+              coerce(params[c as string]),
+            ],
+          }
+        } as unknown as CompiledQueryFn<P>
+      case 4:
+        return function execute(params: P): CompiledQuery {
+          return {
+            sql,
+            params: [
+              coerce(params[a as string]),
+              coerce(params[b as string]),
+              coerce(params[c as string]),
+              coerce(params[d as string]),
+            ],
+          }
+        } as unknown as CompiledQueryFn<P>
+      default:
+        return function execute(params: P): CompiledQuery {
+          const filled: unknown[] = []
+          for (const name of names) filled.push(coerce(params[name]))
+          return { sql, params: filled }
+        } as unknown as CompiledQueryFn<P>
+    }
+  }
+
+  return function execute(params: P): CompiledQuery {
+    const filled = baseParams.slice()
+    for (const slot of slots) {
+      filled[slot.index] = coerce(params[slot.name])
+    }
+    return { sql, params: filled }
+  } as unknown as CompiledQueryFn<P>
 }
 
 /**
