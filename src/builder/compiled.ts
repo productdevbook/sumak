@@ -1,5 +1,7 @@
 import type { ASTNode } from "../ast/nodes.ts"
 import type { Printer } from "../printer/types.ts"
+
+let statementCounter = 0
 import type { CompiledQuery } from "../types.ts"
 
 /**
@@ -71,6 +73,11 @@ export interface CompiledQueryFn<P extends Record<string, unknown>, Row = unknow
   /** The original AST node (for further optimization). */
   readonly node: ASTNode
   /**
+   * The name this query is prepared under on the server, when the driver keeps
+   * prepared statements. Stable for the life of the process.
+   */
+  readonly statementName: string
+  /**
    * Run the query and return every row.
    *
    * Present only when the builder was constructed from a `sumak()` instance
@@ -95,7 +102,7 @@ export function compileQuery<P extends Record<string, unknown>, Row = unknown>(
   node: ASTNode,
   printer: Printer,
   compileFn?: (node: ASTNode) => CompiledQuery,
-  runners?: (bind: (params: P) => CompiledQuery) => CompiledRunners<P, Row>,
+  runners?: (bind: (params: P) => CompiledQuery, statementName: string) => CompiledRunners<P, Row>,
 ): CompiledQueryFn<P, Row> {
   // Use full pipeline if available, otherwise just printer
   const compiled = compileFn ? compileFn(node) : printer.print(node)
@@ -115,6 +122,10 @@ export function compileQuery<P extends Record<string, unknown>, Row = unknown>(
   }
 
   const sql = compiled.sql
+  // A compiled query's SQL text never changes, which is exactly the condition
+  // a server-side prepared statement needs. The name is per process and per
+  // compiled query; drivers that cannot keep prepared statements ignore it.
+  const statementName = `sumak_${(statementCounter++).toString(36)}`
   // Values reaching a placeholder never passed the printer, so the conversion
   // it does on the way past has to happen here — a `bigint` handed to `pg` raw
   // is rejected by the driver.
@@ -123,6 +134,7 @@ export function compileQuery<P extends Record<string, unknown>, Row = unknown>(
 
   Object.defineProperty(fn, "sql", { value: sql, writable: false })
   Object.defineProperty(fn, "node", { value: node, writable: false })
+  Object.defineProperty(fn, "statementName", { value: statementName, writable: false })
 
   // Execution is attached rather than built in, because `compileQuery` is also
   // callable on a bare AST with no instance behind it. Without a driver the
@@ -136,7 +148,10 @@ export function compileQuery<P extends Record<string, unknown>, Row = unknown>(
           "build it from db.selectFrom(...) rather than from a bare AST.",
       ),
     )
-  const run = runners?.((params) => (fn as unknown as (p: P) => CompiledQuery)(params))
+  const run = runners?.(
+    (params) => (fn as unknown as (p: P) => CompiledQuery)(params),
+    statementName,
+  )
   Object.defineProperty(fn, "many", { value: run?.many ?? missing("many") })
   Object.defineProperty(fn, "one", { value: run?.one ?? missing("one") })
   Object.defineProperty(fn, "first", { value: run?.first ?? missing("first") })

@@ -1259,10 +1259,17 @@ Everything the pipeline does — plugin transforms, hooks, normalization,
 optimization, printing — happens once, when the query is compiled. Nothing is
 left for the request but building the parameter array.
 
-It also buys something the numbers do not show. One call site emits one SQL
-text, which is the precondition for the database reusing a prepared statement's
-plan; against pglite the same query costs 243µs `PREPARE`d and 303µs not, and
-that 60µs is twenty times what compiling ever cost.
+It also buys something the numbers above do not show, and this is the larger
+half. A compiled query's SQL text is fixed, so it is sent to PostgreSQL as a
+**named prepared statement** — parsed and planned once per connection, then
+reused. Against pglite the same query costs 243µs prepared and 303µs not, and
+that 60µs is twenty times what compiling ever cost. Nothing is required to opt
+in: `.toCompiled()` carries a `statementName` and `sumak/drivers/pg` uses it.
+Drivers that cannot keep prepared statements ignore it.
+
+Measured end to end, a single query against a local engine shows no difference
+— ~330µs either way — because the compile it removes is ~1% of that. The split
+pays on a cold start, under CPU pressure, and through the plan reuse above.
 
 Reach for `.toSQL()` when the query's shape genuinely varies per request, and
 for `.toCompiled()` everywhere else.

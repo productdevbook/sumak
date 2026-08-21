@@ -24,34 +24,46 @@ import type { CompiledRunners } from "./compiled.ts"
 export function runnersFor<P extends Record<string, unknown>, Row>(
   executor: SumakExecutor,
   ast: ASTNode,
-): (bind: (params: P) => CompiledQuery) => CompiledRunners<P, Row> {
+): (bind: (params: P) => CompiledQuery, statementName: string) => CompiledRunners<P, Row> {
   const ctx = deriveResultContext(ast)
-  return (bind) => ({
-    many: async (params, options) =>
-      (await runQuery(
-        executor.driver(),
-        bind(params),
-        resultTransformer(executor, ctx),
-        options,
-        listenerFor(executor),
-      )) as unknown as Row[],
-    one: async (params, options) =>
-      (await runOne(
-        executor.driver(),
-        bind(params),
-        resultTransformer(executor, ctx),
-        options,
-        listenerFor(executor),
-      )) as unknown as Row,
-    first: async (params, options) =>
-      (await runFirst(
-        executor.driver(),
-        bind(params),
-        resultTransformer(executor, ctx),
-        options,
-        listenerFor(executor),
-      )) as unknown as Row | null,
-    run: async (params, options) =>
-      (await runExecute(executor.driver(), bind(params), options, listenerFor(executor))).affected,
-  })
+  return (bind, statementName) => {
+    // Carried on every call so the driver can keep the statement prepared. The
+    // SQL text behind this name is fixed, so there is nothing to invalidate.
+    const withName = (options?: { signal?: AbortSignal }) => ({ ...options, statementName })
+    return {
+      many: async (params, options) =>
+        (await runQuery(
+          executor.driver(),
+          bind(params),
+          resultTransformer(executor, ctx),
+          withName(options),
+          listenerFor(executor),
+        )) as unknown as Row[],
+      one: async (params, options) =>
+        (await runOne(
+          executor.driver(),
+          bind(params),
+          resultTransformer(executor, ctx),
+          withName(options),
+          listenerFor(executor),
+        )) as unknown as Row,
+      first: async (params, options) =>
+        (await runFirst(
+          executor.driver(),
+          bind(params),
+          resultTransformer(executor, ctx),
+          withName(options),
+          listenerFor(executor),
+        )) as unknown as Row | null,
+      run: async (params, options) =>
+        (
+          await runExecute(
+            executor.driver(),
+            bind(params),
+            withName(options),
+            listenerFor(executor),
+          )
+        ).affected,
+    }
+  }
 }

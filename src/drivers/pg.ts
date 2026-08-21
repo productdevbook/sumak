@@ -11,10 +11,22 @@ import { withSignal } from "../driver/types.ts"
  * types sometimes leak `any` in places; we quote only what we need.
  */
 export interface PgQueryable {
+  /**
+   * `node-postgres` accepts either the text and values, or a config object.
+   * The config form is how a statement gets a name, which is what makes the
+   * server keep its plan.
+   */
   query(
-    sql: string,
+    sql: string | PgStatement,
     values?: readonly unknown[],
   ): Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+}
+
+/** A named statement, in the shape `node-postgres` expects. */
+export interface PgStatement {
+  name: string
+  text: string
+  values?: readonly unknown[]
 }
 
 /**
@@ -78,7 +90,14 @@ export function pgDriver(pool: PgPool | PgQueryable, options: PgDriverOptions = 
     // doing in the background. Callers that need true wire-level
     // cancellation should pull the client out of the pool and issue
     // `pg_cancel_backend` themselves.
-    const inflight = client.query(sql, params).then((r) => ({
+    // A named statement is parsed and planned once per connection and reused
+    // afterwards. The name only arrives when the caller knows the SQL text is
+    // fixed — a compiled query — so there is nothing to invalidate.
+    const sent =
+      opts?.statementName === undefined
+        ? client.query(sql, params)
+        : client.query({ name: opts.statementName, text: sql, values: params })
+    const inflight = sent.then((r) => ({
       rows: r.rows,
       rowCount: r.rowCount ?? 0,
     }))
