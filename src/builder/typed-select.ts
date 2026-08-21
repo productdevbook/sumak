@@ -23,7 +23,7 @@ import {
 import type { SumakExecutor } from "../driver/execute.ts"
 import { deriveResultContext } from "../plugin/result-context.ts"
 import type { Printer } from "../printer/types.ts"
-import type { Nullable, SelectRow } from "../schema/types.ts"
+import type { Nullable, QualifiedColumn, SelectRow, UnqualifiedName } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
 import type { CompiledQueryFn } from "./compiled.ts"
 import { compileQuery } from "./compiled.ts"
@@ -100,7 +100,9 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    *
    * The two forms can be chained: `.select("id", "name").select({ total: count() })`.
    */
-  select<K extends keyof O & string>(...cols: K[]): TypedSelectBuilder<DB, TB, Pick<O, K>>
+  select<K extends (keyof O & string) | QualifiedColumn<DB, TB>>(
+    ...cols: K[]
+  ): TypedSelectBuilder<DB, TB, Pick<O, UnqualifiedName<K> & keyof O>>
   select<A extends Record<string, Expression<any>>>(
     aliased: A,
   ): TypedSelectBuilder<
