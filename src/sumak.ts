@@ -2,6 +2,8 @@ import type { DDLNode, ReindexNode } from "./ast/ddl-nodes.ts"
 import type { ASTNode, ExpressionNode, SelectNode, SubqueryNode } from "./ast/nodes.ts"
 import type { TclNode } from "./ast/tcl-nodes.ts"
 import type { Expression } from "./ast/typed-expression.ts"
+import { compileQuery } from "./builder/compiled.ts"
+import type { CompiledQueryFn } from "./builder/compiled.ts"
 import { AlterSequenceBuilder } from "./builder/ddl/alter-sequence.ts"
 import { AlterTableBuilder } from "./builder/ddl/alter-table.ts"
 import { CopyFromBuilder, CopyToBuilder } from "./builder/ddl/copy.ts"
@@ -35,6 +37,7 @@ import { CreateTriggerBuilder, DropTriggerBuilder } from "./builder/ddl/trigger.
 import { TruncateBuilder, type TruncateTableArg } from "./builder/ddl/truncate.ts"
 import { Col } from "./builder/eb.ts"
 import { GraphTableBuilder, graphTable } from "./builder/graph-table.ts"
+import { runnersFor } from "./builder/runners.ts"
 import { SelectBuilder } from "./builder/select.ts"
 import { RestoreBuilder, SoftDeleteBuilder } from "./builder/soft-delete.ts"
 import type { SoftDeleteConfig } from "./builder/soft-delete.ts"
@@ -377,6 +380,38 @@ export class Sumak<DB> {
    * tx's driver — if you need cross-connection nesting semantics,
    * implement `Driver.transaction` with your own scoping rules.
    */
+  /**
+   * Bind a query compiled elsewhere to this instance.
+   *
+   * A compiled query captures the instance it was built from, which is what
+   * lets it run itself. Inside a transaction that is the wrong instance: the
+   * transaction holds its own connection, and a query compiled outside would
+   * send its statement down the pool instead — committing while the
+   * transaction around it rolls back.
+   *
+   * ```ts
+   * const addUser = db.insertInto("users").values({ … }).toCompiled<Args>()
+   *
+   * await db.transaction(async (tx) => {
+   *   await tx.prepared(addUser).run({ … }) // inside the transaction
+   * })
+   * ```
+   *
+   * The SQL is compiled again for this instance — once, not per call — and the
+   * original is untouched.
+   */
+  prepared<P extends Record<string, unknown>, R>(
+    query: CompiledQueryFn<P, R>,
+  ): CompiledQueryFn<P, R> {
+    const printer = this._dialect.createPrinter()
+    return compileQuery<P, R>(
+      query.node,
+      printer,
+      (node) => this.compile(node),
+      runnersFor<P, R>(this, query.node),
+    )
+  }
+
   async transaction<T>(
     fn: (tx: Sumak<DB>) => Promise<T>,
     opts: TransactionOptions = {},
