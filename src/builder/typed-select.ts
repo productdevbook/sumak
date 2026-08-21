@@ -26,11 +26,10 @@ import type { Printer } from "../printer/types.ts"
 import type { Nullable, QualifiedColumn, SelectRow, UnqualifiedName } from "../schema/types.ts"
 import type { CompiledQuery, OrderDirection } from "../types.ts"
 import type { CompiledQueryFn } from "./compiled.ts"
-import { compileQuery } from "./compiled.ts"
 import type { ColumnProxies, WhereCallback } from "./eb.ts"
 import { createColumnProxies, WindowBuilder } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
-import { runnersFor } from "./runners.ts"
+import { compiledFor, compileNode } from "./runners.ts"
 import { SelectBuilder } from "./select.ts"
 import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
 import { isWhere3ArgCall, resolveWhere3Arg } from "./where-3-arg.ts"
@@ -420,13 +419,25 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * WITH (CTE). Accepts either a raw `SelectNode` or any `TypedSelectBuilder`
    * — passing the builder directly saves a `.build()` at the call site.
    */
+  with<N extends string, DB2, TB2 extends keyof DB2, O2>(
+    name: N,
+    query: TypedSelectBuilder<DB2, TB2, O2>,
+    options?: { recursive?: boolean },
+  ): TypedSelectBuilder<DB & { [K in N]: O2 }, TB, O>
+  with<N extends string>(
+    name: N,
+    query: SelectNode | { build(): SelectNode },
+    options?: { recursive?: boolean },
+  ): TypedSelectBuilder<DB & { [K in N]: Record<string, unknown> }, TB, O>
   with(
     name: string,
     query: SelectNode | { build(): SelectNode },
     options?: { recursive?: boolean },
-  ): TypedSelectBuilder<DB, TB, O> {
+  ): TypedSelectBuilder<never, never, O> {
     const q = "build" in query ? query.build() : query
-    return this._chain(this._builder.with(name, q, options?.recursive === true))
+    return this._chain(
+      this._builder.with(name, q, options?.recursive === true),
+    ) as unknown as TypedSelectBuilder<never, never, O>
   }
 
   /**
@@ -739,15 +750,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * calling `toSQL()` and paying for a second `build()` of the same query.
    */
   private _compileNode(ast: ASTNode): CompiledQuery {
-    if (this._compile) {
-      return this._compile(ast)
-    }
-    if (!this._printer) {
-      throw new Error(
-        "toSQL() requires a printer. Use db.selectFrom() or pass a printer to compile().",
-      )
-    }
-    return this._printer.print(ast)
+    return compileNode(ast, "db.selectFrom()", this._printer, this._compile)
   }
 
   /**
@@ -888,17 +891,13 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * ```
    */
   toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P, O> {
-    if (!this._printer) {
-      throw new Error(
-        "toCompiled() requires a printer. Use db.selectFrom() to construct the builder.",
-      )
-    }
-    const ast = this.build()
-    const executor = this._executor
-    if (executor === undefined) {
-      return compileQuery<P, O>(ast, this._printer, this._compile)
-    }
-    return compileQuery<P, O>(ast, this._printer, this._compile, runnersFor<P, O>(executor, ast))
+    return compiledFor<P, O>(
+      this.build(),
+      "db.selectFrom()",
+      this._printer,
+      this._compile,
+      this._executor,
+    )
   }
 }
 

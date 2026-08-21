@@ -17,12 +17,11 @@ import type { Printer } from "../printer/types.ts"
 import type { SelectRow } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
 import type { CompiledQueryFn } from "./compiled.ts"
-import { compileQuery } from "./compiled.ts"
 import { DeleteBuilder } from "./delete.ts"
 import type { WhereCallback } from "./eb.ts"
 import { createColumnProxies } from "./eb.ts"
 import { ExplainBuilder } from "./explain.ts"
-import { runnersFor } from "./runners.ts"
+import { compiledFor, compileNode } from "./runners.ts"
 import type { ComparisonOp, WhereValueForOp } from "./where-3-arg.ts"
 import { isWhere3ArgCall, resolveWhere3Arg } from "./where-3-arg.ts"
 
@@ -290,17 +289,13 @@ export class TypedDeleteBuilder<DB, TB extends keyof DB> {
 
   /** Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`. */
   toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
-    if (!this._printer) {
-      throw new Error(
-        "toCompiled() requires a printer. Use db.deleteFrom() to construct the builder.",
-      )
-    }
-    const ast = this.build()
-    const executor = this._executor
-    if (executor === undefined) {
-      return compileQuery<P>(ast, this._printer, this._compile)
-    }
-    return compileQuery<P>(ast, this._printer, this._compile, runnersFor<P, unknown>(executor, ast))
+    return compiledFor<P, unknown>(
+      this.build(),
+      "db.deleteFrom()",
+      this._printer,
+      this._compile,
+      this._executor,
+    )
   }
 }
 
@@ -344,11 +339,7 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, R> {
    * that needed the node for its result context does not build it twice.
    */
   private _compileNode(ast: ASTNode): CompiledQuery {
-    if (this._compile) return this._compile(ast)
-    if (!this._printer) {
-      throw new Error("toSQL() requires a printer. Use db.deleteFrom() to construct the builder.")
-    }
-    return this._printer.print(ast)
+    return compileNode(ast, "db.deleteFrom()", this._printer, this._compile)
   }
 
   /** Run the DELETE and return every row produced by `RETURNING`. */
@@ -409,16 +400,12 @@ export class TypedDeleteReturningBuilder<DB, _TB extends keyof DB, R> {
    * `RETURNING` behaves like the uncompiled one minus the per-call compile.
    */
   toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P, R> {
-    if (!this._printer) {
-      throw new Error(
-        "toCompiled() requires a printer. Use db.deleteFrom() to construct the builder.",
-      )
-    }
-    const ast = this.build()
-    const executor = this._executor
-    if (executor === undefined) {
-      return compileQuery<P, R>(ast, this._printer, this._compile)
-    }
-    return compileQuery<P, R>(ast, this._printer, this._compile, runnersFor<P, R>(executor, ast))
+    return compiledFor<P, R>(
+      this.build(),
+      "db.deleteFrom()",
+      this._printer,
+      this._compile,
+      this._executor,
+    )
   }
 }
