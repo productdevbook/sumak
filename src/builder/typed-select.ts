@@ -15,6 +15,7 @@ import { unwrap, unwrapPredicate } from "../ast/typed-expression.ts"
 import {
   listenerFor,
   resultTransformer,
+  runExecute,
   runFirst,
   runOne,
   runQuery,
@@ -876,13 +877,52 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
    * findUser({ userId: 99 })  // same SQL, different params
    * ```
    */
-  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
+  toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P, O> {
     if (!this._printer) {
       throw new Error(
         "toCompiled() requires a printer. Use db.selectFrom() to construct the builder.",
       )
     }
-    return compileQuery<P>(this.build(), this._printer, this._compile)
+    const ast = this.build()
+    const executor = this._executor
+    if (executor === undefined) {
+      return compileQuery<P, O>(ast, this._printer, this._compile)
+    }
+
+    // Derived once, here, with the AST that was already built. The uncompiled
+    // helpers below rebuild it on every call.
+    const ctx = deriveResultContext(ast)
+    const transform = () => resultTransformer(executor, ctx)
+
+    return compileQuery<P, O>(ast, this._printer, this._compile, (compiled) => ({
+      many: async (params, options) =>
+        (await runQuery(
+          executor.driver(),
+          compiled(params),
+          transform(),
+          options,
+          listenerFor(executor),
+        )) as unknown as O[],
+      one: async (params, options) =>
+        (await runOne(
+          executor.driver(),
+          compiled(params),
+          transform(),
+          options,
+          listenerFor(executor),
+        )) as unknown as O,
+      first: async (params, options) =>
+        (await runFirst(
+          executor.driver(),
+          compiled(params),
+          transform(),
+          options,
+          listenerFor(executor),
+        )) as unknown as O | null,
+      run: async (params, options) =>
+        (await runExecute(executor.driver(), compiled(params), options, listenerFor(executor)))
+          .affected,
+    }))
   }
 }
 

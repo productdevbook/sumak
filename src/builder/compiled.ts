@@ -64,12 +64,25 @@ export function isPlaceholder(value: unknown): value is PlaceholderMarker {
  * This is partial evaluation: the SQL string is computed once at setup time,
  * and only parameter values are substituted at call time.
  */
-export interface CompiledQueryFn<P extends Record<string, unknown>> {
+export interface CompiledQueryFn<P extends Record<string, unknown>, Row = unknown> {
   (params: P): CompiledQuery
   /** The pre-baked SQL string (for inspection/debugging). */
   readonly sql: string
   /** The original AST node (for further optimization). */
   readonly node: ASTNode
+  /**
+   * Run the query and return every row.
+   *
+   * Present only when the builder was constructed from a `sumak()` instance
+   * with a driver — `compileQuery()` on a bare AST has nothing to run against.
+   */
+  many(params: P, options?: { signal?: AbortSignal }): Promise<Row[]>
+  /** Run the query and return the one row, or throw if that is not what came back. */
+  one(params: P, options?: { signal?: AbortSignal }): Promise<Row>
+  /** Run the query and return the first row, or null. */
+  first(params: P, options?: { signal?: AbortSignal }): Promise<Row | null>
+  /** Run the query for its effect and return the number of rows it touched. */
+  run(params: P, options?: { signal?: AbortSignal }): Promise<number>
 }
 
 /**
@@ -78,11 +91,12 @@ export interface CompiledQueryFn<P extends Record<string, unknown>> {
  * Walks the AST once, generates SQL, and records the positions of
  * placeholder params. Subsequent calls only substitute values.
  */
-export function compileQuery<P extends Record<string, unknown>>(
+export function compileQuery<P extends Record<string, unknown>, Row = unknown>(
   node: ASTNode,
   printer: Printer,
   compileFn?: (node: ASTNode) => CompiledQuery,
-): CompiledQueryFn<P> {
+  runners?: (bind: (params: P) => CompiledQuery) => CompiledRunners<P, Row>,
+): CompiledQueryFn<P, Row> {
   // Use full pipeline if available, otherwise just printer
   const compiled = compileFn ? compileFn(node) : printer.print(node)
 
@@ -105,12 +119,43 @@ export function compileQuery<P extends Record<string, unknown>>(
   // it does on the way past has to happen here — a `bigint` handed to `pg` raw
   // is rejected by the driver.
   const coerce = printer.coerceParam
-  const fn = bind<P>(sql, slots, baseParams, coerce)
+  const fn = bind<P>(sql, slots, baseParams, coerce) as unknown as CompiledQueryFn<P, Row>
 
   Object.defineProperty(fn, "sql", { value: sql, writable: false })
   Object.defineProperty(fn, "node", { value: node, writable: false })
 
+  // Execution is attached rather than built in, because `compileQuery` is also
+  // callable on a bare AST with no instance behind it. Without a driver the
+  // methods are present and say so, which reads better than being absent.
+  // Rejects rather than throwing: these are declared to return a promise, and
+  // a caller who only awaits should not have to also wrap the call.
+  const missing = (name: string) => () =>
+    Promise.reject(
+      new Error(
+        `${name}() on a compiled query needs an instance with a driver — ` +
+          "build it from db.selectFrom(...) rather than from a bare AST.",
+      ),
+    )
+  const run = runners?.((params) => (fn as unknown as (p: P) => CompiledQuery)(params))
+  Object.defineProperty(fn, "many", { value: run?.many ?? missing("many") })
+  Object.defineProperty(fn, "one", { value: run?.one ?? missing("one") })
+  Object.defineProperty(fn, "first", { value: run?.first ?? missing("first") })
+  Object.defineProperty(fn, "run", { value: run?.run ?? missing("run") })
+
   return fn
+}
+
+/**
+ * How a compiled query reaches the driver.
+ *
+ * Supplied by the builder that owns the instance; `compileQuery` itself has no
+ * way to know one.
+ */
+export interface CompiledRunners<P extends Record<string, unknown>, Row> {
+  many(params: P, options?: { signal?: AbortSignal }): Promise<Row[]>
+  one(params: P, options?: { signal?: AbortSignal }): Promise<Row>
+  first(params: P, options?: { signal?: AbortSignal }): Promise<Row | null>
+  run(params: P, options?: { signal?: AbortSignal }): Promise<number>
 }
 
 /**

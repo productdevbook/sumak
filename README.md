@@ -1289,6 +1289,12 @@ findUser({ userId: 99 })
 
 findUser.sql // pre-baked SQL string
 
+// It runs, too — the fast path is not the inconvenient one:
+await findUser.many({ userId: 42 }) // rows
+await findUser.one({ userId: 42 }) // one row, or throws
+await findUser.first({ userId: 42 }) // one row, or null
+await renameUser.run({ id: 1, newName: "ada" }) // rows affected
+
 // Also works on UPDATE / INSERT / DELETE:
 const renameUser = db
   .update("users")
