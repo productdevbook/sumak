@@ -147,15 +147,6 @@ makes generated / default / nullable columns optional.
 `InferUpdateModel` is the partial form — every column optional, matching
 sumak's `.update(...).set(...)` semantics.
 
-### Migrating from kysely or drizzle?
-
-Most ports are cosmetic — rename a few imports, swap a couple of method
-names, keep the rest. For a side-by-side patterns table plus task-oriented
-snippets, see
-[`docs/migration-from-kysely-and-drizzle.md`](./docs/migration-from-kysely-and-drizzle.md).
-
----
-
 ## SELECT
 
 ```ts
@@ -1601,9 +1592,7 @@ const ability = build()
 const db = sumak({
   dialect: pgDialect(),
   tables: {
-    posts: {
-      /* ... */
-    },
+    posts: {/* ... */},
   },
   plugins: [
     caslAuthz({
