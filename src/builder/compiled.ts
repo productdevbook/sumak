@@ -101,13 +101,17 @@ export function compileQuery<P extends Record<string, unknown>>(
   }
 
   const sql = compiled.sql
+  const coerce = printer.coerceParam
 
   const fn = function execute(params: P): CompiledQuery {
     if (slots.length === 0) return { sql, params: baseParams }
 
     const filled = [...baseParams]
     for (const slot of slots) {
-      filled[slot.index] = params[slot.name]
+      // Coerced here as well as in the printer. The printer never saw these
+      // values — a placeholder stood where they will go — so without this a
+      // `bigint` reaches the driver raw and `pg` rejects it.
+      filled[slot.index] = coerce(params[slot.name])
     }
     return { sql, params: filled }
   } as CompiledQueryFn<P>

@@ -190,8 +190,27 @@ describe("a trigger sees its row", () => {
     const sql = db.compileDDL(fn.buildNode()).sql
     expect(sql).toContain('"new"."price"')
     expect(sql).toContain("RAISE EXCEPTION")
-    expect(scope.old.name).toBeDefined()
-    expect(scope.op).toBeDefined()
+  })
+
+  it("names OLD, TG_OP and the table in lower case, which is what plpgsql resolves", () => {
+    const fn = createFunction("describe_change")
+      .returns("trigger")
+      .orReplace()
+      .plpgsql((b) => {
+        b.raise("notice", "changed", {
+          DETAIL: scope.op,
+          TABLE: scope.table,
+          COLUMN: scope.old.name,
+        })
+        b.return(typedCol("new"))
+      })
+
+    const sql = db.compileDDL(fn.buildNode()).sql
+    expect(sql).toContain('DETAIL = "tg_op"')
+    expect(sql).toContain('TABLE = "tg_table_name"')
+    expect(sql).toContain('COLUMN = "old"."name"')
+    expect(sql).not.toContain('"TG_OP"')
+    expect(sql).not.toContain('"OLD"')
   })
 
   it("fires against a real table and rejects the row", async () => {

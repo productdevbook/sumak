@@ -1292,6 +1292,90 @@ const findUser = compileQuery<{ userId: number }>(
 
 ---
 
+## Functions and Triggers
+
+Database infrastructure written as typed code, so it lives in the repository
+with everything else instead of in `.sql` files a deploy script has to remember
+to run ([#91](https://github.com/productdevbook/sumak/issues/91)).
+
+An expression body is one `RETURN`:
+
+```ts
+import { arg, createFunction, val } from "sumak"
+import { add, mul } from "sumak"
+
+const computeTaxes = createFunction("compute_taxes")
+  .args({ price: arg("numeric"), tax: arg("numeric", { default: val(0.2) }) })
+  .returns("numeric")
+  .body(({ price, tax }) => mul(price, add(val(1), tax)))
+  .build()
+
+// CREATE FUNCTION "compute_taxes"("price" numeric, "tax" numeric DEFAULT 0.2)
+//   RETURNS numeric LANGUAGE sql AS $$ SELECT ("price" * (1 + "tax")) $$
+
+db.selectFrom("orders").select({ total: computeTaxes.call({ price: col.amount }) })
+```
+
+`.plpgsql()` gives the body branches, loops and variables:
+
+```ts
+import { typedAdd, typedGte, typedLte, typedMul } from "sumak"
+
+const computeTotal = createFunction("compute_total")
+  .args({ price: arg("integer"), quantity: arg("integer") })
+  .returns("integer")
+  .orReplace()
+  .plpgsql((b, { price, quantity }) => {
+    b.if(typedLte(quantity, val(0)), (t) => t.raise("exception", "quantity must be positive"))
+    b.return(typedMul(price, quantity))
+  })
+```
+
+The block covers `DECLARE`, assignment, `IF` / `ELSIF` / `ELSE`, `WHILE`, `FOR`
+over a range or a query, bare `LOOP`, `EXIT` and `CONTINUE` with `WHEN`, `RAISE`
+with `USING`, `PERFORM`, embedded statements, nested blocks, and `RETURN` /
+`RETURN NEXT` / `RETURN QUERY`.
+
+A trigger function gets the row plpgsql puts in scope:
+
+```ts
+import { createTrigger, triggerScope } from "sumak"
+
+const t = triggerScope<{ id: number; name: string; price: number }>(["id", "name", "price"])
+
+const guardPrice = createFunction("guard_price")
+  .returns("trigger")
+  .orReplace()
+  .plpgsql((b) => {
+    b.if(typedLte(t.new.price, val(0)), (x) => x.raise("exception", "price must be positive"))
+    b.return(typedCol("new"))
+  })
+
+const trigger = createTrigger("products_guard")
+  .on("products")
+  .before("INSERT")
+  .forEachRow()
+  .executeFunction("guard_price")
+```
+
+`t.new` / `t.old` are the row before and after, `t.op` is `TG_OP`, and `t.table`
+/ `t.schema` are `TG_TABLE_NAME` / `TG_TABLE_SCHEMA`. They are emitted in lower
+case because plpgsql folds unquoted identifiers down — a quoted `"NEW"` is a
+different name and resolves to nothing.
+
+Two things worth knowing:
+
+- A statement embedded in a body may not carry parameters. Inside `$$ … $$` a
+  placeholder names one of the function's own arguments, so a bound value would
+  point at the wrong thing; reference the argument or a declared variable by
+  name instead. sumak refuses at compile time rather than emitting it.
+- A plpgsql body is a string literal to the outer parser, so a malformed body
+  creates the function and fails when it is called. sumak's own tests run every
+  function against a real engine for that reason, and yours should too.
+
+PostgreSQL only. MySQL and MSSQL have functions with divergent grammar; SQLite
+has none.
+
 ## Query Optimization
 
 sumak automatically normalizes and optimizes queries through two new pipeline layers.
