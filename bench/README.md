@@ -10,7 +10,8 @@ Prisma is intentionally **not** included: Prisma is a code-gen + engine layer ra
 
 ```bash
 pnpm install
-pnpm vitest bench --run bench/compile.bench.ts
+pnpm vitest bench --run bench/compile.bench.ts   # sumak vs kysely vs drizzle
+pnpm vitest bench --run bench/prepared.bench.ts  # the two paths within sumak
 ```
 
 ## Smoke test
@@ -94,6 +95,33 @@ wave (PRs #155, #156, #162, #164, #165, #166): `REGEXP_REPLACE`,
 `POWER`. Each exercises a typed builder where sumak emits a dedicated
 AST node (extract-field, position-IN keyword form, inlined pattern /
 unit literals) and the competitors fall back to raw template literals.
+
+## The two paths — `bench/prepared.bench.ts`
+
+`compile.bench.ts` above times the whole pipeline, which is what `.toSQL()`
+runs on every call. That is the right measurement for a query whose shape
+genuinely varies per request, and the wrong one for the shape a request
+usually has, where the query was written once and only the values change.
+Nothing measured that until this file existed.
+
+| scenario                | `toSQL()` | `toCompiled()` |     |
+| ----------------------- | --------: | -------------: | --: |
+| `select-all`            |    1438ns |           51ns | 28× |
+| `select-where-eq`       |    3291ns |           58ns | 57× |
+| `select-where-deep-and` |   10614ns |          148ns | 72× |
+| `insert-values`         |    3356ns |           63ns | 53× |
+| `update-where`          |    3481ns |           59ns | 59× |
+
+Everything the pipeline does — plugin transforms, hooks, normalize, optimize,
+print — happens once, at definition. What is left is filling the parameter
+array.
+
+Two things the table does not show. A compiled query's SQL text is fixed, so
+`sumak/drivers/pg` sends it as a named prepared statement and the server keeps
+the plan: 243µs against 303µs for the same query, measured with `PREPARE` /
+`EXECUTE` against pglite. And end to end a single query costs ~330µs either
+way, because the compile this removes is ~1% of it — the split pays on a cold
+start, under CPU pressure, and through that plan reuse.
 
 ## Plugin overhead microbench
 
