@@ -2,6 +2,9 @@ import { param, star } from "../ast/expression.ts"
 import type { ASTNode, ExpressionNode, MergeNode, SelectNode } from "../ast/nodes.ts"
 import type { Expression } from "../ast/typed-expression.ts"
 import { unwrap } from "../ast/typed-expression.ts"
+import type { SumakExecutor } from "../driver/execute.ts"
+import { listenerFor, resultTransformer, runExecute, runQuery } from "../driver/execute.ts"
+import { deriveResultContext } from "../plugin/result-context.ts"
 import type { Printer } from "../printer/types.ts"
 import type { Insertable, SelectRow, Updateable } from "../schema/types.ts"
 import type { CompiledQuery } from "../types.ts"
@@ -9,6 +12,7 @@ import type { CompiledQueryFn } from "./compiled.ts"
 import { compileQuery } from "./compiled.ts"
 import { Col } from "./eb.ts"
 import { MergeBuilder } from "./merge.ts"
+import { runnersFor } from "./runners.ts"
 
 type MergeProxies<DB, Target extends keyof DB, Source extends keyof DB> = {
   target: { [K in keyof DB[Target] & string]: Col<any> }
@@ -42,6 +46,8 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
   readonly _printer?: Printer
   /** @internal */
   readonly _compile?: (node: ASTNode) => CompiledQuery
+  /** @internal */
+  readonly _executor?: SumakExecutor
   private readonly _targetTable: Target & string
   private readonly _sourceAlias: string
 
@@ -62,11 +68,14 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
     compile?: (node: ASTNode) => CompiledQuery,
     /** @internal */
     existingBuilder?: MergeBuilder,
+    /** @internal */
+    executor?: SumakExecutor,
   ) {
     this._targetTable = targetTable
     this._sourceAlias = sourceAlias
     this._printer = printer
     this._compile = compile
+    this._executor = executor
     this._builder =
       existingBuilder ??
       new MergeBuilder().into(targetTable).using(sourceTable, sourceAlias).on(unwrap(on))
@@ -82,6 +91,7 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
       this._printer,
       this._compile,
       builder,
+      this._executor,
     )
   }
 
@@ -266,7 +276,7 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
       exprs = (args as string[]).map((c) => ({ type: "column_ref" as const, column: c }))
     }
     const builder = this._builder.returning(...exprs)
-    return new TypedMergeReturningBuilder(builder, this._printer, this._compile)
+    return new TypedMergeReturningBuilder(builder, this._printer, this._compile, this._executor)
   }
 
   /**
@@ -278,7 +288,7 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
    */
   returningAll(): TypedMergeReturningBuilder<DB, Target, SelectRow<DB, Target>> {
     const builder = this._builder.returning(star())
-    return new TypedMergeReturningBuilder(builder, this._printer, this._compile)
+    return new TypedMergeReturningBuilder(builder, this._printer, this._compile, this._executor)
   }
 
   build(): MergeNode {
@@ -291,25 +301,51 @@ export class TypedMergeBuilder<DB, Target extends keyof DB, Source extends keyof
 
   /** Compile to SQL using the dialect's printer. */
   toSQL(): CompiledQuery {
-    if (this._compile) return this._compile(this.build())
+    return this._compileNode(this.build())
+  }
+
+  /** Compile an AST this builder already produced, without building it twice. */
+  private _compileNode(ast: MergeNode): CompiledQuery {
+    if (this._compile) return this._compile(ast)
     if (!this._printer) {
       throw new Error("toSQL() requires a printer. Use db.mergeInto() to construct the builder.")
     }
-    return this._printer.print(this.build())
+    return this._printer.print(ast)
   }
-  /**
-   * Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`.
-   *
-   * There is no executor behind this builder, so the compiled query carries the
-   * SQL and fills parameters but cannot run itself.
-   */
+  private _requireExecutor(): SumakExecutor {
+    if (!this._executor) {
+      throw new Error(
+        "MERGE needs an instance to run against. Use db.mergeInto(...) so the driver is wired up.",
+      )
+    }
+    return this._executor
+  }
+
+  /** Run the MERGE and return the number of rows it touched. */
+  async run(options?: { signal?: AbortSignal }): Promise<number> {
+    const exec = this._requireExecutor()
+    const result = await runExecute(
+      exec.driver(),
+      this._compileNode(this.build()),
+      options,
+      listenerFor(exec),
+    )
+    return result.affected
+  }
+
+  /** Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`. */
   toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
     if (!this._printer) {
       throw new Error(
         "toCompiled() requires a printer. Use db.mergeInto() to construct the builder.",
       )
     }
-    return compileQuery<P>(this.build(), this._printer, this._compile)
+    const ast = this.build()
+    const executor = this._executor
+    if (executor === undefined) {
+      return compileQuery<P>(ast, this._printer, this._compile)
+    }
+    return compileQuery<P>(ast, this._printer, this._compile, runnersFor<P, unknown>(executor, ast))
   }
 }
 
@@ -328,15 +364,19 @@ export class TypedMergeReturningBuilder<DB, _Target extends keyof DB, _R> {
   readonly _printer?: Printer
   /** @internal */
   readonly _compile?: (node: ASTNode) => CompiledQuery
+  /** @internal */
+  readonly _executor?: SumakExecutor
 
   constructor(
     builder: MergeBuilder,
     printer?: Printer,
     compile?: (node: ASTNode) => CompiledQuery,
+    executor?: SumakExecutor,
   ) {
     this._builder = builder
     this._printer = printer
     this._compile = compile
+    this._executor = executor
   }
 
   /** Stack additional RETURNING expressions onto the projection. */
@@ -345,6 +385,7 @@ export class TypedMergeReturningBuilder<DB, _Target extends keyof DB, _R> {
       this._builder.returning(...exprs),
       this._printer,
       this._compile,
+      this._executor,
     )
   }
 
@@ -358,24 +399,70 @@ export class TypedMergeReturningBuilder<DB, _Target extends keyof DB, _R> {
 
   /** Compile to SQL using the dialect's printer. */
   toSQL(): CompiledQuery {
-    if (this._compile) return this._compile(this.build())
+    return this._compileNode(this.build())
+  }
+
+  /** Compile an AST this builder already produced, without building it twice. */
+  private _compileNode(ast: MergeNode): CompiledQuery {
+    if (this._compile) return this._compile(ast)
     if (!this._printer) {
       throw new Error("toSQL() requires a printer. Use db.mergeInto() to construct the builder.")
     }
-    return this._printer.print(this.build())
+    return this._printer.print(ast)
   }
-  /**
-   * Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`.
-   *
-   * There is no executor behind this builder, so the compiled query carries the
-   * SQL and fills parameters but cannot run itself.
-   */
+  private _requireExecutor(): SumakExecutor {
+    if (!this._executor) {
+      throw new Error(
+        "MERGE needs an instance to run against. Use db.mergeInto(...) so the driver is wired up.",
+      )
+    }
+    return this._executor
+  }
+
+  /** Run the MERGE and return every row produced by `RETURNING`. */
+  async many(options?: { signal?: AbortSignal }): Promise<_R[]> {
+    const exec = this._requireExecutor()
+    const ast = this.build()
+    const rows = await runQuery(
+      exec.driver(),
+      this._compileNode(ast),
+      resultTransformer(exec, deriveResultContext(ast)),
+      options,
+      listenerFor(exec),
+    )
+    return rows as unknown as _R[]
+  }
+
+  /** Run the MERGE and return the first row produced by `RETURNING`, or null. */
+  async first(options?: { signal?: AbortSignal }): Promise<_R | null> {
+    const rows = await this.many(options)
+    return rows[0] ?? null
+  }
+
+  /** Run the MERGE and return the number of rows it touched. */
+  async run(options?: { signal?: AbortSignal }): Promise<number> {
+    const exec = this._requireExecutor()
+    const result = await runExecute(
+      exec.driver(),
+      this._compileNode(this.build()),
+      options,
+      listenerFor(exec),
+    )
+    return result.affected
+  }
+
+  /** Pre-compile the SQL with placeholders. See `TypedSelectBuilder.toCompiled()`. */
   toCompiled<P extends Record<string, unknown> = Record<string, unknown>>(): CompiledQueryFn<P> {
     if (!this._printer) {
       throw new Error(
         "toCompiled() requires a printer. Use db.mergeInto() to construct the builder.",
       )
     }
-    return compileQuery<P>(this.build(), this._printer, this._compile)
+    const ast = this.build()
+    const executor = this._executor
+    if (executor === undefined) {
+      return compileQuery<P>(ast, this._printer, this._compile)
+    }
+    return compileQuery<P>(ast, this._printer, this._compile, runnersFor<P, unknown>(executor, ast))
   }
 }

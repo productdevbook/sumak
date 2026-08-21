@@ -870,7 +870,7 @@ export class TypedSelectBuilder<DB, TB extends keyof DB, O> {
       analyze: options?.analyze,
       format: options?.format,
     }
-    return new ExplainBuilder(explainNode, this._printer, this._compile)
+    return new ExplainBuilder(explainNode, this._printer, this._compile, this._executor)
   }
 
   /**

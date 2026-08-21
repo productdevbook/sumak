@@ -25,6 +25,7 @@ interface Builder {
   file: string
   name: string
   compiles: boolean
+  runs: boolean
 }
 
 function builders(): Builder[] {
@@ -37,7 +38,12 @@ function builders(): Builder[] {
       const end = classes[index + 1]?.index ?? source.length
       const body = source.slice(start, end)
       if (!/\n {2}toSQL\(/.test(body)) continue
-      found.push({ file, name: match[1] as string, compiles: /\n {2}toCompiled/.test(body) })
+      found.push({
+        file,
+        name: match[1] as string,
+        compiles: /\n {2}toCompiled/.test(body),
+        runs: /\n {2}async (many|one|first|run|exec)\(/.test(body),
+      })
     }
   }
   return found
@@ -53,6 +59,18 @@ describe("every builder that emits SQL can be compiled", () => {
   it("leaves none of them on the recompile-per-call path", () => {
     const missing = builders()
       .filter((b) => !b.compiles)
+      .map((b) => `${b.name} (${b.file})`)
+
+    expect(missing).toEqual([])
+  })
+
+  it("leaves none of them unable to run", () => {
+    // `db.mergeInto(...)` was a public entry point producing a query nobody
+    // could run — no executor, so no `.run()` and a compiled MERGE rejected.
+    // A builder the API hands out and cannot execute is a feature that only
+    // half exists.
+    const missing = builders()
+      .filter((b) => !b.runs)
       .map((b) => `${b.name} (${b.file})`)
 
     expect(missing).toEqual([])

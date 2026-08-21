@@ -761,6 +761,8 @@ export class Sumak<DB> {
       onExpr,
       this._dialect.createPrinter(),
       (node: ASTNode) => this.compile(node),
+      undefined,
+      this,
     )
   }
 

@@ -1,4 +1,6 @@
 import type { ASTNode, ExplainNode } from "../ast/nodes.ts"
+import type { SumakExecutor } from "../driver/execute.ts"
+import { listenerFor, runQuery } from "../driver/execute.ts"
 import type { Printer } from "../printer/types.ts"
 import type { CompiledQuery } from "../types.ts"
 import type { CompiledQueryFn } from "./compiled.ts"
@@ -17,11 +19,43 @@ export class ExplainBuilder {
   readonly _printer?: Printer
   /** @internal */
   readonly _compile?: (node: ASTNode) => CompiledQuery
+  /** @internal */
+  readonly _executor?: SumakExecutor
 
-  constructor(node: ExplainNode, printer?: Printer, compile?: (node: ASTNode) => CompiledQuery) {
+  constructor(
+    node: ExplainNode,
+    printer?: Printer,
+    compile?: (node: ASTNode) => CompiledQuery,
+    executor?: SumakExecutor,
+  ) {
     this._node = node
     this._printer = printer
     this._compile = compile
+    this._executor = executor
+  }
+
+  /**
+   * Run the EXPLAIN and return the plan.
+   *
+   * The rows are whatever the engine prints, which differs per dialect and per
+   * option — `Record<string, unknown>` rather than a shape that would only be
+   * right for one of them. Result plugins are deliberately not applied: a query
+   * plan is not a row of your table.
+   */
+  async many(options?: { signal?: AbortSignal }): Promise<Record<string, unknown>[]> {
+    if (!this._executor) {
+      throw new Error(
+        "explain().many() needs an instance to run against. " +
+          "Build it from db.selectFrom(...).explain(...) so the driver is wired up.",
+      )
+    }
+    return runQuery(
+      this._executor.driver(),
+      this.toSQL(),
+      (rows) => rows,
+      options,
+      listenerFor(this._executor),
+    )
   }
 
   build(): ExplainNode {
