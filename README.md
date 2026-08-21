@@ -1310,6 +1310,26 @@ const renameUser = db
   .toCompiled<{ id: number; newName: string }>()
 ```
 
+### Inside a transaction
+
+A compiled query captures the instance it was built from — that is what lets it
+run itself. A transaction holds its own connection, so a query compiled outside
+one would send its statement down the pool and commit while the transaction
+around it rolls back. Bind it first:
+
+```ts
+const addUser = db.insertInto("users").values({ … }).toCompiled<Args>()
+
+await db.transaction(async (tx) => {
+  await tx.prepared(addUser).run({ … }) // on the transaction's connection
+})
+```
+
+`tx.prepared(...)` compiles the SQL again for that instance — once, not per
+call — and leaves the original untouched. Compiling inside the transaction
+block works too; `prepared` exists so a query defined at module load can be
+reused there.
+
 ### `compileQuery()` — functional form
 
 For working with raw AST nodes:
