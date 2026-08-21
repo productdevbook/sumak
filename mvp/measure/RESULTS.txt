@@ -1,0 +1,42 @@
+senaryo                    drizzle    kysely     sumak      mvp  mvp+dizimvp-bindsiz
+------------------------------------------------------------------------------------
+select-all                 20259ns    1399ns    1349ns    4.7ns     5.1ns      4.6ns
+select-where-eq            20050ns    3377ns    3216ns    7.2ns    18.9ns      7.7ns
+join-2-tables              32837ns    6168ns    4652ns    7.6ns    11.3ns      6.4ns
+select-where-deep-and      62663ns    8420ns   10207ns    8.2ns    13.8ns      6.9ns
+update-where               18169ns    2775ns    3170ns    7.0ns    13.9ns      6.3ns
+------------------------------------------------------------------------------------
+taban (kutuphane yok)            -         -         -        -         -      4.8ns
+
+mvp bind kimlik fonksiyonu mu (dizi kopyalanmiyor mu):
+  select-all               direct=true  bind(args)===args: true
+  select-where-eq          direct=true  bind(args)===args: true
+  join-2-tables            direct=true  bind(args)===args: true
+  select-where-deep-and    direct=true  bind(args)===args: true
+  update-where             direct=true  bind(args)===args: true
+
+kurulum, bir kez: 4450ns/sorgu
+
+uretilen SQL — ayni isi mi yapiyorlar:
+  [select-all]
+    kysely: select * from "users"  []
+    sumak : SELECT * FROM "users"  []
+    mvp   : SELECT * FROM "users"  []
+  [select-where-eq]
+    kysely: select "id", "name" from "users" where "id" = $1  [1]
+    sumak : SELECT "id", "name" FROM "users" WHERE ("id" = $1)  [1]
+    mvp   : SELECT "users"."id", "users"."name" FROM "users" WHERE ("users"."id" = $1)  [1]
+  [join-2-tables]
+    kysely: select "posts"."id", "posts"."title" from "posts" inner join "users" on "posts"."authorId" = "users"."id"  []
+    sumak : SELECT "posts"."id", "posts"."title" FROM "posts" INNER JOIN "users" ON ("posts"."authorId" = "users"."id")  []
+    mvp   : SELECT "posts"."id", "posts"."title" FROM "posts" INNER JOIN "users" ON ("posts"."authorId" = "users"."id")  []
+  [select-where-deep-and]
+    kysely: select * from "posts" where ("authorId" = $1 and "published" > $2 and "title" != $3 and "body" != $4 and "id" > $5)  [1,0,"","",0]
+    sumak : SELECT * FROM "posts" WHERE ((((("authorId" = $1) AND ("published" > $2)) AND ("title" != $3)) AND ("body" != $4)) AND ("id" > $5))  [1,0,"","",0]
+    mvp   : SELECT * FROM "posts" WHERE ((((("posts"."authorId" = $1) AND ("posts"."published" > $2)) AND ("posts"."title" <> $3)) AND ("posts"."body" <> $4)) AND ("posts"."id" > $5))  [1,0,"","",0]
+  [update-where]
+    kysely: update "users" set "name" = $1 where "id" = $2  ["x",1]
+    sumak : UPDATE "users" SET "name" = $1 WHERE ("id" = $2)  ["x",1]
+    mvp   : UPDATE "users" SET "name" = $1 WHERE ("users"."id" = $2)  ["x",1]
+
+(sink=851730000)
